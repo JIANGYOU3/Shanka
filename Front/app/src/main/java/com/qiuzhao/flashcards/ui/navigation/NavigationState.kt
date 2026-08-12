@@ -25,25 +25,25 @@ fun rememberAppNavigationState(): AppNavigationState {
     ) {
         mutableStateOf<AppRoute>(AppRoute.Home)
     }
-    val backStacks = TopLevelRoutes.associateWith { route -> rememberNavBackStack<AppRoute>(route) }
+    val backStacks = TopLevelRoutes.associateWith { route -> rememberNavBackStack(route) }
     return remember { AppNavigationState(selectedTopLevel, backStacks) }
 }
 
 class AppNavigationState(
     selectedTopLevel: MutableState<AppRoute>,
-    val backStacks: Map<AppRoute, NavBackStack<AppRoute>>
+    val backStacks: Map<AppRoute, NavBackStack<NavKey>>
 ) {
     var selectedTopLevel: AppRoute by selectedTopLevel
-    val currentRoute: AppRoute get() = backStacks.getValue(selectedTopLevel).last()
+    val currentRoute: AppRoute get() = backStacks.getValue(selectedTopLevel).last() as AppRoute
 
     @Composable
     fun decoratedEntries(
-        entryProvider: (AppRoute) -> NavEntry<AppRoute>
-    ): List<NavEntry<AppRoute>> {
+        entryProvider: (NavKey) -> NavEntry<NavKey>
+    ): List<NavEntry<NavKey>> {
         val decorated = backStacks.mapValues { (_, stack) ->
             rememberDecoratedNavEntries(
                 backStack = stack,
-                entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator<AppRoute>()),
+                entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator<NavKey>()),
                 entryProvider = entryProvider
             )
         }

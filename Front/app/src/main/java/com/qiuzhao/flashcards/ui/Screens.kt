@@ -129,6 +129,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.ui.NavDisplay
 import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
@@ -205,7 +207,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
         else -> error("Top-level navigation state must be a root route")
     }
 
-    val entryProvider = entryProvider {
+    val typedEntryProvider = entryProvider {
         entry<AppRoute.Home> { HomeScreen(decks, dueCount, navigator) }
         entry<AppRoute.Library> { LibraryScreen(decks, viewModel, studySearchQuery, navigator) }
         entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
@@ -229,6 +231,10 @@ fun FlashcardsApp(viewModel: AppViewModel) {
         entry<AppRoute.Settings> { SettingsScreen(viewModel, navigator) }
         entry<AppRoute.SettingsIdentity> { SettingsIdentityScreen(navigator) }
         entry<AppRoute.SettingsUnbuilt> { route -> SettingsUnbuiltScreen(route.title, navigator) }
+    }
+    val entryProvider: (NavKey) -> NavEntry<NavKey> = { key ->
+        @Suppress("UNCHECKED_CAST")
+        (typedEntryProvider(key as AppRoute) as NavEntry<NavKey>)
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
