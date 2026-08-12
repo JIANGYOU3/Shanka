@@ -1,0 +1,13 @@
+# Gradle and Kotlin caches
+.gradle/
+.kotlin/
+**/build/
+
+# Local Android Studio files
+.idea/
+*.iml
+local.properties
+
+# System files
+.DS_Store
+Thumbs.db
