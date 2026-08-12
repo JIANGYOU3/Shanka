@@ -11,3 +11,6 @@ local.properties
 # System files
 .DS_Store
 Thumbs.db
+
+# Claude local settings (machine-specific permissions)
+.claude/settings.local.json
