@@ -15,14 +15,10 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.unit.sp
 import com.qiuzhao.flashcards.R
 
-/**
- * Project-wide Figma typography. Every text family is intentionally bilingual:
- * Google Sans Flex is the first fallback for Latin/digits and MiSans VF supplies
- * CJK glyphs. This prevents Android's system font from entering mixed-language text.
- */
+/** The only font files used by product copy. Do not create a fallback family. */
 @OptIn(ExperimentalTextApi::class)
 object AppFonts {
-    /** A CJK-only face for components whose Figma typography must never fallback. */
+    /** MiSans variable font at the given Figma wght; a single CJK-only face. */
     private fun miSansOnly(weight: Int): FontFamily = FontFamily(
         Font(
             R.font.misans_vf,
@@ -31,112 +27,40 @@ object AppFonts {
         )
     )
 
-    private fun bilingual(weight: Int): FontFamily = FontFamily(
+    /** Figma 378:1764 — MiSans VF (Chinese only). */
+    val MiSansThin = miSansOnly(150)
+    val MiSansExtraLight = miSansOnly(200)
+    val MiSansLight = miSansOnly(250)
+    val MiSansNormal = miSansOnly(305)
+    val MiSansRegular = miSansOnly(330)
+    val MiSansMedium = miSansOnly(380)
+    val MiSansDemibold = miSansOnly(450)
+    val MiSansSemibold = miSansOnly(520)
+    val MiSansBold = miSansOnly(630)
+    val MiSansHeavy = miSansOnly(700)
+
+    /** Figma 378:1805 — Google Sans Flex (Latin, digits, whitespace and punctuation). */
+    private fun googleSansFlexOnly(weight: Int): FontFamily = FontFamily(
         Font(
             R.font.google_sans_flex,
-            // Text composables deliberately request Normal so Compose must select
-            // this exact face; the variable-font axis below supplies the Figma
-            // weight instead of Android falling back to synthetic 400.
             weight = FontWeight.Normal,
             variationSettings = FontVariation.Settings(
+                FontVariation.Setting("GRAD", 0f),
                 FontVariation.Setting("ROND", 100f),
                 FontVariation.Setting("wdth", 100f),
                 FontVariation.Setting("wght", weight.toFloat())
             )
-        ),
-        Font(
-            R.font.misans_vf,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(FontVariation.Setting("wght", weight.toFloat()))
         )
     )
-
-    // Figma 234:5020 — MiSans VF is the sole Chinese typeface for the app.
-    val MiSansThin = bilingual(150)
-    val MiSansExtraLight = bilingual(200)
-    val MiSansLight = bilingual(250)
-    val MiSansNormal = bilingual(305)
-    val MiSansRegular = bilingual(330)
-    val MiSansMedium = bilingual(380)
-    val MiSansDemibold = bilingual(450)
-    val MiSansSemibold = bilingual(520)
-    val MiSansBold = bilingual(630)
-    val MiSansHeavy = bilingual(700)
-
-    // Figma card component: use the CJK source directly. MixedLanguageText
-    // supplies Google Sans Flex only for its Latin/digit spans.
-    val MiSansCardSemibold = miSansOnly(520)
-    val MiSansCardBold = miSansOnly(630)
-
-    // Compatibility names point to the exact Figma tokens; new UI should prefer
-    // the named token above rather than Android's conventional 400/600/700 mapping.
-    val MiSans = MiSansRegular
-    val MiSans450 = MiSansDemibold
-    val MiSans630 = MiSansBold
-    val MiSansNavigation = MiSansSemibold
-
-    /** Shared top-information rule: CJK Semibold 520, Latin/digits Bold 700. */
-    val MiSansTopInformation = FontFamily(
-        Font(
-            R.font.google_sans_flex,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(
-                FontVariation.Setting("ROND", 100f),
-                FontVariation.Setting("wdth", 100f),
-                FontVariation.Setting("wght", 700f)
-            )
-        ),
-        Font(
-            R.font.misans_vf,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(FontVariation.Setting("wght", 520f))
-        )
-    )
-
-    val GoogleSansFlex = FontFamily(
-        Font(
-            R.font.google_sans_flex,
-            variationSettings = FontVariation.Settings(
-                FontVariation.Setting("ROND", 100f),
-                FontVariation.Setting("wdth", 100f)
-            )
-        )
-    )
-    val GoogleSansFlexSemibold = FontFamily(
-        Font(
-            R.font.google_sans_flex,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(
-                FontVariation.Setting("ROND", 100f),
-                FontVariation.Setting("wdth", 100f),
-                FontVariation.Setting("wght", 520f)
-            )
-        )
-    )
-    val GoogleSansFlexExtraBold = FontFamily(
-        Font(
-            R.font.google_sans_flex,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(
-                FontVariation.Setting("ROND", 100f),
-                FontVariation.Setting("wdth", 100f),
-                FontVariation.Setting("wght", 800f)
-            )
-        )
-    )
-    val GoogleSansFlexBold = FontFamily(
-        Font(
-            R.font.google_sans_flex,
-            weight = FontWeight.Normal,
-            variationSettings = FontVariation.Settings(
-                // Figma card text is neutral grade; icon emphasis is configured separately.
-                FontVariation.Setting("GRAD", 0f),
-                FontVariation.Setting("ROND", 100f),
-                FontVariation.Setting("wdth", 100f),
-                FontVariation.Setting("wght", 700f)
-            )
-        )
-    )
+    val GoogleSansFlexThin = googleSansFlexOnly(100)
+    val GoogleSansFlexExtraLight = googleSansFlexOnly(200)
+    val GoogleSansFlexLight = googleSansFlexOnly(300)
+    val GoogleSansFlex = googleSansFlexOnly(400)
+    val GoogleSansFlexMedium = googleSansFlexOnly(500)
+    val GoogleSansFlexSemibold = googleSansFlexOnly(600)
+    val GoogleSansFlexBold = googleSansFlexOnly(700)
+    val GoogleSansFlexExtraBold = googleSansFlexOnly(800)
+    val GoogleSansFlexBlack = googleSansFlexOnly(900)
     /** Google Material Symbols Rounded: FILL on, Grade Emphasis (GRAD=200). */
     val MaterialSymbolsRoundedEmphasis = FontFamily(
         Font(
@@ -149,7 +73,7 @@ object AppFonts {
             )
         )
     )
-    /** Explicit exception for the shared main-screen settings control: Rounded FILL off. */
+    /** Explicit exception for the three main-screen settings controls only. */
     val MaterialSymbolsRoundedOff = FontFamily(
         Font(
             R.font.material_symbols_rounded,
@@ -163,6 +87,86 @@ object AppFonts {
     )
     val MaterialSymbolsRounded = MaterialSymbolsRoundedEmphasis
     val MaterialSymbolsRoundedFilled = MaterialSymbolsRoundedEmphasis
+}
+
+/**
+ * Source-of-truth Figma roles. `MetricMedium` intentionally corrects the
+ * presentational Figma spelling `MetricMeduim`; its numeric values are unchanged.
+ */
+internal enum class AppTextRole {
+    PageTitle, AuthHeroTitle, SectionTitle, CardTitle, CardSubtitle, Body, Supporting, Label,
+    MetricXSmall, MetricSmall, MetricMedium, MetricLarge
+}
+
+internal enum class AppTextLanguage { Chinese, Latin }
+
+internal data class FigmaTextSpec(
+    val size: Float,
+    val lineHeight: Float,
+    val letterSpacing: Float,
+    val weight: Int
+)
+
+internal object AppTypographyTokens {
+    /** Figma 378:1764 weights, retained as data for auditing and tests. */
+    val miSansWeights = listOf(150, 200, 250, 305, 330, 380, 450, 520, 630, 700)
+    /** Figma 378:1805 weights, with neutral GRAD=0, ROND=100 and wdth=100. */
+    val googleSansFlexWeights = (1..9).map { it * 100 }
+
+    private val chinese = mapOf(
+        AppTextRole.PageTitle to FigmaTextSpec(24f, 32f, 0f, 520),
+        // Figma 427:4182: first-launch login headline has an explicit 32/32 override.
+        AppTextRole.AuthHeroTitle to FigmaTextSpec(32f, 32f, 0f, 520),
+        AppTextRole.SectionTitle to FigmaTextSpec(20f, 27f, 0f, 630),
+        AppTextRole.CardTitle to FigmaTextSpec(20f, 27f, 0f, 630),
+        AppTextRole.CardSubtitle to FigmaTextSpec(16f, 21f, 0f, 520),
+        AppTextRole.Body to FigmaTextSpec(20f, 27f, 0f, 380),
+        AppTextRole.Supporting to FigmaTextSpec(18f, 24f, 0f, 380),
+        AppTextRole.Label to FigmaTextSpec(16f, 21f, .6f, 630),
+        AppTextRole.MetricXSmall to FigmaTextSpec(20f, 28f, 0f, 630),
+        AppTextRole.MetricSmall to FigmaTextSpec(24f, 24f, .6f, 630),
+        AppTextRole.MetricMedium to FigmaTextSpec(40f, 40f, -.6f, 630),
+        AppTextRole.MetricLarge to FigmaTextSpec(48f, 48f, 0f, 630)
+    )
+    private val latin = mapOf(
+        AppTextRole.PageTitle to FigmaTextSpec(24f, 30f, 0f, 700),
+        AppTextRole.AuthHeroTitle to FigmaTextSpec(32f, 32f, 0f, 700),
+        AppTextRole.SectionTitle to FigmaTextSpec(20f, 20f, 0f, 700),
+        AppTextRole.CardTitle to FigmaTextSpec(20f, 20f, 0f, 700),
+        AppTextRole.CardSubtitle to FigmaTextSpec(16f, 16f, 0f, 600),
+        // Figma 379:2014 latest variables: the former 24/30 English body token
+        // is now 20/27, matching the compact body control without synthetic scaling.
+        AppTextRole.Body to FigmaTextSpec(20f, 27f, 0f, 400),
+        AppTextRole.Supporting to FigmaTextSpec(18f, 24f, 0f, 500),
+        // English control/label tracking was refined from .6px to .4px.
+        AppTextRole.Label to FigmaTextSpec(16f, 20f, .4f, 800),
+        AppTextRole.MetricXSmall to FigmaTextSpec(20f, 28f, 0f, 700),
+        AppTextRole.MetricSmall to FigmaTextSpec(24f, 24f, .6f, 800),
+        AppTextRole.MetricMedium to FigmaTextSpec(40f, 40f, -.6f, 700),
+        AppTextRole.MetricLarge to FigmaTextSpec(48f, 48f, 0f, 700)
+    )
+
+    fun spec(role: AppTextRole, language: AppTextLanguage): FigmaTextSpec =
+        if (language == AppTextLanguage.Chinese) chinese.getValue(role) else latin.getValue(role)
+
+    fun lineHeight(role: AppTextRole): Float = maxOf(
+        chinese.getValue(role).lineHeight, latin.getValue(role).lineHeight
+    )
+
+    fun fontFamily(language: AppTextLanguage, weight: Int): FontFamily = when (language) {
+        AppTextLanguage.Chinese -> when (weight) {
+            150 -> AppFonts.MiSansThin; 200 -> AppFonts.MiSansExtraLight; 250 -> AppFonts.MiSansLight
+            305 -> AppFonts.MiSansNormal; 330 -> AppFonts.MiSansRegular; 380 -> AppFonts.MiSansMedium
+            450 -> AppFonts.MiSansDemibold; 520 -> AppFonts.MiSansSemibold; 630 -> AppFonts.MiSansBold
+            700 -> AppFonts.MiSansHeavy; else -> error("Unknown MiSans weight: $weight")
+        }
+        AppTextLanguage.Latin -> when (weight) {
+            100 -> AppFonts.GoogleSansFlexThin; 200 -> AppFonts.GoogleSansFlexExtraLight; 300 -> AppFonts.GoogleSansFlexLight
+            400 -> AppFonts.GoogleSansFlex; 500 -> AppFonts.GoogleSansFlexMedium; 600 -> AppFonts.GoogleSansFlexSemibold
+            700 -> AppFonts.GoogleSansFlexBold; 800 -> AppFonts.GoogleSansFlexExtraBold; 900 -> AppFonts.GoogleSansFlexBlack
+            else -> error("Unknown Google Sans Flex weight: $weight")
+        }
+    }
 }
 
 val AppShapeRadius = 32
@@ -185,15 +189,13 @@ private val DarkColors = darkColorScheme(
 )
 
 private val AppTypography = Typography(
-    displayLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = 48.sp),
-    headlineMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = 28.sp),
-    headlineSmall = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = 24.sp),
-    titleLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = 20.sp),
-    titleMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = 16.sp),
-    bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansRegular, fontWeight = FontWeight.Normal, fontSize = 16.sp),
-    bodyMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansRegular, fontWeight = FontWeight.Normal, fontSize = 14.sp),
-    labelLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = 14.sp),
-    labelMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = 12.sp)
+    displayLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.GoogleSansFlexBold, fontSize = 48.sp, lineHeight = 48.sp),
+    headlineSmall = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontSize = 24.sp, lineHeight = 32.sp),
+    titleLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontSize = 20.sp, lineHeight = 27.sp),
+    titleMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontSize = 16.sp, lineHeight = 21.sp),
+    bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansMedium, fontSize = 20.sp, lineHeight = 27.sp),
+    bodyMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansMedium, fontSize = 18.sp, lineHeight = 24.sp),
+    labelLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontSize = 16.sp, lineHeight = 21.sp, letterSpacing = .6.sp)
 )
 
 @Composable

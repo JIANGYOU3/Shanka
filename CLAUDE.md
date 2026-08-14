@@ -6,7 +6,7 @@
 
 ## 项目概览
 
-闪卡（flashcard）App。Android 前端在 `Front/`（Gradle 根），Compose Material 3。代码主 UI 在 `Front/app/src/main/java/com/qiuzhao/flashcards/`。视觉体系为 Figma 派生的 **402dp** 尺度，MiSans / Google Sans Flex 字体。
+闪卡（flashcard）App。Android 前端在 `Front/`（Gradle 根），Compose Material 3。代码主 UI 在 `Front/app/src/main/java/com/qiuzhao/flashcards/`。视觉体系为 Figma 派生的 **402dp** 尺度；字体与图标的唯一规范见 `docs/design-system/qiuzhao-flashcards/FONT_LIBRARY.md`。
 
 ## 构建环境与工作流（非显然，重要）
 

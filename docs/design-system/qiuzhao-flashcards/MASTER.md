@@ -4,33 +4,11 @@
 
 ## 字体与图标（全局强制）
 
-来源：Figma 字体库节点 `234:5020`。本节覆盖之前所有页面中的字体和图标约定；新页面与改动页面必须先遵守本节。
+唯一且完整的字体、图标、角色与实现规范见 [FONT_LIBRARY.md](FONT_LIBRARY.md)，来源为 Figma `378:1764`、`378:1775`、`378:1805`、`379:2014`。本文件后续页面条目中出现的历史字重、字号、行高或回退描述均不再具有排版约束力，只保留布局与交互语义。
 
-- 中文只使用 **MiSans VF**；英文、数字、百分比、符号和标点只使用 **Google Sans Flex**。中英混排可使用同一个 `Text`，但必须由 AppFonts 的双字体回退或 `MixedLanguageText` 按字符片段处理，禁止系统字体回退。
-- Google Sans Flex 始终固定 `ROND=100`、`wdth=100`；不得在任何页面设置其它 ROND 档位。
-- MiSans VF 的字重令牌必须精确对应 Figma，不能按 Android/CSS 的常规 400/500/600/700 名称猜测或进行系统合成：
-
-| Figma 名称 | `wght` | Compose 令牌 |
-| --- | ---: | --- |
-| Thin | 150 | `AppFonts.MiSansThin` |
-| ExtraLight | 200 | `AppFonts.MiSansExtraLight` |
-| Light | 250 | `AppFonts.MiSansLight` |
-| Normal | 305 | `AppFonts.MiSansNormal` |
-| Regular | 330 | `AppFonts.MiSansRegular` |
-| Medium | 380 | `AppFonts.MiSansMedium` |
-| Demibold | 450 | `AppFonts.MiSansDemibold` |
-| Semibold | 520 | `AppFonts.MiSansSemibold` |
-| Bold | 630 | `AppFonts.MiSansBold` |
-| Heavy | 700 | `AppFonts.MiSansHeavy` |
-
-- `AppFonts.MiSans` 是 Regular 330 的兼容别名，`MiSans450` 是 Demibold 450 的兼容别名，`MiSans630` 是 Bold 630 的兼容别名。新代码优先使用表中的语义令牌。
-- 每一个文本都使用对应 `AppFonts` 字体面并显式请求 `FontWeight.Normal`；不得在已指定字体面后再请求 `SemiBold` / `Bold` / `Medium`，以免 Compose 按权重重选或合成字体。
-- 所有页面的**顶部信息栏**（返回标题、页码/进度副标题、设置二级页标题和学习页搜索值）固定使用：中文 `MiSansSemibold`（520）；英文、数字及符号 `GoogleSansFlexBold`（700，`ROND=100`）。搜索输入使用 `AppFonts.MiSansTopInformation`，标题混排使用 `MixedLanguageText(MiSansSemibold, GoogleSansFlexBold)`；不得例外使用 520 的英文或数字。
-- 本页字号使用以 dp 换算的固定文本尺寸，不受 Android 系统“字体大小”缩放影响。
-- 图标全部使用最新 **Google Material Symbols Rounded**；禁止混用 Outlined、Sharp、第三方 SVG 或自绘图标。默认固定为 `FILL=1`、`GRAD=200`（Figma Grade: **Emphasis**）、`wght=400`、`opsz=24`；仅三个主界面左上角的 `settings` 图标为 `FILL=0`，其余参数不变。
-- 主页、学习、数据三页的左上角共用 Figma `15:3032` 的设置按钮：52dp 浅蓝灰圆形 `#EBF0F5`，25.263dp 的 Rounded `settings` 图标、`FILL=0`、`GRAD=200`、`#374B61`。不得再显示菜单（三横线）图标。
-- 所有圆形返回按钮复用该控件色板：背景 `#EBF0F5`、Rounded `arrow_back` 图标 `#374B61`。白色页面背景上的主标题统一使用 `#1F2832`；不要继续混用 `#242436`、`#1A1B1F` 等近似深色。
-- 字重实现规则：`MiSansMedium`=380、`MiSansSemibold`=520、`MiSansBold`=630、`MiSansHeavy`=700；Google Sans Flex 同理由专用字族指定。不得使用系统合成字重。
+- 展示文本必须使用 `AppText` 的角色系统；输入框必须使用实时双语输入样式。中文使用 MiSans；英文、数字、空格、符号和标点使用 Google Sans Flex。禁止双语回退与系统合成字重。
+- 图标唯一使用 Google Material Symbols Rounded，默认 `FILL=1`、`wght=400`、`GRAD=200`、`opsz=24`。只允许首页、学习、数据主页面各自的 settings 图标使用 `FILL=0`。
+- 所有按钮、徽标和操作文字统一使用 Label：中文 Bold 630，英文/数字 ExtraBold 800。
 
 ## 圆角与空间
 

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk 'NR>=5145 && NR<=5215 {printf \"%d: %s\\\\n\", NR, $0}' Screens.kt)"
+    ]
+  }
+}

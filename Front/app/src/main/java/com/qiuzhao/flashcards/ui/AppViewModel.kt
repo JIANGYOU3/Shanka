@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,21 +16,27 @@ import com.qiuzhao.flashcards.data.remote.ApiKeyStatus
 import com.qiuzhao.flashcards.data.remote.ApiResult
 import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.remote.DeckProgress
+import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.remote.GeneratedTask
 import com.qiuzhao.flashcards.data.remote.PdfChapter
 import com.qiuzhao.flashcards.data.remote.PdfFile
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.data.remote.RemoteFlashcardRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 data class PdfGenerationConfig(
@@ -39,6 +46,11 @@ data class PdfGenerationConfig(
     val application: Float = .2f,
     val requirement: String = ""
 )
+
+/** Ephemeral handoff from pasted text into the shared smart-card generation flow. */
+data class TextImportFlow(val deckName: String, val cards: List<CardDraft>)
+data class LocalAccount(val nickname: String, val email: String)
+data class AccountBootstrap(val loaded: Boolean = false, val account: LocalAccount? = null)
 
 data class PdfReadFailure(val title: String, val detail: String)
 
@@ -69,7 +81,56 @@ private fun dashboardWeeklyActivity(dashboard: Dashboard?): WeeklyActivityData {
 private val Application.dataStore by preferencesDataStore("preferences")
 private val DARK_THEME = booleanPreferencesKey("dark_theme")
 private val WEEKLY_GOAL = intPreferencesKey("weekly_goal")
+private val FRONTEND_TEST_MODE = booleanPreferencesKey("frontend_test_mode")
+private val ACCOUNT_EMAIL = stringPreferencesKey("account_email")
+private val ACCOUNT_NICKNAME = stringPreferencesKey("account_nickname")
+private val ACCOUNT_LOGGED_IN = booleanPreferencesKey("account_logged_in")
 private const val DEFAULT_WEEKLY_GOAL = 50
+
+/** Local-only fixture data for visual and interaction testing. Edit these values to exercise UI states without changing a server record. */
+private object FrontendTestFixtures {
+    val decks: List<DeckSummary> = listOf(
+        DeckSummary(id = "frontend-test-design", name = "设计心理学 · 测试卡组", chapter = 3, source = "FRONTEND_TEST", themeKey = "azure", cardCount = 48, dueCount = 12, masteredCards = 31, reviewCount = 86, masteryRatio = .65f),
+        DeckSummary(id = "frontend-test-agent", name = "Agent 工程 · 测试卡组", chapter = 6, source = "FRONTEND_TEST", themeKey = "violet", cardCount = 26, dueCount = 6, masteredCards = 14, reviewCount = 43, masteryRatio = .54f)
+    )
+
+    val cards: Map<String, List<FlashcardEntity>> = mapOf(
+        "frontend-test-design" to listOf(
+            FlashcardEntity("frontend-test-design-1", "frontend-test-design", "可用性原则关注什么？", "让用户一眼理解界面元素能做什么，以及如何操作。", position = 0, source = "FRONTEND_TEST"),
+            FlashcardEntity("frontend-test-design-2", "frontend-test-design", "反馈在交互中的作用是什么？", "及时展示操作结果，帮助用户确认系统已经响应。", position = 1, source = "FRONTEND_TEST"),
+            FlashcardEntity("frontend-test-design-3", "frontend-test-design", "什么是认知负荷？", "用户为了理解界面、完成任务而消耗的心理资源。", position = 2, source = "FRONTEND_TEST")
+        ),
+        "frontend-test-agent" to listOf(
+            FlashcardEntity("frontend-test-agent-1", "frontend-test-agent", "Agent 的工具调用需要哪些约束？", "明确输入、输出、权限和失败后的恢复策略。", position = 0, source = "FRONTEND_TEST"),
+            FlashcardEntity("frontend-test-agent-2", "frontend-test-agent", "为什么要保留可追踪的执行记录？", "它能帮助定位失败、复现问题并评估改进效果。", position = 1, source = "FRONTEND_TEST")
+        )
+    )
+
+    val dashboard = Dashboard(
+        hasData = true, weeklyGoal = 60, completed = 42, masteryRatio = .68f,
+        raw = JSONObject()
+            .put("weekly_activity", JSONArray(listOf(4, 7, 5, 9, 6, 8, 3)))
+            .put("weekly_total", 42)
+            .put("week_change_rate", .2)
+            .put("recall_accuracy", .91)
+            .put("first_answer_accuracy", .78)
+            .put("retention_rate", .86)
+            .put("mastered_card_count", 1360)
+            .put("streak_days", 12)
+    )
+
+    val pdfChapters = listOf(
+        PdfChapter("frontend-pdf-chapter-1", "第一章 设计的基本原则", 1, 18),
+        PdfChapter("frontend-pdf-chapter-2", "第二章 用户认知与反馈", 19, 36),
+        PdfChapter("frontend-pdf-chapter-3", "第三章 信息架构", 37, 52)
+    )
+
+    val pdfSamples = listOf(
+        CardDraft("可用性原则关注什么？", "让用户一眼理解界面元素能做什么，以及如何操作。"),
+        CardDraft("反馈在交互中的作用是什么？", "及时展示操作结果，帮助用户确认系统已经响应。"),
+        CardDraft("什么是认知负荷？", "用户为了理解界面、完成任务而消耗的心理资源。")
+    )
+}
 
 /**
  * Business data is server-authoritative. DataStore keeps only user preferences and the network
@@ -78,18 +139,38 @@ private const val DEFAULT_WEEKLY_GOAL = 50
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = RemoteFlashcardRepository(application)
 
-    val decks = repository.decks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val dueCount = repository.dueCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val darkTheme: StateFlow<Boolean?> = application.dataStore.data.map { preferences ->
         if (preferences.contains(DARK_THEME)) preferences[DARK_THEME] else null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val frontendTestMode: StateFlow<Boolean> = application.dataStore.data
+        .map { preferences -> preferences[FRONTEND_TEST_MODE] ?: false }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val accountBootstrap: StateFlow<AccountBootstrap> = application.dataStore.data.map { preferences ->
+        val account = if (preferences[ACCOUNT_LOGGED_IN] == true) {
+            val email = preferences[ACCOUNT_EMAIL].orEmpty()
+            val nickname = preferences[ACCOUNT_NICKNAME].orEmpty()
+            if (email.isBlank() || nickname.isBlank()) null else LocalAccount(nickname, email)
+        } else null
+        AccountBootstrap(loaded = true, account = account)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccountBootstrap())
     val weeklyGoal = application.dataStore.data.map { it[WEEKLY_GOAL] ?: DEFAULT_WEEKLY_GOAL }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_WEEKLY_GOAL)
+
+    private val _frontendTestDecks: MutableStateFlow<List<DeckSummary>> = MutableStateFlow(FrontendTestFixtures.decks)
+    private val _frontendTestCards: MutableStateFlow<Map<String, List<FlashcardEntity>>> = MutableStateFlow(FrontendTestFixtures.cards)
+    val decks: StateFlow<List<DeckSummary>> = combine(frontendTestMode, repository.decks, _frontendTestDecks) { enabled, remote, test ->
+        if (enabled) test else remote
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val dueCount: StateFlow<Int> = combine(frontendTestMode, repository.dueCount(), _frontendTestDecks) { enabled, remote, test ->
+        if (enabled) test.sumOf { it.dueCount } else remote
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _studyCards = MutableStateFlow<List<FlashcardEntity>>(emptyList())
     val studyCards: StateFlow<List<FlashcardEntity>> = _studyCards
     private val _dashboard = MutableStateFlow<Dashboard?>(null)
-    val dashboard: StateFlow<Dashboard?> = _dashboard
+    val dashboard: StateFlow<Dashboard?> = combine(frontendTestMode, _dashboard) { enabled, remote ->
+        if (enabled) FrontendTestFixtures.dashboard else remote
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val weeklyActivity = dashboard.map(::dashboardWeeklyActivity)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WeeklyActivityData())
     private val _apiKeyStatus = MutableStateFlow<ApiKeyStatus?>(null)
@@ -102,14 +183,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val pdfTask: StateFlow<GeneratedTask?> = _pdfTask
     private val _pdfTaskDeckId = MutableStateFlow<String?>(null)
     val pdfTaskDeckId: StateFlow<String?> = _pdfTaskDeckId
+    private val _textImportFlow = MutableStateFlow<TextImportFlow?>(null)
+    val textImportFlow: StateFlow<TextImportFlow?> = _textImportFlow
 
     init {
         refreshDecks()
         refreshDashboard()
     }
 
-    fun refreshDecks() = viewModelScope.launch { logFailure("list_decks", repository.refreshDecks()) }
+    fun refreshDecks() = viewModelScope.launch {
+        if (!frontendTestMode.value) logFailure("list_decks", repository.refreshDecks())
+    }
     fun refreshDashboard() = viewModelScope.launch {
+        if (frontendTestMode.value) return@launch
         val goal = getApplication<Application>().dataStore.data.first()[WEEKLY_GOAL] ?: DEFAULT_WEEKLY_GOAL
         when (val result = repository.dashboard(goal)) {
             is ApiResult.Success -> _dashboard.value = result.value
@@ -119,36 +205,148 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setWeeklyGoal(value: Int) = viewModelScope.launch {
         getApplication<Application>().dataStore.edit { it[WEEKLY_GOAL] = value.coerceAtLeast(1) }
-        refreshDashboard()
+        if (!frontendTestMode.value) refreshDashboard()
+    }
+
+    fun setFrontendTestMode(enabled: Boolean) = viewModelScope.launch {
+        getApplication<Application>().dataStore.edit { it[FRONTEND_TEST_MODE] = enabled }
+    }
+
+    /** Local-only account shell until the authentication service is connected. */
+    fun login(email: String, password: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val normalizedEmail = email.trim()
+        when {
+            normalizedEmail.isBlank() -> onResult("请输入邮箱")
+            password.isBlank() -> onResult("请输入密码")
+            else -> {
+                getApplication<Application>().dataStore.edit { preferences ->
+                    val savedEmail = preferences[ACCOUNT_EMAIL]
+                    val savedNickname = preferences[ACCOUNT_NICKNAME]
+                    preferences[ACCOUNT_EMAIL] = normalizedEmail
+                    preferences[ACCOUNT_NICKNAME] = if (savedEmail == normalizedEmail && !savedNickname.isNullOrBlank()) {
+                        savedNickname
+                    } else normalizedEmail.substringBefore('@').ifBlank { "学习者" }
+                    preferences[ACCOUNT_LOGGED_IN] = true
+                }
+                onResult(null)
+            }
+        }
+    }
+
+    fun register(nickname: String, email: String, password: String, confirmation: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val normalizedNickname = nickname.trim()
+        val normalizedEmail = email.trim()
+        when {
+            normalizedNickname.isBlank() -> onResult("请输入昵称")
+            normalizedEmail.isBlank() || !normalizedEmail.contains('@') -> onResult("请输入有效邮箱")
+            password.length < 6 -> onResult("密码至少需要 6 位")
+            password != confirmation -> onResult("两次输入的密码不一致")
+            else -> {
+                getApplication<Application>().dataStore.edit { preferences ->
+                    preferences[ACCOUNT_NICKNAME] = normalizedNickname
+                    preferences[ACCOUNT_EMAIL] = normalizedEmail
+                    preferences[ACCOUNT_LOGGED_IN] = false
+                }
+                onResult(null)
+            }
+        }
     }
 
     fun startStudy(deckId: String, reviewMode: Boolean) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            val testCards = _frontendTestCards.value[deckId].orEmpty()
+            val due = _frontendTestDecks.value.firstOrNull { it.id == deckId }?.dueCount ?: 0
+            _studyCards.value = if (reviewMode) testCards.take(due.coerceAtLeast(0)) else testCards
+            return@launch
+        }
         when (val result = repository.loadCards(deckId, reviewMode)) {
             is ApiResult.Success -> _studyCards.value = result.value
             is ApiResult.Failure -> logFailure("load_study", result)
         }
     }
 
-    fun refreshCards(deckId: String) = viewModelScope.launch { logFailure("list_cards", repository.refreshCards(deckId)) }
+    fun refreshCards(deckId: String) = viewModelScope.launch {
+        if (!frontendTestMode.value) logFailure("list_cards", repository.refreshCards(deckId))
+    }
     fun rate(cardId: String, rating: Rating) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            val reviewed = _studyCards.value.firstOrNull { it.id == cardId }
+            _studyCards.value = _studyCards.value.filterNot { it.id == cardId }
+            reviewed?.let { card ->
+                _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
+                    if (deck.id == card.deckId) deck.copy(
+                        dueCount = (deck.dueCount - 1).coerceAtLeast(0),
+                        reviewCount = deck.reviewCount + 1,
+                        masteredCards = if (rating == Rating.GOOD || rating == Rating.EASY) {
+                            (deck.masteredCards + 1).coerceAtMost(deck.cardCount)
+                        } else deck.masteredCards
+                    ) else deck
+                }
+            }
+            return@launch
+        }
         when (val result = repository.rate(cardId, rating)) {
             is ApiResult.Success -> refreshDecks()
             is ApiResult.Failure -> logFailure("submit_review", result)
         }
     }
-    fun deckProgress(deckId: String): Flow<DeckProgress> = repository.deckProgress(deckId)
-    fun cards(deckId: String): Flow<List<FlashcardEntity>> = repository.cards(deckId)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun deckProgress(deckId: String): Flow<DeckProgress> = frontendTestMode.flatMapLatest { enabled ->
+        if (enabled) _frontendTestDecks.map { decks ->
+            decks.firstOrNull { it.id == deckId }?.let { DeckProgress(it.cardCount, it.dueCount, it.masteredCards, it.reviewCount) }
+                ?: DeckProgress(0, 0, 0, 0)
+        } else repository.deckProgress(deckId)
+    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun cards(deckId: String): Flow<List<FlashcardEntity>> = frontendTestMode.flatMapLatest { enabled ->
+        if (enabled) _frontendTestCards.map { it[deckId].orEmpty() } else repository.cards(deckId)
+    }
 
     fun importDeck(name: String, drafts: List<CardDraft>, onDone: (String) -> Unit) = viewModelScope.launch {
         if (name.isBlank() || drafts.isEmpty()) return@launch
+        if (frontendTestMode.value) {
+            val validDrafts = drafts.filter { it.front.isNotBlank() && it.back.isNotBlank() }
+            if (validDrafts.isEmpty()) return@launch
+            val id = "frontend-test-${System.nanoTime()}"
+            _frontendTestCards.value = _frontendTestCards.value + (id to validDrafts.mapIndexed { index, draft ->
+                FlashcardEntity("$id-card-$index", id, draft.front, draft.back, position = index, source = "FRONTEND_TEST")
+            })
+            _frontendTestDecks.value = _frontendTestDecks.value + DeckSummary(
+                id = id, name = name.trim(), source = "FRONTEND_TEST", themeKey = "azure",
+                cardCount = validDrafts.size, dueCount = validDrafts.size
+            )
+            onDone(id)
+            return@launch
+        }
         when (val result = repository.importDeck(name, drafts)) {
             is ApiResult.Success -> onDone(result.value)
             is ApiResult.Failure -> logFailure("import_deck", result)
         }
     }
 
+    fun beginTextImportFlow(name: String, drafts: List<CardDraft>) {
+        _textImportFlow.value = TextImportFlow(deckName = name, cards = drafts)
+    }
+
+    fun clearTextImportFlow() {
+        _textImportFlow.value = null
+    }
+
     fun addCardsToDeck(deckId: String, drafts: List<CardDraft>, onDone: () -> Unit) = viewModelScope.launch {
         if (drafts.none { it.front.isNotBlank() && it.back.isNotBlank() }) return@launch
+        if (frontendTestMode.value) {
+            val validDrafts = drafts.filter { it.front.isNotBlank() && it.back.isNotBlank() }
+            val existing = _frontendTestCards.value[deckId].orEmpty()
+            val appended = validDrafts.mapIndexed { index, draft ->
+                FlashcardEntity("$deckId-added-${System.nanoTime()}-$index", deckId, draft.front, draft.back, position = existing.size + index, source = "FRONTEND_TEST")
+            }
+            _frontendTestCards.value = _frontendTestCards.value + (deckId to (existing + appended))
+            _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
+                if (deck.id == deckId) deck.copy(cardCount = deck.cardCount + appended.size, dueCount = deck.dueCount + appended.size) else deck
+            }
+            onDone()
+            return@launch
+        }
         when (val result = repository.addCardsToDeck(deckId, drafts)) {
             is ApiResult.Success -> onDone()
             is ApiResult.Failure -> logFailure("add_cards", result)
@@ -156,14 +354,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteDeck(deckId: String, onSuccess: () -> Unit = {}, onFailure: () -> Unit = {}) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _frontendTestDecks.value = _frontendTestDecks.value.filterNot { it.id == deckId }
+            _frontendTestCards.value = _frontendTestCards.value - deckId
+            onSuccess()
+            return@launch
+        }
         when (val result = repository.deleteDeck(deckId)) {
             is ApiResult.Success -> onSuccess()
             is ApiResult.Failure -> { logFailure("delete_deck", result); onFailure() }
         }
     }
-    fun rewriteCard(cardId: String) = viewModelScope.launch { logFailure("rewrite_card", repository.rewriteCard(cardId)) }
+    fun rewriteCard(cardId: String) = viewModelScope.launch {
+        if (!frontendTestMode.value) logFailure("rewrite_card", repository.rewriteCard(cardId))
+    }
 
     fun refreshApiKeyStatus() = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _apiKeyStatus.value = ApiKeyStatus("AVAILABLE", "frontend-test")
+            return@launch
+        }
         when (val result = repository.apiKeyStatus()) {
             is ApiResult.Success -> _apiKeyStatus.value = result.value
             is ApiResult.Failure -> logFailure("api_key_status", result)
@@ -171,6 +381,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveApiKey(key: String, onFinished: () -> Unit = {}) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _apiKeyStatus.value = ApiKeyStatus("AVAILABLE", "frontend-test")
+            onFinished()
+            return@launch
+        }
         when (val result = repository.saveApiKey(key)) {
             is ApiResult.Success -> _apiKeyStatus.value = result.value
             is ApiResult.Failure -> logFailure("save_api_key", result)
@@ -184,6 +399,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         onUnavailable: (String) -> Unit,
         onFailure: () -> Unit
     ) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            onAvailable()
+            return@launch
+        }
         when (val result = repository.apiKeyStatus()) {
             is ApiResult.Success -> {
                 _apiKeyStatus.value = result.value
@@ -198,6 +417,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun uploadPdf(uri: Uri, onParsed: (List<PdfChapter>) -> Unit, onFailure: (PdfReadFailure) -> Unit) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            val file = PdfFile(
+                id = "frontend-test-pdf",
+                name = "设计心理学课件.pdf",
+                status = "PARSED",
+                chapters = FrontendTestFixtures.pdfChapters
+            )
+            _pdfFile.value = file
+            delay(750)
+            onParsed(file.chapters)
+            return@launch
+        }
         when (val result = repository.uploadPdf(uri)) {
             is ApiResult.Success -> { _pdfFile.value = result.value; pollPdf(result.value, onParsed, onFailure) }
             is ApiResult.Failure -> { logFailure("upload_pdf", result); onFailure(pdfFailure(result)) }
@@ -218,6 +449,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         onReady: () -> Unit,
         onFailure: (String?) -> Unit = {}
     ) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _pdfSamples.value = FrontendTestFixtures.pdfSamples
+            onReady()
+            return@launch
+        }
         val file = _pdfFile.value ?: run { onFailure("PDF_NOT_READY"); return@launch }
         when (val result = repository.generateSamples(file.id, chapterIds, config.quantity, config.basic, config.understanding, config.application, config.requirement)) {
             is ApiResult.Success -> { _pdfSamples.value = result.value; onReady() }
@@ -233,6 +469,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         onStarted: () -> Unit,
         onFailure: (String?) -> Unit = {}
     ) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            val samples = _pdfSamples.value.ifEmpty { FrontendTestFixtures.pdfSamples }
+            val deckId = existingDeckId ?: "frontend-pdf-${System.nanoTime()}"
+            if (existingDeckId == null) {
+                _frontendTestDecks.value = _frontendTestDecks.value + DeckSummary(
+                    id = deckId,
+                    name = deckName.ifBlank { "PDF 智能制卡" },
+                    source = "FRONTEND_TEST",
+                    themeKey = "azure",
+                    cardCount = samples.size,
+                    dueCount = samples.size
+                )
+                _frontendTestCards.value = _frontendTestCards.value + (deckId to samples.mapIndexed { index, draft ->
+                    FlashcardEntity("$deckId-card-$index", deckId, draft.front, draft.back, position = index, source = "FRONTEND_TEST")
+                })
+            } else {
+                val existing = _frontendTestCards.value[deckId].orEmpty()
+                _frontendTestCards.value = _frontendTestCards.value + (deckId to (existing + samples.mapIndexed { index, draft ->
+                    FlashcardEntity("$deckId-card-${existing.size + index}", deckId, draft.front, draft.back, position = existing.size + index, source = "FRONTEND_TEST")
+                }))
+                _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
+                    if (deck.id == deckId) deck.copy(cardCount = deck.cardCount + samples.size, dueCount = deck.dueCount + samples.size) else deck
+                }
+            }
+            _pdfTaskDeckId.value = deckId
+            _pdfTask.value = GeneratedTask(
+                id = "frontend-pdf-task-${System.nanoTime()}",
+                status = "COMPLETED",
+                stage = "DONE",
+                generatedCardCount = samples.size
+            )
+            onStarted()
+            return@launch
+        }
         val file = _pdfFile.value ?: run { onFailure("PDF_NOT_READY"); return@launch }
         val deckId = existingDeckId ?: when (val create = repository.createDeck(deckName.ifBlank { "PDF 智能制卡" })) {
             is ApiResult.Success -> create.value
@@ -253,6 +523,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateDeckPresentation(deckId: String, name: String, themeKey: String, onFailure: () -> Unit = {}) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
+                if (deck.id == deckId) deck.copy(name = name, themeKey = themeKey) else deck
+            }
+            return@launch
+        }
         when (val result = repository.updateDeckPresentation(deckId, name, themeKey)) {
             is ApiResult.Success -> Unit
             is ApiResult.Failure -> { logFailure("update_deck", result); onFailure() }
@@ -260,6 +536,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateCard(card: FlashcardEntity, onFailure: () -> Unit = {}) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _frontendTestCards.value = _frontendTestCards.value.mapValues { (_, cards) ->
+                cards.map { if (it.id == card.id) card else it }
+            }
+            return@launch
+        }
         when (val result = repository.updateCard(card)) {
             is ApiResult.Success -> Unit
             is ApiResult.Failure -> { logFailure("update_card", result); onFailure() }
@@ -267,6 +549,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteCard(card: FlashcardEntity, onFailure: () -> Unit = {}) = viewModelScope.launch {
+        if (frontendTestMode.value) {
+            _frontendTestCards.value = _frontendTestCards.value.mapValues { (_, cards) -> cards.filterNot { it.id == card.id } }
+            _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
+                if (deck.id == card.deckId) deck.copy(cardCount = (deck.cardCount - 1).coerceAtLeast(0)) else deck
+            }
+            return@launch
+        }
         when (val result = repository.deleteCard(card)) {
             is ApiResult.Success -> Unit
             is ApiResult.Failure -> { logFailure("delete_card", result); onFailure() }

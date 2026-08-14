@@ -13,6 +13,7 @@ object ImportParser {
         val cards = mutableListOf<CardDraft>()
         val errors = mutableListOf<String>()
         var pendingQuestion: String? = null
+        var sawQA = false // A question line was seen: never fall back to paragraph blocks.
         val answerLines = mutableListOf<String>()
 
         fun commit() {
@@ -29,7 +30,7 @@ object ImportParser {
                 ?: markdownQuestion.matchEntire(line)?.groupValues?.get(1)
             val a = answer.matchEntire(line)?.groupValues?.get(1)
             when {
-                q != null -> { commit(); pendingQuestion = q }
+                q != null -> { sawQA = true; commit(); pendingQuestion = q }
                 a != null && pendingQuestion != null -> answerLines += a
                 line.trim() == "---" -> commit()
                 pendingQuestion != null && answerLines.isNotEmpty() -> answerLines += line
@@ -37,7 +38,7 @@ object ImportParser {
         }
         commit()
 
-        if (cards.isEmpty() && text.isNotBlank()) {
+        if (cards.isEmpty() && !sawQA && text.isNotBlank()) {
             val blocks = text.trim().split(Regex("\\n\\s*\\n"))
             blocks.forEachIndexed { index, block ->
                 val lines = block.lines().filter { it.isNotBlank() }

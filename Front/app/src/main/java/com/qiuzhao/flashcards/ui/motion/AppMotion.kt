@@ -13,6 +13,14 @@ object AppMotion {
 
     fun <T> enter(): FiniteAnimationSpec<T> = tween(durationMillis = 300, easing = EmphasizedDecelerate)
     fun <T> exit(): FiniteAnimationSpec<T> = tween(durationMillis = 180, easing = Emphasized)
+
+    /**
+     * Material 3 emphasized-decelerate motion for a departing control that
+     * expands into its destination surface (a container transform).
+     */
+    fun <T> containerTransformEnter(durationMillis: Int = 640): FiniteAnimationSpec<T> =
+        tween(durationMillis = durationMillis, easing = EmphasizedDecelerate)
+
     fun <T> emphasisSpring(): FiniteAnimationSpec<T> = spring(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow

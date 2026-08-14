@@ -32,9 +32,11 @@ fun rememberAppNavigationState(): AppNavigationState {
 class AppNavigationState(
     selectedTopLevel: MutableState<AppRoute>,
     val backStacks: Map<AppRoute, NavBackStack<NavKey>>
-) {
-    var selectedTopLevel: AppRoute by selectedTopLevel
+) : AppNavigationStore {
+    override var selectedTopLevel: AppRoute by selectedTopLevel
     val currentRoute: AppRoute get() = backStacks.getValue(selectedTopLevel).last() as AppRoute
+
+    override fun stackFor(route: AppRoute): MutableList<NavKey> = backStacks.getValue(route)
 
     @Composable
     fun decoratedEntries(
@@ -55,4 +57,9 @@ class AppNavigationState(
         }
         return activeStacks.flatMap { decorated[it].orEmpty() }
     }
+}
+
+interface AppNavigationStore {
+    var selectedTopLevel: AppRoute
+    fun stackFor(route: AppRoute): MutableList<NavKey>
 }
