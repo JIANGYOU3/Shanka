@@ -174,6 +174,8 @@ internal data class StudyDeckVisual(
 internal data class DeckTheme(
     val key: String,
     val label: String,
+    /** Figma family background; this is the project-page canvas, never plain white. */
+    val background: Color,
     val primary: Color,
     val action: Color,
     val progress: Color,
@@ -185,7 +187,11 @@ internal data class DeckTheme(
     val strongText: Color,
     val text: Color,
     val mutedText: Color,
-    val progressTrack: Color
+    val progressTrack: Color,
+    /** Figma 257:6634 gives the purple icon a deliberately softer 24dp corner. */
+    val cardIconCornerRadius: Int,
+    /** Purple's compact progress panel uses 16dp inset; the other families use 12dp. */
+    val cardProgressPanelPadding: Int
 )
 
 internal val DeckThemes = listOf(
@@ -200,6 +206,7 @@ internal val DeckThemes = listOf(
 private fun deckTheme(key: String, label: String, colors: AppColorFamily) = DeckTheme(
     key = key,
     label = label,
+    background = colors.background,
     primary = colors.primary,
     action = colors.primary,
     progress = colors.primaryStrong,
@@ -211,7 +218,11 @@ private fun deckTheme(key: String, label: String, colors: AppColorFamily) = Deck
     strongText = colors.ink,
     text = AppColors.TextIconDark,
     mutedText = colors.ink,
-    progressTrack = colors.primarySecondary
+    // Figma 257:6634: the unfinished segment returns to the outer card's
+    // Background step, never the stronger Primary-Secondary step.
+    progressTrack = colors.background,
+    cardIconCornerRadius = if (key == "violet") 24 else 16,
+    cardProgressPanelPadding = if (key == "violet") 16 else 12
 )
 
 internal fun deckTheme(deck: DeckSummary): DeckTheme = DeckThemes.firstOrNull { it.key == deck.themeKey } ?: DeckThemes.first()
@@ -243,22 +254,27 @@ internal data class ProjectThemedCardPalette(
     val progressTrack: Color
 )
 
-/** Nested surfaces retain their project colour even when the outer card is white. */
+/**
+ * Figma 15:3030 keeps a visible three-level project hierarchy:
+ * canvas = background, tinted card = surface, alternating card = white.
+ * Both card variants place their nested progress and count panels on the
+ * project background, with primary-secondary as the unfinished track.
+ */
 internal fun projectThemedCardPalette(
     theme: DeckTheme,
     variant: ProjectThemedCardVariant
 ): ProjectThemedCardPalette = when (variant) {
     ProjectThemedCardVariant.TINTED -> ProjectThemedCardPalette(
-        background = theme.surface,
-        panel = theme.cardPanel,
-        badge = theme.cardPanel,
-        progressTrack = theme.surface
+        background = theme.cardPanel,
+        panel = theme.background,
+        badge = theme.background,
+        progressTrack = theme.secondary
     )
     ProjectThemedCardVariant.WHITE -> ProjectThemedCardPalette(
         background = AppColors.Card,
-        panel = theme.surface,
-        badge = theme.surface,
-        progressTrack = theme.cardPanel
+        panel = theme.background,
+        badge = theme.background,
+        progressTrack = theme.secondary
     )
 }
 

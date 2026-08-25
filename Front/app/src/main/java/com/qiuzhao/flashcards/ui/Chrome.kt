@@ -180,7 +180,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     // Do not briefly render Home while the local account record is loading or the
     // first-login destination is being placed on the stack.
     if (!accountBootstrap.loaded || shouldOpenFirstLogin) {
-        Box(Modifier.fillMaxSize().background(AppColors.Blue.background))
+        Box(Modifier.fillMaxSize().background(AppColors.BaseBackground))
         return
     }
     val selectedRootTab = when (navigationState.selectedTopLevel) {
@@ -192,8 +192,19 @@ fun FlashcardsApp(viewModel: AppViewModel) {
 
     val typedEntryProvider = entryProvider {
         entry<AppRoute.Home> { HomeScreen(decks, projects, dueCount, navigator) }
-        entry<AppRoute.Project> { ProjectScreen(projects, decks, projectSearchQuery, navigator) }
+        entry<AppRoute.Project> { ProjectScreen(projects, decks, projectSearchQuery, viewModel, navigator) }
         entry<AppRoute.ProjectCreate> { ProjectCreateScreen(viewModel, navigator) }
+        entry<AppRoute.ProjectEdit> { route ->
+            val project = projects.firstOrNull { it.id == route.id }
+            if (project == null) LoadingScreen() else ProjectCreateScreen(
+                viewModel = viewModel,
+                nav = navigator,
+                editingProject = project
+            )
+        }
+        entry<AppRoute.ProjectTextEditor> { route ->
+            ProjectTextEditorScreen(route, viewModel, navigator)
+        }
         entry<AppRoute.ProjectDetail> { route ->
             val project = projects.firstOrNull { it.id == route.id }
             if (project == null) LoadingScreen() else ProjectDetailScreen(
@@ -235,7 +246,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
         (typedEntryProvider(key as AppRoute) as NavEntry<NavKey>)
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         NavDisplay(
             entries = navigationState.decoratedEntries(entryProvider),
             onBack = {

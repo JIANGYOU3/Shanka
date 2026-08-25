@@ -158,19 +158,20 @@ import kotlinx.coroutines.delay
 internal fun DataScreen(dueCount: Int, dashboard: Dashboard?, weeklyActivity: WeeklyActivityData, nav: ScreenNavigator) {
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     val sideInset = 16 * designScale
-    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground).statusBarsPadding()) {
             // Content begins 16dp below the fixed 56dp header row.
             Box(Modifier.fillMaxSize().padding(start = sideInset.dp, top = (88 * designScale).dp, end = sideInset.dp)) {
                 // The data content viewport is a rounded surface on all four
                 // sides; keeping the top corners here restores the Figma crop
                 // instead of letting the first card paint into the square edge.
                 Box(Modifier.fillMaxSize().clip(RoundedCornerShape(AppShapeRadius.dp))) {
-                    // The content runs under the floating nav; reserve enough scroll tail
-                    // to lift the final Bento row fully into the readable viewport.
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = (180 * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-                        item { WeeklyActivityCard(designScale) }
+                    // The common root-navigation tail aligns the final card just above
+                    // the floating navigation instead of leaving an oversized blank area.
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
+                        item { WeeklyActivityCard(designScale, weeklyActivity) }
+                        item { DataStreakCards(designScale, dashboard) }
+                        item { DataLearningCards(designScale, dashboard) }
                         item { MasteryCard(designScale, dashboard) }
-                        item { DataBentoCards(designScale, dashboard) }
                     }
                 }
             }
@@ -179,102 +180,99 @@ internal fun DataScreen(dueCount: Int, dashboard: Dashboard?, weeklyActivity: We
 }
 
 @Composable
-private fun WeeklyActivityCard(designScale: Float) {
-    // Figma 577:2466 defines this as a fixed five-state review-progress component.
-    // These colors deliberately remain local to the component until the product's
-    // review-status color model is available from the backend.
-    val statuses = listOf(
-        ReviewProgressStatus("熟识", Color(0xFF579B00), 12),
-        ReviewProgressStatus("认识", Color(0xFFAFCD82), 27),
-        ReviewProgressStatus("模糊", Color(0xFFFFC000), 87),
-        ReviewProgressStatus("陌生", Color(0xFFFF3D00), 19),
-        ReviewProgressStatus("没学", Color(0xFFDDDDDD), 97)
-    )
+private fun WeeklyActivityCard(designScale: Float, weeklyActivity: WeeklyActivityData) {
+    val maxCount = weeklyActivity.dailyCounts.maxOrNull() ?: 0
+    val barHeights = weeklyActivity.dailyCounts.map { count ->
+        if (maxCount == 0 || count == 0) 0f else 101f * count / maxCount
+    }
+    val labels = listOf("M", "T", "W", "T", "F", "S", "S")
     Card(
         shape = RoundedCornerShape((32 * designScale).dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        modifier = Modifier.fillMaxWidth().height((277 * designScale).dp)
+        colors = CardDefaults.cardColors(containerColor = AppColors.Blue.background),
+        modifier = Modifier.fillMaxWidth().height((272 * designScale).dp)
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding((24 * designScale).dp),
             verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().height((32 * designScale).dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MaterialSymbol(
-                    name = "local_fire_department",
-                    description = null,
-                    tint = Color.Black,
-                    size = fixedSp(28 * designScale),
-                    filled = true
-                )
-                Text(
-                    text = "复习进度",
-                    modifier = Modifier.padding(start = (8 * designScale).dp),
-                    color = Color.Black,
-                    fontFamily = AppFonts.MiSansBold,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = fixedSp(20 * designScale),
-                    lineHeight = fixedSp(27 * designScale)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height((48 * designScale).dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Bottom
             ) {
-                statuses.forEach { status ->
-                    ReviewProgressLegend(status, designScale)
+                Column {
+                    Text(
+                        text = "每周活动",
+                        color = AppColors.TextIconDark,
+                        fontFamily = AppFonts.MiSansBold,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = fixedSp(20 * designScale),
+                        lineHeight = fixedSp(27 * designScale)
+                    )
+                    MixedLanguageText(
+                        text = "已复习${weeklyActivity.total} cards",
+                        color = AppColors.TextIconDark.copy(alpha = .5f),
+                        chineseFont = AppFonts.MiSansSemibold,
+                        latinFont = AppFonts.GoogleSansFlexSemibold,
+                        fontSize = fixedSp(16 * designScale),
+                        lineHeight = fixedSp(21 * designScale)
+                    )
                 }
+                WeeklyChangeIndicator(weeklyActivity.changePercent, designScale)
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp),
-                verticalAlignment = Alignment.Top
+                modifier = Modifier.fillMaxWidth().height((160 * designScale).dp).padding(horizontal = (8 * designScale).dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
             ) {
-                statuses.forEach { status ->
-                    ReviewProgressBar(status, designScale, Modifier.weight(1f))
+                labels.zip(barHeights).forEach { (label, filledHeight) ->
+                    WeeklyActivityBar(label, filledHeight, designScale)
                 }
             }
         }
     }
 }
 
+/** Figma 19:774 weekly comparison pill. */
 @Composable
-private fun ReviewProgressLegend(status: ReviewProgressStatus, designScale: Float) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun WeeklyChangeIndicator(changePercent: Int?, designScale: Float) {
+    val improving = changePercent == null || changePercent >= 0
+    val hasComparison = changePercent != null
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = when {
+            !hasComparison -> AppColors.Blue.primarySecondary
+            improving -> AppColors.Green.primaryStrong
+            else -> AppColors.Warning
+        },
+        modifier = Modifier.height((48 * designScale).dp)
     ) {
-        Box(
-            Modifier
-                .size((16 * designScale).dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(status.color)
-        )
-        Text(
-            text = status.label,
-            color = Color.Black.copy(alpha = .75f),
-            fontFamily = AppFonts.MiSansSemibold,
-            fontWeight = FontWeight.Normal,
-            fontSize = fixedSp(16 * designScale),
-            lineHeight = fixedSp(21 * designScale),
-            maxLines = 1
-        )
+        Box(Modifier.padding(horizontal = (12 * designScale).dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = when {
+                    !hasComparison -> "暂无对比"
+                    improving -> "+${changePercent}%"
+                    else -> "${changePercent}%"
+                },
+                color = if (hasComparison) AppColors.Green.background else AppColors.Blue.ink,
+                fontFamily = if (hasComparison) AppFonts.GoogleSansFlexExtraBold else AppFonts.MiSansSemibold,
+                fontWeight = FontWeight.Normal,
+                fontSize = fixedSp(if (hasComparison) 24 * designScale else 16 * designScale),
+                lineHeight = fixedSp(if (hasComparison) 24 * designScale else 21 * designScale),
+                letterSpacing = if (hasComparison) fixedSp(.6f * designScale) else TextUnit.Unspecified
+            )
+        }
     }
 }
 
 @Composable
-private fun ReviewProgressBar(status: ReviewProgressStatus, designScale: Float, modifier: Modifier = Modifier) {
+private fun WeeklyActivityBar(label: String, filledHeight: Float, designScale: Float) {
     Column(
-        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy((8 * designScale).dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().height((120 * designScale).dp),
+            modifier = Modifier.width((32 * designScale).dp).height((120 * designScale).dp),
             verticalArrangement = Arrangement.spacedBy((4 * designScale).dp, Alignment.Bottom),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -283,19 +281,19 @@ private fun ReviewProgressBar(status: ReviewProgressStatus, designScale: Float, 
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(999.dp))
-                    .background(status.color.copy(alpha = .25f))
+                    .background(AppColors.Blue.primarySecondary)
             )
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height((status.barHeight * designScale).dp)
+                    .height((filledHeight * designScale).dp)
                     .clip(RoundedCornerShape(999.dp))
-                    .background(status.color)
+                    .background(AppColors.Blue.primary)
             )
         }
         Text(
-            text = "M",
-            color = Color.Black.copy(alpha = .8f),
+            text = label,
+            color = AppColors.TextIconDark,
             fontFamily = AppFonts.GoogleSansFlexExtraBold,
             fontWeight = FontWeight.Normal,
             fontSize = fixedSp(16 * designScale),
@@ -305,15 +303,12 @@ private fun ReviewProgressBar(status: ReviewProgressStatus, designScale: Float, 
     }
 }
 
-private data class ReviewProgressStatus(val label: String, val color: Color, val barHeight: Int)
-
 @Composable
 private fun MasteryCard(designScale: Float, dashboard: Dashboard?) {
     Card(
         shape = RoundedCornerShape(AppShapeRadius.dp),
-        // Figma 19:621: the weekly-goal card now shares the soft blue data surface.
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth().height((420 * designScale).dp)
+        colors = CardDefaults.cardColors(containerColor = AppColors.Blue.background),
+        modifier = Modifier.fillMaxWidth().height((411 * designScale).dp)
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding((24 * designScale).dp),
@@ -322,7 +317,7 @@ private fun MasteryCard(designScale: Float, dashboard: Dashboard?) {
         ) {
             WeeklyGoalRing(designScale, dashboard)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-                Text("这数据不赖", modifier = Modifier.padding(bottom = (8 * designScale).dp), color = PageForegroundColor(), fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(24 * designScale), lineHeight = fixedSp(28 * designScale))
+                Text("这数据不赖，继续努力", color = AppColors.TextIconDark, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * designScale), lineHeight = fixedSp(27 * designScale))
                 DataMetricRow("psychology_alt", "回忆正确率", dashboard.percent("recall_accuracy", "review_accuracy"), designScale)
                 DataMetricRow("bolt", "首次答对率", dashboard.percent("first_answer_accuracy", "first_pass_rate", "first_correct_rate"), designScale)
                 DataMetricRow("mountain_flag", "记忆保持率", dashboard.percent("retention_rate", "memory_retention_rate"), designScale)
@@ -346,8 +341,8 @@ private fun WeeklyGoalRing(designScale: Float, dashboard: Dashboard?) {
             drawArc(AppColors.Blue.primary, startAngle = -90f, sweepAngle = 360f * progress, useCenter = false, topLeft = bounds.topLeft, size = bounds.size, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("${(progress * 100).roundToInt()}%", color = PageForegroundColor(), fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(40 * designScale), lineHeight = fixedSp(41 * designScale), letterSpacing = fixedSp(-.68f * designScale))
-            Text("本周复习目标", color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), letterSpacing = fixedSp(.6f * designScale))
+            Text("${(progress * 100).roundToInt()}%", color = AppColors.TextIconDark, fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(40 * designScale), lineHeight = fixedSp(40 * designScale), letterSpacing = fixedSp(-.6f * designScale))
+            Text("本周复习目标", color = AppColors.Blue.ink, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(21 * designScale))
         }
     }
 }
@@ -361,9 +356,15 @@ private fun DataMetricRow(symbol: String, label: String, value: String, designSc
                     MaterialSymbol(symbol, null, tint = AppColors.TextIconLight, size = fixedSp(16 * designScale), filled = true)
                 }
             }
-            Text(label, color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale))
+            AppText(
+                text = label,
+                role = AppTextRole.CardSubtitle,
+                color = AppColors.TextIconDark,
+                designScale = designScale,
+                maxLines = 1
+            )
         }
-        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = AppFonts.GoogleSansFlexSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale))
+        Text(value, color = AppColors.Blue.ink, fontFamily = AppFonts.GoogleSansFlexSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(16 * designScale))
     }
 }
 
@@ -374,64 +375,51 @@ private fun Dashboard?.number(vararg keys: String): Double? = this?.let { dashbo
 private fun Dashboard?.percent(vararg keys: String): String = number(*keys)?.let { "${(it * 100).roundToInt()}%" } ?: "—"
 
 @Composable
-private fun DataBentoCards(designScale: Float, dashboard: Dashboard?) {
-    val masteredCount = dashboard?.raw?.let { raw -> raw.optInt("mastered_card_count", raw.optInt("mastered_cards", 0)) } ?: 0
+private fun DataStreakCards(designScale: Float, dashboard: Dashboard?) {
+    val raw = dashboard?.raw
+    val longestStreak = raw?.optInt("max_streak", raw.optInt("longest_streak", 12)) ?: 12
+    val openCount = raw?.optInt("open_count", raw.optInt("app_open_count", 4)) ?: 4
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-        DataBentoCard(
+        StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            background = AppColors.Pink.background,
-            iconBackground = AppColors.Pink.primary,
-            icon = "local_fire_department",
-            iconTint = AppColors.Pink.ink,
-            value = (dashboard?.raw?.optInt("streak_days", 0) ?: 0).toString(),
-            label = "连胜！",
-            valueColor = AppColors.TextIconDark,
-            labelColor = AppColors.WarningStrong,
+            value = longestStreak.toString(),
+            kind = StatisticsMetricKind.LongestStreak,
+            surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )
-        DataBentoCard(
+        StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            background = AppColors.Green.background,
-            iconBackground = AppColors.Green.primary,
-            icon = "editor_choice",
-            iconTint = AppColors.Green.ink,
-            value = formatMasteredCount(masteredCount),
-            label = "已掌握卡片",
-            valueColor = AppColors.TextIconDark,
-            labelColor = AppColors.Green.primaryStrong,
+            value = openCount.toString(),
+            kind = StatisticsMetricKind.OpenCount,
+            surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )
-    }
-}
-
-/** The Figma component presents mastered cards in thousands (0k, 1.2k, ...). */
-private fun formatMasteredCount(count: Int): String {
-    val tenths = (count.coerceAtLeast(0) / 100).coerceAtLeast(0)
-    return when {
-        tenths == 0 -> "0k"
-        tenths % 10 == 0 -> "${tenths / 10}k"
-        else -> "${tenths / 10}.${tenths % 10}k"
     }
 }
 
 @Composable
-private fun DataBentoCard(modifier: Modifier, background: Color, iconBackground: Color, icon: String, iconTint: Color, value: String, label: String, valueColor: Color, labelColor: Color, designScale: Float) {
-    Card(
-        shape = RoundedCornerShape(AppShapeRadius.dp),
-        colors = CardDefaults.cardColors(containerColor = background),
-        // Figma 19:1276 / 19:1286: the bento card is 174dp tall. The
-        // previous 169dp bound clipped the MiSans label descenders at the
-        // bottom of both "连胜！" and "已掌握卡片".
-        modifier = modifier.height((174 * designScale).dp)
-    ) {
-        Column(Modifier.fillMaxSize().padding((24 * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-            Surface(shape = RoundedCornerShape(999.dp), color = iconBackground, modifier = Modifier.size((40 * designScale).dp)) {
-                Box(contentAlignment = Alignment.Center) { MaterialSymbol(icon, null, tint = iconTint, size = fixedSp(24 * designScale), filled = true) }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy((4 * designScale).dp)) {
-                Text(value, color = valueColor, fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(36 * designScale), lineHeight = TextUnit.Unspecified, letterSpacing = fixedSp(-.68f * designScale), style = figmaCardTextStyle())
-                Text(label, color = labelColor, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = TextUnit.Unspecified, letterSpacing = fixedSp(.6f * designScale), style = figmaCardTextStyle())
-            }
-        }
+private fun DataLearningCards(designScale: Float, dashboard: Dashboard?) {
+    val masteredCount = dashboard?.raw?.let { raw -> raw.optInt("mastered_card_count", raw.optInt("mastered_cards", 2)) } ?: 2
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
+        StatisticsMetricCard(
+            modifier = Modifier.weight(1f),
+            value = "12min",
+            kind = StatisticsMetricKind.LearningTime,
+            surface = StatisticsMetricSurface.Tinted,
+            designScale = designScale
+        )
+        StatisticsMetricCard(
+            modifier = Modifier.weight(1f),
+            value = formatMasteredCount(masteredCount),
+            kind = StatisticsMetricKind.MasteredCards,
+            surface = StatisticsMetricSurface.Tinted,
+            designScale = designScale
+        )
     }
+}
+
+/** Figma 19:621 presents small mastered counts as a three-decimal k value. */
+private fun formatMasteredCount(count: Int): String {
+    val safeCount = count.coerceAtLeast(0)
+    return if (safeCount < 1_000) "%.3fk".format(java.util.Locale.US, safeCount / 1_000.0) else "${safeCount / 1_000}k"
 }

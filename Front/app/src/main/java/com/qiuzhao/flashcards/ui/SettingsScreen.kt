@@ -188,7 +188,7 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (128 * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (NaturalScrollTail * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((20 * designScale).dp)
                 ) {
                     item {

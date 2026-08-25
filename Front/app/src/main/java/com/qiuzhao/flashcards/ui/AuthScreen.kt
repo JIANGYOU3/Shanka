@@ -332,7 +332,7 @@ private fun AuthLayout(title: String, onBack: () -> Unit, content: androidx.comp
             LazyColumn(
                 modifier = Modifier.fillMaxSize().imePadding()
                     .padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp),
-                contentPadding = PaddingValues(bottom = (40 * scale).dp),
+                contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) { content(scale) }
             ScreenTopInformationBar(title, null, onBack, modifier = Modifier.zIndex(1f))

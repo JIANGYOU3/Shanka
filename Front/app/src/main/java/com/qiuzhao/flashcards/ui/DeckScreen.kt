@@ -159,65 +159,34 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
     val progress by viewModel.deckProgress(deck.id).collectAsState(
         initial = DeckProgress(deck.cardCount, deck.dueCount, masteredCards = 0, reviewCount = 0)
     )
+    val projects by viewModel.projects.collectAsState()
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
-    val theme = deckTheme(deck)
-    val masteryRatio = if (progress.cardCount == 0) 0f else progress.masteredCards.toFloat() / progress.cardCount
-    var deleteConfirmationVisible by remember { mutableStateOf(false) }
-    var deleteFailed by remember { mutableStateOf(false) }
-    LaunchedEffect(deleteFailed) {
-        if (deleteFailed) {
-            delay(1_800)
-            deleteFailed = false
-        }
-    }
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    // A deck belongs visually to its project. Legacy, unassigned decks retain
+    // their stored family through deckTheme's existing fallback.
+    val theme = deckTheme(deck, projects)
+    Surface(modifier = Modifier.fillMaxSize(), color = theme.surface) {
         Box(Modifier.fillMaxSize()) {
             // Figma 41:1623: this is the only scrollable region. It is clipped so
             // a long overview or future metrics never travel into the fixed header.
             Box(
                 Modifier.fillMaxSize()
-                    .padding(start = (16 * designScale).dp, top = (148 * designScale).dp, end = (16 * designScale).dp)
+                    .padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
                     .clip(RoundedCornerShape((AppShapeRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (188 * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
-                    item { DeckOverviewCard(deckOverview(deck), designScale, theme) }
-                    item { ChapterProgressCard(progress, masteryRatio, designScale, theme) }
+                    item { DeckLearningDataCard(reviewedToday = progress.dueCount, dailyGoal = 50, theme = theme, designScale = designScale) }
+                    item { DeckQuestionTypesCard(progress.cardCount, 0, 0, theme, designScale) }
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp, Alignment.End),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Button(
-                                onClick = { nav.navigate(AppRoute.EditCardList(deck.id)) },
-                                modifier = Modifier.height((60 * designScale).dp),
-                                shape = RoundedCornerShape((24 * designScale).dp),
-                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                    containerColor = theme.secondary,
-                                    contentColor = theme.strongText
-                                ),
-                                contentPadding = PaddingValues(horizontal = (24 * designScale).dp)
-                            ) {
-                                MaterialSymbol("edit", "编辑卡片", tint = LocalContentColor.current, size = fixedSp(24 * designScale), filled = true)
-                                Spacer(Modifier.width((8 * designScale).dp))
-                                Text("编辑", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(16 * designScale), letterSpacing = fixedSp(.6f * designScale))
-                            }
-                            Surface(
-                                onClick = { deleteConfirmationVisible = true },
-                                shape = RoundedCornerShape((24 * designScale).dp),
-                                color = AppColors.Warning,
-                                modifier = Modifier.size((60 * designScale).dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    MaterialSymbol("delete", "删除牌组", tint = AppColors.TextIconLight, size = fixedSp(24 * designScale), filled = true)
-                                }
-                            }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
+                            StatisticsMetricCard("${progress.dueCount}min", StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
+                            StatisticsMetricCard("${progress.masteredCards / 1000}.${(progress.masteredCards % 1000).toString().padStart(3, '0')}k", StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
                         }
                     }
+                    item { DeckWeeklyReviewCard(designScale) }
                 }
             }
             DeckDetailHeader(
@@ -232,34 +201,10 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                     .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {
-                CardListActionButton("自由刷题", "style", false, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.Study(deck.id, false)) }
+                CardListActionButton("编辑", "edit", false, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.EditCardList(deck.id)) }
                 CardListActionButton("开始复习", "play_circle", true, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.Study(deck.id, true)) }
             }
-            DeleteFailureHint(
-                visible = deleteFailed,
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = (112 * designScale).dp)
-            )
         }
-    }
-    if (deleteConfirmationVisible) {
-        AlertDialog(
-            onDismissRequest = { deleteConfirmationVisible = false },
-            title = { Text("删除这个牌组？", fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal) },
-            text = { Text("牌组中的所有卡片和学习记录都会被删除，且无法恢复。", fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal) },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleteConfirmationVisible = false
-                    viewModel.deleteDeck(
-                        deck.id,
-                        onSuccess = nav::popBackStack,
-                        onFailure = { deleteFailed = true }
-                    )
-                }) { Text("删除", color = AppColors.Warning) }
-            },
-            dismissButton = { TextButton(onClick = { deleteConfirmationVisible = false }) { Text("取消") } }
-        )
     }
 }
 

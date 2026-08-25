@@ -454,7 +454,7 @@ internal fun PdfFlowLayout(title: String, onBack: () -> Unit, footer: @Composabl
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(start = (16 * scale).dp, top = (132 * scale).dp, end = (16 * scale).dp).clip(BottomRoundedViewportShape),
-                contentPadding = PaddingValues(bottom = if (footer == null) 36.dp else (148 * scale).dp),
+                contentPadding = PaddingValues(bottom = if (footer == null) (NaturalScrollTail * scale).dp else (fixedBottomControlScrollTail(bottomOffset = 24) * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp), content = content
             )
             DeckDetailHeader(title, scale, onBack, modifier = Modifier.zIndex(1f))
@@ -482,7 +482,7 @@ private fun SmartFileImportScreen(
                 modifier = Modifier.fillMaxSize()
                     .padding(start = (16 * scale).dp, top = (132 * scale).dp, end = (16 * scale).dp)
                     .clip(BottomRoundedViewportShape),
-                contentPadding = PaddingValues(bottom = (148 * scale).dp),
+                contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) {
                 item { SmartInfoCard("上传教材、课件或其他学习资料。\n暂不支持扫描版PDF。", scale) }
@@ -754,7 +754,7 @@ private fun PdfChapterScreen(
                 modifier = Modifier.fillMaxSize()
                     .padding(start = (16 * scale).dp, top = (132 * scale).dp, end = (16 * scale).dp)
                     .clip(BottomRoundedViewportShape),
-                contentPadding = PaddingValues(bottom = (148 * scale).dp),
+                contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) {
                 item { SmartInfoCard("选择要制作闪卡的章节。", scale) }

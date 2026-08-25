@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -246,33 +247,3 @@ private fun ProjectSectionItem(
     }
 }
 
-/** Shared white metric tile used by Project statistics and Card Group overview. */
-@Composable
-internal fun ProjectMetricCard(
-    value: String,
-    label: String,
-    symbol: String,
-    accent: Color,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = AppColors.Card,
-        shape = RoundedCornerShape(32.dp),
-        modifier = modifier.widthIn(min = 0.dp).height(176.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Surface(color = accent, shape = RoundedCornerShape(999.dp), modifier = Modifier.size(48.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol(symbol, null, tint = AppColors.TextIconLight, size = fixedSp(24f), filled = true)
-                }
-            }
-            Column {
-                AppText(value, AppTextRole.MetricMedium, color = PageForegroundColor(), maxLines = 1)
-                AppText(label, AppTextRole.Label, color = accent, maxLines = 1)
-            }
-        }
-    }
-}

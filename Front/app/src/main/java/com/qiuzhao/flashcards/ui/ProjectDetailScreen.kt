@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,26 +42,30 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
+import kotlin.math.roundToInt
 
 /** Figma 540:3778: a project owns a statistics and deck-management view. */
 @Composable
 internal fun ProjectDetailScreen(project: ProjectSummary, decks: List<DeckSummary>, nav: ScreenNavigator) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
+    val theme = deckTheme(project)
     var section by rememberSaveable { mutableStateOf(ProjectDetailSection.STATISTICS) }
-    // Figma 540:3778 uses the pale-blue page canvas behind every white data
-    // card. Keeping it solid also preserves the contrast after scrolling.
-    Box(Modifier.fillMaxSize().background(AppColors.Blue.background)) {
+    // Figma 15:3030 uses the project family's Background token for the page
+    // canvas. Cards then alternate Surface and pure white above it.
+    Box(Modifier.fillMaxSize().background(theme.background)) {
         ScreenTopInformationBar(
             title = project.name, subtitle = null, onBack = nav::goBack,
-            backContainer = AppColors.Blue.surface,
-            onTrailingAction = { /* Project editing is introduced with material management. */ },
+            backContainer = theme.cardPanel,
+            onTrailingAction = { nav.navigate(AppRoute.ProjectEdit(project.id)) },
             trailingActionSymbol = "edit", trailingActionDescription = "编辑项目",
-            trailingActionContainer = AppColors.Blue.surface
+            trailingActionContainer = theme.cardPanel
         )
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp),
@@ -67,12 +73,12 @@ internal fun ProjectDetailScreen(project: ProjectSummary, decks: List<DeckSummar
         ) {
             ProjectSectionSwitcher(section, { section = it }, theme = deckTheme(project))
             when (section) {
-                ProjectDetailSection.STATISTICS -> ProjectStatisticsContent(decks, scale, Modifier.weight(1f))
+                ProjectDetailSection.STATISTICS -> ProjectStatisticsContent(decks, theme, scale, Modifier.weight(1f))
                 ProjectDetailSection.DECKS -> ProjectDecksContent(project, decks, scale, nav, Modifier.weight(1f))
             }
         }
-        BottomContentFade(scale, Modifier.align(Alignment.BottomCenter))
         if (section == ProjectDetailSection.DECKS) {
+            BottomContentFade(scale, Modifier.align(Alignment.BottomCenter))
             ProjectDeckActions(
                 theme = deckTheme(project),
                 scale = scale,
@@ -85,7 +91,7 @@ internal fun ProjectDetailScreen(project: ProjectSummary, decks: List<DeckSummar
 }
 
 @Composable
-private fun ProjectStatisticsContent(decks: List<DeckSummary>, scale: Float, modifier: Modifier) {
+private fun ProjectStatisticsContent(decks: List<DeckSummary>, theme: DeckTheme, scale: Float, modifier: Modifier) {
     var showToday by rememberSaveable { mutableStateOf(true) }
     val totalCards = decks.sumOf { it.cardCount }
     val mastered = decks.sumOf { it.masteredCards }
@@ -93,126 +99,83 @@ private fun ProjectStatisticsContent(decks: List<DeckSummary>, scale: Float, mod
     val reviewed = if (showToday) due else decks.sumOf { it.reviewCount }
     val ratio = if (totalCards == 0) 0f else mastered.toFloat() / totalCards
     LazyColumn(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)), contentPadding = PaddingValues(bottom = (180 * scale).dp),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)),
+        // Statistics has no fixed bottom action bar. A 32dp tail places the
+        // final cards just above the system navigation area, as in Figma.
+        contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
         verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
     ) {
         item {
-            Surface(
-                color = AppColors.Blue.primary, contentColor = AppColors.TextIconLight,
-                shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding((24 * scale).dp), verticalArrangement = Arrangement.spacedBy((24 * scale).dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            MaterialSymbol("local_fire_department", null, tint = LocalContentColor.current, size = fixedSp(28 * scale), filled = true)
-                            Spacer(Modifier.width((8 * scale).dp))
-                            AppText("学习数据", AppTextRole.CardTitle, color = LocalContentColor.current, designScale = scale)
-                        }
-                        OverviewSwitcher(showToday, { showToday = it }, scale)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            AppText("$reviewed", AppTextRole.MetricLarge, color = LocalContentColor.current, designScale = scale)
-                            // Figma 540:4465 uses separate baseline-aligned text
-                            // runs: 4dp between the large value and / total, then
-                            // the CJK label directly after the fraction.
-                            Spacer(Modifier.width((4 * scale).dp))
-                            AppText("/ $totalCards", AppTextRole.MetricXSmall, color = AppColors.TextIconLight.copy(alpha = .75f), designScale = scale, modifier = Modifier.padding(bottom = (4 * scale).dp))
-                            AppText(" 已复习", AppTextRole.CardTitle, color = AppColors.TextIconLight.copy(alpha = .75f), designScale = scale, modifier = Modifier.padding(bottom = (2 * scale).dp))
-                        }
-                        AppText("${(ratio * 100).toInt()}%", AppTextRole.MetricLarge, color = LocalContentColor.current, designScale = scale)
-                    }
-                    // 540:4465 is two adjacent pills with a visible 5dp blue
-                    // separation, rather than one track painted underneath fill.
-                    BoxWithConstraints(Modifier.fillMaxWidth().height((20 * scale).dp)) {
-                        val gap = (5 * scale).dp
-                        val completedWidth = (maxWidth - gap) * ratio.coerceIn(0f, 1f)
-                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                            Box(Modifier.width(completedWidth).fillMaxHeight().clip(RoundedCornerShape(999.dp)).background(AppColors.Card))
-                            Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(999.dp)).background(AppColors.Card.copy(alpha = .5f)))
-                        }
-                    }
-                }
-            }
+            LearningDataProgressCard(
+                reviewedCards = reviewed,
+                totalCards = totalCards,
+                progressPercent = (ratio * 100).toInt(),
+                todaySelected = showToday,
+                onTodaySelected = { showToday = it },
+                theme = theme,
+                designScale = scale
+            )
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
-                ProjectMetricCard("${if (showToday) "12min" else "2.4h"}", "学习时长", "acute", AppColors.Orange.primary, Modifier.weight(1f))
-                ProjectMetricCard("${if (showToday) mastered.coerceAtMost(2) else mastered}", "已掌握卡片", "editor_choice", AppColors.Green.primary, Modifier.weight(1f))
+                StatisticsMetricCard(
+                    value = if (showToday) "12min" else "2.4h",
+                    kind = StatisticsMetricKind.LearningTime,
+                    surface = StatisticsMetricSurface.White,
+                    designScale = scale,
+                    modifier = Modifier.weight(1f)
+                )
+                StatisticsMetricCard(
+                    value = if (showToday) mastered.coerceAtMost(2).toString() else mastered.toString(),
+                    kind = StatisticsMetricKind.MasteredCards,
+                    surface = StatisticsMetricSurface.White,
+                    designScale = scale,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
-        item { ProjectProgressDistribution(scale, totalCards, mastered) }
+        item { ProjectProgressDistribution(scale) }
+        item { ProjectStreakMetrics(scale) }
     }
 }
 
 @Composable
-private fun OverviewSwitcher(today: Boolean, onSelect: (Boolean) -> Unit, scale: Float) = Surface(
-    color = AppColors.TextIconLight, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.width((160 * scale).dp).height((61 * scale).dp)
+private fun ProjectProgressDistribution(scale: Float) = ReviewProgressCard(
+    entries = listOf(
+        // Project statistics are mutually exclusive and total 100%.
+        ReviewProgressEntry("熟识", AppColors.ReviewKnown, 2, 12),
+        ReviewProgressEntry("认识", AppColors.ReviewRecognised, 8, 12),
+        ReviewProgressEntry("模糊", AppColors.ReviewUncertain, 57, 68),
+        ReviewProgressEntry("陌生", AppColors.ReviewUnfamiliar, 8, 12),
+        ReviewProgressEntry("没学", AppColors.ReviewUnseen, 25, 30)
+    ),
+    designScale = scale
+)
+
+/** Figma 540:4661, the lower pair of project-only summary cards. */
+@Composable
+private fun ProjectStreakMetrics(scale: Float) = Row(
+    Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)
 ) {
-    BoxWithConstraints(Modifier.fillMaxSize().padding((8 * scale).dp)) {
-        val density = LocalDensity.current
-        val itemWidth = (64 * scale).dp
-        val itemGap = (12 * scale).dp
-        val translationPx by animateFloatAsState(
-            targetValue = with(density) { (if (today) itemWidth + itemGap else 0.dp).toPx() },
-            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing), label = "project overview selection"
-        )
-        Surface(color = AppColors.Blue.primary, shape = RoundedCornerShape((16 * scale).dp), modifier = Modifier.width(itemWidth).height((45 * scale).dp).graphicsLayer { translationX = translationPx }) {}
-        Row(horizontalArrangement = Arrangement.spacedBy(itemGap)) {
-            OverviewOption("总览", !today, { onSelect(false) }, itemWidth, scale)
-            OverviewOption("今日", today, { onSelect(true) }, itemWidth, scale)
-        }
-    }
+    StatisticsMetricCard(
+        value = "12",
+        kind = StatisticsMetricKind.LongestStreak,
+        surface = StatisticsMetricSurface.White,
+        designScale = scale,
+        modifier = Modifier.weight(1f)
+    )
+    StatisticsMetricCard(
+        value = "4",
+        kind = StatisticsMetricKind.OpenCount,
+        surface = StatisticsMetricSurface.White,
+        designScale = scale,
+        modifier = Modifier.weight(1f)
+    )
 }
-
-@Composable
-private fun OverviewOption(label: String, selected: Boolean, onClick: () -> Unit, width: androidx.compose.ui.unit.Dp, scale: Float) = Surface(
-    onClick = onClick,
-    // The inactive pill is explicitly #EBF4FF at 50% in 540:4465; transparent
-    // makes it blend into the selector and loses the designed state distinction.
-    color = if (selected) Color.Transparent else AppColors.Blue.surface.copy(alpha = .5f),
-    contentColor = if (selected) AppColors.TextIconLight else AppColors.TextIconDark,
-    shape = RoundedCornerShape((16 * scale).dp), modifier = Modifier.width(width).height((45 * scale).dp)
-) { Box(contentAlignment = Alignment.Center) { AppText(label, AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1) } }
-
-@Composable
-private fun ProjectProgressDistribution(scale: Float, total: Int, mastered: Int) = Surface(
-    color = AppColors.Card, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
-) {
-    Column(Modifier.padding((24 * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { MaterialSymbol("local_fire_department", null, tint = AppColors.TextIconDark, size = fixedSp(28 * scale), filled = true); Spacer(Modifier.width((8 * scale).dp)); AppText("复习进度", AppTextRole.CardTitle, color = AppColors.TextIconDark, designScale = scale) }
-        val values = listOf(
-            ProgressColumn("熟识", AppColors.Green.primaryStrong, 12.dp),
-            ProgressColumn("认识", AppColors.Green.primarySecondary, 27.dp),
-            ProgressColumn("模糊", AppColors.Orange.primary, 87.dp),
-            ProgressColumn("陌生", AppColors.WarningStrong, 19.dp),
-            ProgressColumn("没学", AppColors.Blue.primarySecondary, 97.dp)
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            values.forEach { value ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
-                    Box(Modifier.size((16 * scale).dp).clip(RoundedCornerShape(999.dp)).background(value.color))
-                    AppText(value.label, AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .75f), designScale = scale, maxLines = 1)
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-            values.forEach { value -> Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height((120 * scale).dp).clip(RoundedCornerShape((16 * scale).dp)).background(value.color.copy(alpha = .25f))) {
-                    Box(Modifier.fillMaxWidth().height((value.fillHeight.value * scale).dp).align(Alignment.BottomCenter).clip(RoundedCornerShape(999.dp)).background(value.color))
-                }
-                Spacer(Modifier.height((8 * scale).dp)); AppText("M", AppTextRole.Label, color = AppColors.TextIconDark, designScale = scale)
-            } }
-        }
-        AppText("$mastered / $total 张卡片已掌握", AppTextRole.CardSubtitle, color = AppColors.Blue.ink, designScale = scale)
-    }
-}
-
-private data class ProgressColumn(val label: String, val color: Color, val fillHeight: androidx.compose.ui.unit.Dp)
 
 @Composable
 private fun ProjectDecksContent(project: ProjectSummary, decks: List<DeckSummary>, scale: Float, nav: ScreenNavigator, modifier: Modifier) = LazyColumn(
-    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)), contentPadding = PaddingValues(bottom = (180 * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
+    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)), contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
 ) {
     itemsIndexed(decks, key = { _, deck -> deck.id }) { index, deck ->
         val theme = deckTheme(project)

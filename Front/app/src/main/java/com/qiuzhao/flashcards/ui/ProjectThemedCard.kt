@@ -101,7 +101,7 @@ internal fun ProjectThemedCard(
 }
 
 @Composable
-private fun ProjectThemedCardHeader(
+internal fun ProjectThemedCardHeader(
     title: String,
     count: Int,
     countLabel: String,
@@ -121,7 +121,10 @@ private fun ProjectThemedCardHeader(
     ) {
         Surface(
             color = theme.primary,
-            shape = RoundedCornerShape((16 * designScale).dp),
+            // Figma 257:6634 uses the same 24dp corner on every colour
+            // variant. A per-theme 16dp fallback made the blue/green icons
+            // visibly too square in both the project list and Home card.
+            shape = RoundedCornerShape((24 * designScale).dp),
             modifier = Modifier.size((56 * designScale).dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -186,7 +189,7 @@ internal fun FigmaDeckProgressPanel(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding((12 * designScale).dp),
+            modifier = Modifier.padding((theme.cardProgressPanelPadding * designScale).dp),
             verticalArrangement = Arrangement.spacedBy((8 * designScale).dp)
         ) {
             Row(

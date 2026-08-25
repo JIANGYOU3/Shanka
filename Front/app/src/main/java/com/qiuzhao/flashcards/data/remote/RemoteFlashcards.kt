@@ -429,14 +429,20 @@ internal class RemoteFlashcardRepository(
     suspend fun deleteDeck(deckId: String): ApiResult<Unit> = client.request("delete_deck", "DELETE", "/decks/$deckId").decode { Unit }
         .also { if (it is ApiResult.Success) refreshDecks() }
 
-    suspend fun updateDeckPresentation(deckId: String, name: String, themeKey: String): ApiResult<DeckSummary> {
+    suspend fun updateDeckName(deckId: String, name: String): ApiResult<DeckSummary> {
         val result = client.request("update_deck", "PATCH", "/decks/$deckId", JSONObject().put("name", name.trim()).toString()).decode(::deckOrThrow)
         if (result is ApiResult.Success) {
-            val updated = result.value.copy(themeKey = themeKey)
-            _decks.value = _decks.value.map { if (it.id == deckId) updated else it }
+            _decks.value = _decks.value.map { existing ->
+                if (existing.id == deckId) result.value.copy(themeKey = existing.themeKey) else existing
+            }
         }
         return result
     }
+
+    /** Kept for protocol callers compiled before deck colours became project-owned. */
+    @Deprecated("Deck colours are project-owned; use updateDeckName")
+    suspend fun updateDeckPresentation(deckId: String, name: String, @Suppress("UNUSED_PARAMETER") themeKey: String): ApiResult<DeckSummary> =
+        updateDeckName(deckId, name)
 
     suspend fun updateCard(card: FlashcardEntity): ApiResult<FlashcardEntity> {
         val body = JSONObject().put("front", card.front.trim()).put("back", card.back.trim()).toString()

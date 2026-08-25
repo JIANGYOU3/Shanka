@@ -163,7 +163,7 @@ internal fun HomeScreen(decks: List<DeckSummary>, projects: List<ProjectSummary>
     val compactScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     val sideInset = 16 * compactScale
     // The persistent root shell owns the navigation. Home owns only its scrollable body.
-    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground).statusBarsPadding()) {
             // This is the fixed, rounded viewport from Figma node 19:611. The list may
             // scroll inside it, but nothing can paint into the fixed settings/header area.
             // The app content area already starts beneath the device status inset.
@@ -175,9 +175,8 @@ internal fun HomeScreen(decks: List<DeckSummary>, projects: List<ProjectSummary>
                 Box(Modifier.fillMaxSize().clip(RoundedCornerShape(AppShapeRadius.dp))) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        // Leave a scroll tail so the two quick cards can move fully
-                        // above the floating navigation instead of becoming trapped by it.
-                        contentPadding = PaddingValues(bottom = (180 * compactScale).dp),
+                        // Keep the last card near, but clear of, the shared floating nav.
+                        contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * compactScale).dp),
                         verticalArrangement = Arrangement.spacedBy((12 * compactScale).dp)
                     ) {
                     item { DailyGoalCard(compactScale) }
@@ -390,7 +389,10 @@ internal fun ReviewCountBadge(
 ) {
     Surface(
         color = background,
-        shape = RoundedCornerShape(999.dp),
+        // Figma 257:6634 / 287:8214 specifies a 24dp rounded badge, not a
+        // fully-pill-shaped 999dp capsule. This distinction is visible on
+        // every project and Home deck card.
+        shape = RoundedCornerShape((24 * compactScale).dp),
         // 287:8214: intrinsic Figma sizing — the 24dp icon and the two-line
         // text stack determine the height; the component itself supplies the
         // specified 12dp vertical padding without an Android-imposed height.

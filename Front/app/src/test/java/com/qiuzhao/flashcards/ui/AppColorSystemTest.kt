@@ -48,12 +48,19 @@ class AppColorSystemTest {
         assertEquals(AppColors.Blue.primarySecondary, LightColors.primaryContainer)
 
         val violet = DeckThemes.first { it.key == "violet" }
+        assertEquals(AppColors.Purple.background, violet.background)
         assertEquals(AppColors.Purple.surface, violet.cardPanel)
         assertEquals(AppColors.Purple.primarySecondary, violet.secondary)
-        assertEquals(AppColors.Purple.primarySecondary, violet.progressTrack)
+        assertEquals(AppColors.Purple.background, violet.progressTrack)
         assertEquals(AppColors.Purple.primary, violet.progressFill)
         assertEquals(AppColors.Purple.primaryStrong, violet.progress)
         assertEquals(AppColors.Purple.ink, violet.strongText)
+        assertEquals(24, violet.cardIconCornerRadius)
+        assertEquals(16, violet.cardProgressPanelPadding)
+
+        val blue = DeckThemes.first { it.key == "azure" }
+        assertEquals(16, blue.cardIconCornerRadius)
+        assertEquals(12, blue.cardProgressPanelPadding)
     }
 
     @Test
@@ -70,7 +77,8 @@ class AppColorSystemTest {
         assertEquals(AppColors.Purple.primary, theme.primary)
         assertEquals(AppColors.Card, whitePalette.background)
         assertEquals(AppColors.Purple.background, whitePalette.panel)
-        assertEquals(AppColors.Purple.surface, whitePalette.progressTrack)
+        assertEquals(AppColors.Purple.primarySecondary, whitePalette.progressTrack)
+        assertEquals(AppColors.Purple.surface, projectThemedCardPalette(theme, ProjectThemedCardVariant.TINTED).background)
         assertEquals(ProjectThemedCardVariant.TINTED, projectThemedCardVariant(0))
         assertEquals(ProjectThemedCardVariant.WHITE, projectThemedCardVariant(1))
     }
@@ -78,5 +86,19 @@ class AppColorSystemTest {
     @Test
     fun navigationBarUsesItsDedicatedFigmaSemanticColor() {
         assertEquals(Color(0xFF425161), AppColors.NavigationBar)
+    }
+
+    @Test
+    fun warningSemanticRolesMatchTheRefreshedFigmaVariables() {
+        assertEquals(Color(0xFFBD3F3F), AppColors.Warning)
+        assertEquals(Color(0xFFD23535), AppColors.WarningStrong)
+        assertEquals(Color(0xFFE87F77), AppColors.WarningSecondary)
+        assertEquals(Color(0xFF670700), AppColors.WarningInk)
+    }
+
+    @Test
+    fun rootPageBackgroundUsesTheFigmaBaseBackground() {
+        assertEquals(Color.White, AppColors.BaseBackground)
+        assertEquals(AppColors.BaseBackground, LightColors.background)
     }
 }

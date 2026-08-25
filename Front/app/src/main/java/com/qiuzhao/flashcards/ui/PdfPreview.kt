@@ -188,7 +188,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (152 * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 40) * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
                     items(samples.indices.toList()) { index ->

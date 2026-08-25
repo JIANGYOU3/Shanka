@@ -54,6 +54,16 @@ data class PdfGenerationConfig(
 
 /** Ephemeral handoff from pasted text into the shared smart-card generation flow. */
 data class TextImportFlow(val deckName: String, val cards: List<CardDraft>)
+internal enum class ProjectDraftMaterialType { FILE, TEXT }
+
+/** Creation-screen state deliberately remains local until the project API accepts writes. */
+internal data class ProjectDraftMaterial(
+    val id: String,
+    val type: ProjectDraftMaterialType,
+    val title: String,
+    val extension: String? = null,
+    val content: String = ""
+)
 data class LocalAccount(val nickname: String, val email: String)
 data class AccountBootstrap(val loaded: Boolean = false, val account: LocalAccount? = null)
 
@@ -177,6 +187,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _frontendTestCards: MutableStateFlow<Map<String, List<FlashcardEntity>>> = MutableStateFlow(FrontendTestFixtures.cards)
     private val _frontendTestProjects: MutableStateFlow<List<ProjectSummary>> = MutableStateFlow(FrontendTestFixtures.projects)
     private val _frontendTestMaterials: MutableStateFlow<List<MaterialSummary>> = MutableStateFlow(FrontendTestFixtures.materials)
+    private val _projectCreationMaterials = MutableStateFlow<List<ProjectDraftMaterial>>(emptyList())
+    internal val projectCreationMaterials: StateFlow<List<ProjectDraftMaterial>> = _projectCreationMaterials
     val decks: StateFlow<List<DeckSummary>> = combine(frontendTestMode, repository.decks, _frontendTestDecks) { enabled, remote, test ->
         if (enabled) test else remote
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -244,6 +256,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * project write contract is supplied by the service. This prevents a new UI
      * from guessing a production endpoint or silently creating orphaned decks.
      */
+    fun resetProjectCreationDraft() {
+        _projectCreationMaterials.value = emptyList()
+    }
+
+    fun addProjectDraftFile(name: String) {
+        val normalized = name.trim().ifBlank { "未命名文件" }
+        _projectCreationMaterials.value = _projectCreationMaterials.value + ProjectDraftMaterial(
+            id = "project-material-${System.currentTimeMillis()}",
+            type = ProjectDraftMaterialType.FILE,
+            title = normalized,
+            extension = normalized.substringAfterLast('.', "").lowercase().ifBlank { "file" }
+        )
+    }
+
+    fun upsertProjectDraftText(materialId: String?, title: String, content: String) {
+        val normalizedTitle = title.trim().ifBlank { "文本资料" }
+        val material = ProjectDraftMaterial(
+            id = materialId ?: "project-text-${System.currentTimeMillis()}",
+            type = ProjectDraftMaterialType.TEXT,
+            title = normalizedTitle,
+            content = content.trim()
+        )
+        _projectCreationMaterials.value = _projectCreationMaterials.value.let { materials ->
+            if (materialId == null) materials + material
+            else materials.map { if (it.id == materialId) material else it }
+        }
+    }
+
+    fun deleteProjectDraftMaterial(id: String) {
+        _projectCreationMaterials.value = _projectCreationMaterials.value.filterNot { it.id == id }
+    }
+
     fun createFrontendTestProject(name: String, themeKey: String, onResult: (String?) -> Unit) = viewModelScope.launch {
         val normalizedName = name.trim()
         when {
@@ -251,11 +295,51 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             normalizedName.isBlank() -> onResult("请填写项目名称")
             else -> {
                 val id = "frontend-project-${System.currentTimeMillis()}"
+                val creationMaterials = _projectCreationMaterials.value
                 _frontendTestProjects.value = _frontendTestProjects.value + ProjectSummary(
                     id = id,
                     name = normalizedName,
-                    themeKey = themeKey
+                    themeKey = themeKey,
+                    materialCount = creationMaterials.size
                 )
+                _frontendTestMaterials.value = _frontendTestMaterials.value + creationMaterials.map { material ->
+                    MaterialSummary(
+                        id = material.id,
+                        name = material.title,
+                        type = when (material.type) {
+                            ProjectDraftMaterialType.FILE -> when (material.extension) {
+                                "pdf" -> MaterialType.PDF
+                                "md", "markdown" -> MaterialType.MARKDOWN
+                                else -> MaterialType.UNKNOWN
+                            }
+                            ProjectDraftMaterialType.TEXT -> MaterialType.TEXT
+                        },
+                        status = MaterialStatus.READY,
+                        projectIds = listOf(id)
+                    )
+                }
+                resetProjectCreationDraft()
+                onResult(null)
+            }
+        }
+    }
+
+    /**
+     * The same form also edits a project in the visual-test data source.  The
+     * production service has no project write contract yet, so it is never
+     * guessed here.
+     */
+    fun updateFrontendTestProject(id: String, name: String, themeKey: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val normalizedName = name.trim()
+        when {
+            !frontendTestMode.value -> onResult("项目服务尚未接入，当前只能在 UI 测试模式中编辑项目")
+            normalizedName.isBlank() -> onResult("请填写项目名称")
+            _frontendTestProjects.value.none { it.id == id } -> onResult("未找到要编辑的项目")
+            else -> {
+                _frontendTestProjects.value = _frontendTestProjects.value.map { project ->
+                    if (project.id == id) project.copy(name = normalizedName, themeKey = themeKey) else project
+                }
+                resetProjectCreationDraft()
                 onResult(null)
             }
         }
@@ -571,18 +655,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateDeckPresentation(deckId: String, name: String, themeKey: String, onFailure: () -> Unit = {}) = viewModelScope.launch {
+    /** Deck colours are project-owned; editing a deck can only rename it. */
+    fun updateDeckName(deckId: String, name: String, onFailure: () -> Unit = {}) = viewModelScope.launch {
         if (frontendTestMode.value) {
             _frontendTestDecks.value = _frontendTestDecks.value.map { deck ->
-                if (deck.id == deckId) deck.copy(name = name, themeKey = themeKey) else deck
+                if (deck.id == deckId) deck.copy(name = name) else deck
             }
             return@launch
         }
-        when (val result = repository.updateDeckPresentation(deckId, name, themeKey)) {
+        when (val result = repository.updateDeckName(deckId, name)) {
             is ApiResult.Success -> Unit
             is ApiResult.Failure -> { logFailure("update_deck", result); onFailure() }
         }
     }
+
+    @Deprecated("Deck colours are project-owned; use updateDeckName")
+    fun updateDeckPresentation(deckId: String, name: String, @Suppress("UNUSED_PARAMETER") themeKey: String, onFailure: () -> Unit = {}) =
+        updateDeckName(deckId, name, onFailure)
 
     fun updateCard(card: FlashcardEntity, onFailure: () -> Unit = {}) = viewModelScope.launch {
         if (frontendTestMode.value) {

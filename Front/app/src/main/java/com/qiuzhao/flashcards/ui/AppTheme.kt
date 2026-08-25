@@ -229,6 +229,23 @@ internal object AppColors {
 
     /** Warning / Primary-Strong. */
     val WarningStrong = Color(0xFFD23535)
+
+    /** Figma 654:3950 — warning-secondary is used for semantic warning surfaces. */
+    val WarningSecondary = Color(0xFFE87F77)
+
+    /** Figma 654:3950 — readable warning copy and icon tint. */
+    val WarningInk = Color(0xFF670700)
+
+    // Figma 604:2732 review-status semantic colours.
+    val ReviewKnown = Color(0xFF579B00)
+    val ReviewRecognised = Color(0xFFAFCD82)
+    val ReviewUncertain = Color(0xFFFFC000)
+    val ReviewUnfamiliar = Color(0xFFFF3D00)
+    val ReviewUnseen = Color(0xFFDDDDDD)
+    val StudyTime = Color(0xFFB7AC4A)
+    val StudyTimeInk = Color(0xFF484100)
+    val StudyMastered = Color(0xFF2C913C)
+    val StudyMasteredInk = Color(0xFF00590D)
 }
 
 internal val LightColors = lightColorScheme(

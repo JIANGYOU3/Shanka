@@ -18,6 +18,12 @@ sealed interface AppRoute : NavKey {
     @Serializable data object Data : AppRoute
     @Serializable data class ProjectDetail(val id: String) : AppRoute
     @Serializable data object ProjectCreate : AppRoute
+    /** Reuses the project form with a pre-existing project as its editing target. */
+    @Serializable data class ProjectEdit(val id: String) : AppRoute
+    @Serializable data class ProjectTextEditor(
+        val materialId: String? = null,
+        val themeKey: String = "azure"
+    ) : AppRoute
     @Serializable data object MaterialManagement : AppRoute
     @Serializable data object MaterialImport : AppRoute
     @Serializable data object TextImport : AppRoute

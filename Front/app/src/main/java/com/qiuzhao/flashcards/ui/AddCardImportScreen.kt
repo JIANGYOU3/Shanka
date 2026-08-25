@@ -171,7 +171,7 @@ internal fun AddCardScreen(deckId: String, viewModel: AppViewModel, nav: ScreenN
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (164 * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(controlCount = 2, gapBetweenControls = 12) * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
                     item {
@@ -293,7 +293,11 @@ internal fun ImportScreen(viewModel: AppViewModel, nav: ScreenNavigator, existin
         }
     } else {
         Scaffold(topBar = { AppBar(if (existingDeckId == null) "导入卡片组" else "批量导入", nav::popBackStack) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
+            contentPadding = PaddingValues(bottom = NaturalScrollTail.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             if (errors.isNotEmpty()) item { Text(errors.joinToString("\n"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             item {
                 MixedLanguageText(
@@ -352,7 +356,7 @@ private fun ImportMethodChoiceScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp)
                     .clip(RoundedCornerShape((32 * scale).dp)),
-                contentPadding = PaddingValues(bottom = (140 * scale).dp),
+                contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) {
                 item {
@@ -435,7 +439,7 @@ private fun PasteTextImportScreen(
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (140 * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((12 * designScale).dp)
                 ) {
                     item {

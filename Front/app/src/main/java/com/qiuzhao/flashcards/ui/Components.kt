@@ -190,6 +190,34 @@ internal fun SecondaryHeaderActionBackgroundColor(theme: DeckTheme? = null): Col
 @Composable
 internal fun fixedSp(value: Float) = with(LocalDensity.current) { value.dp.toSp() }
 
+/**
+ * The root navigation occupies 125dp at the device bottom (85dp bar, 16dp
+ * outside inset and the system navigation inset). A 148dp scroll tail leaves
+ * the Figma 16–24dp visual gap above it when a list reaches its final item.
+ */
+internal const val RootNavigationScrollTail = 148
+
+/**
+ * Bottom spacing for a scrolling page which has no overlaying bottom control.
+ * This is the natural visual tail from the final item to the system area.
+ */
+internal const val NaturalScrollTail = 32
+
+/**
+ * Returns the scroll tail needed to clear a control fixed over the page bottom.
+ *
+ * The fixed control itself is lifted by [bottomOffset] and
+ * `navigationBarsPadding()`. The list needs to clear those two areas plus the
+ * 16dp Figma breathing room. Keeping that arithmetic here prevents individual
+ * screens from accumulating unrelated 140–188dp padding values.
+ */
+internal fun fixedBottomControlScrollTail(
+    controlHeight: Int = 60,
+    bottomOffset: Int = 32,
+    controlCount: Int = 1,
+    gapBetweenControls: Int = 0
+): Int = controlHeight * controlCount + gapBetweenControls + bottomOffset + 24 + 16
+
 /** Figma text frames have no Android ascent/descent padding around their line box. */
 internal fun figmaCardTextStyle() = TextStyle(
     platformStyle = PlatformTextStyle(includeFontPadding = false)
@@ -390,7 +418,15 @@ internal fun RoundIconButton(symbol: String, description: String, color: Color, 
 }
 
 @Composable
-internal fun MaterialSymbol(name: String, description: String?, modifier: Modifier = Modifier, tint: Color = LocalContentColor.current, size: androidx.compose.ui.unit.TextUnit = 24.sp, filled: Boolean = true) {
+internal fun MaterialSymbol(
+    name: String,
+    description: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = LocalContentColor.current,
+    size: androidx.compose.ui.unit.TextUnit = 24.sp,
+    filled: Boolean = true,
+    includeFontPadding: Boolean = true
+) {
     val accessibleModifier = if (description == null) modifier.clearAndSetSemantics { }
     else modifier.semantics { contentDescription = description }
     Text(
@@ -400,7 +436,10 @@ internal fun MaterialSymbol(name: String, description: String?, modifier: Modifi
         color = tint,
         fontFamily = if (filled) AppFonts.MaterialSymbolsRounded else AppFonts.MaterialSymbolsRoundedOff,
         fontSize = size, lineHeight = size,
-        style = TextStyle(fontFeatureSettings = "liga"),
+        style = TextStyle(
+            fontFeatureSettings = "liga",
+            platformStyle = PlatformTextStyle(includeFontPadding = includeFontPadding)
+        ),
         maxLines = 1
     )
 }
