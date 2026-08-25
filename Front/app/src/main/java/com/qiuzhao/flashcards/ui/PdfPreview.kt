@@ -158,14 +158,14 @@ import kotlinx.coroutines.delay
 internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGenerate: () -> Unit) {
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val types = listOf(
-        PdfPreviewType("基础记忆", Color(0xFF84BFFF), Color(0xFF183A5E)),
-        PdfPreviewType("理解分析", Color(0xFF7DCC85), Color(0xFF05460C)),
-        PdfPreviewType("综合应用", Color(0xFFE87F77), Color(0xFF591B16))
+        PdfPreviewType("基础记忆", AppColors.Blue.primarySecondary, AppColors.Blue.ink),
+        PdfPreviewType("理解分析", AppColors.Green.primarySecondary, AppColors.Green.ink),
+        PdfPreviewType("综合应用", AppColors.Pink.primarySecondary, AppColors.Pink.ink)
     )
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
             Surface(
-                color = Color(0xFFF0F8FF),
+                color = AppColors.Blue.background,
                 shape = RoundedCornerShape((32 * designScale).dp),
                 modifier = Modifier.fillMaxWidth().padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
                     .height((56 * designScale).dp)
@@ -175,7 +175,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
                         "点击卡片可以查看答案。",
                         AppTextRole.Supporting,
                         modifier = Modifier.padding(horizontal = (24 * designScale).dp),
-                        color = Color(0xBF000000),
+                        color = AppColors.TextIconDark.copy(alpha = .75f),
                         designScale = designScale,
                         textAlign = TextAlign.Center
                     )
@@ -240,7 +240,7 @@ private fun PdfPreviewCard(card: CardDraft, type: PdfPreviewType, designScale: F
 @Composable
 private fun PdfPreviewFace(card: CardDraft, type: PdfPreviewType, answer: Boolean, rotation: Float, alpha: Float, shape: RoundedCornerShape, density: Float, designScale: Float) {
     Surface(
-        color = if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFFF0F8FF) else Color(0xFF233D55),
+        color = AppColors.Blue.background,
         shape = shape,
         modifier = Modifier.fillMaxSize().graphicsLayer {
             rotationY = if (answer) rotation - 180f else rotation
@@ -255,7 +255,7 @@ private fun PdfPreviewFace(card: CardDraft, type: PdfPreviewType, answer: Boolea
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp), verticalAlignment = Alignment.CenterVertically) {
-                    MaterialSymbol(if (answer) "wb_incandescent" else "book_5", null, tint = if (answer) MaterialTheme.colorScheme.primary else Color(0xFF489FFF), size = fixedSp(24 * designScale), filled = true)
+                    MaterialSymbol(if (answer) "wb_incandescent" else "book_5", null, tint = if (answer) MaterialTheme.colorScheme.primary else AppColors.Blue.primary, size = fixedSp(24 * designScale), filled = true)
                     AppText(if (answer) "答案" else "问题", AppTextRole.CardTitle, color = PageForegroundColor(), designScale = designScale)
                 }
                 Surface(shape = RoundedCornerShape(999.dp), color = type.background) {

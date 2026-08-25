@@ -161,32 +161,19 @@ import kotlinx.coroutines.delay
 /** 类型安全导航快捷别名（拆分后由本文件共享，14 个屏幕签名引用）。 */
 internal typealias ScreenNavigator = AppNavigator
 
-private val LightHeaderControlBackground = Color(0xFFEBF0F5)
-private val LightHeaderControlIcon = Color(0xFF374B61)
-private val LightSecondaryHeaderActionBackground = Color(0xFFEBF4FF)
-private val PageTitleColor = Color(0xFF1F2832)
-
-/** White-screen titles are the Figma #1F2832; dark surfaces use the theme's contrast color. */
-@Composable
-internal fun PageForegroundColor(): Color = if (MaterialTheme.colorScheme.background.luminance() > .5f) {
-    PageTitleColor
-} else {
-    MaterialTheme.colorScheme.onSurface
-}
+private val LightHeaderControlBackground = AppColors.Blue.surface
+private val LightHeaderControlIcon = AppColors.Blue.ink
+private val LightSecondaryHeaderActionBackground = AppColors.Blue.primarySecondary
+private val PageTitleColor = AppColors.TextIconDark
 
 @Composable
-internal fun HeaderControlBackgroundColor(): Color = if (MaterialTheme.colorScheme.background.luminance() > .5f) {
-    LightHeaderControlBackground
-} else {
-    Color(0xFF20303F)
-}
+internal fun PageForegroundColor(): Color = PageTitleColor
 
 @Composable
-internal fun HeaderControlIconColor(): Color = if (MaterialTheme.colorScheme.background.luminance() > .5f) {
-    LightHeaderControlIcon
-} else {
-    Color(0xFFD2E2F1)
-}
+internal fun HeaderControlBackgroundColor(): Color = LightHeaderControlBackground
+
+@Composable
+internal fun HeaderControlIconColor(): Color = LightHeaderControlIcon
 
 /**
  * Figma 209:2733's secondary-page action surface. Root-level controls keep
@@ -196,8 +183,7 @@ internal fun HeaderControlIconColor(): Color = if (MaterialTheme.colorScheme.bac
 @Composable
 internal fun SecondaryHeaderActionBackgroundColor(theme: DeckTheme? = null): Color = when {
     theme != null -> theme.surface
-    MaterialTheme.colorScheme.background.luminance() > .5f -> LightSecondaryHeaderActionBackground
-    else -> Color(0xFF20303F)
+    else -> LightSecondaryHeaderActionBackground
 }
 
 /** Keeps Figma's optical type scale stable even when the phone font-size setting changes. */
@@ -464,13 +450,13 @@ internal fun MixedLanguageText(
 internal fun DescriptionInfoCard(text: String, scale: Float) {
     Surface(
         shape = RoundedCornerShape((32 * scale).dp),
-        color = Color(0xFFF3F3FF),
+        color = AppColors.Purple.background,
         modifier = Modifier.fillMaxWidth().heightIn(min = (102 * scale).dp)
     ) {
         MixedLanguageText(
             text = text,
             modifier = Modifier.padding((24 * scale).dp),
-            color = Color(0xCC000000),
+            color = AppColors.TextIconDark,
             chineseFont = AppFonts.MiSansMedium,
             latinFont = AppFonts.GoogleSansFlex,
             fontSize = fixedSp(20 * scale),

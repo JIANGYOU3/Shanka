@@ -1,9 +1,7 @@
 package com.qiuzhao.flashcards.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -178,21 +176,76 @@ internal object AppTypographyTokens {
 
 val AppShapeRadius = 32
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF489FFF), onPrimary = Color.White,
-    primaryContainer = Color(0xFFE5F1FF), onPrimaryContainer = Color(0xFF374B61),
-    secondary = Color(0xFF4A545F), onSecondary = Color.White,
-    surface = Color.White, surfaceVariant = Color(0xFFF0F8FF), background = Color.White,
-    onSurface = Color(0xFF000D1C), onSurfaceVariant = Color(0xFF8E8E93),
-    error = Color(0xFFFF3B30)
+/** One six-step Figma colour family. */
+internal data class AppColorFamily(
+    val background: Color,
+    val surface: Color,
+    val primarySecondary: Color,
+    val primary: Color,
+    val primaryStrong: Color,
+    val ink: Color
 )
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF90C5FF), onPrimary = Color(0xFF00345F),
-    primaryContainer = Color(0xFF1A3B59), onPrimaryContainer = Color(0xFFD9ECFF),
-    secondary = Color(0xFFC5D1DE), surface = Color(0xFF151E27),
-    surfaceVariant = Color(0xFF1D2B38), background = Color(0xFF0E151C),
-    onSurface = Color(0xFFE9F1FA), onSurfaceVariant = Color(0xFFB8C7D6),
-    outline = Color(0xFF3D5062)
+
+/** Latest Figma Variables. Blue is the application brand family. */
+internal object AppColors {
+    /** Figma “深色文本/icon”: #000000 at 80%. */
+    val TextIconDark = Color(0xCC000000)
+
+    /** Figma “浅色文本/icon”: #FFFFFF at 90%. */
+    val TextIconLight = Color(0xE6FFFFFF)
+
+    /** Neutral elevated-card surface. */
+    val Card = Color.White
+
+    /** Figma Base / Background. Used by the three root pages. */
+    val BaseBackground = Color.White
+
+    /** Figma Navigation Bar / Primary. */
+    val NavigationBar = Color(0xFF425161)
+
+    val Blue = AppColorFamily(
+        background = Color(0xFFF1F9FF), surface = Color(0xFFD9EBFF), primarySecondary = Color(0xFFB0D7FF),
+        primary = Color(0xFF489FFF), primaryStrong = Color(0xFF006EE0), ink = Color(0xFF003C7A)
+    )
+    val Purple = AppColorFamily(
+        background = Color(0xFFF3F3FF), surface = Color(0xFFE4E4FF), primarySecondary = Color(0xFFC8C8FF),
+        primary = Color(0xFF716FDD), primaryStrong = Color(0xFF3836B7), ink = Color(0xFF38387A)
+    )
+    val Green = AppColorFamily(
+        background = Color(0xFFEAFBEB), surface = Color(0xFFCDEFD1), primarySecondary = Color(0xFFA3DFAA),
+        primary = Color(0xFF7AC583), primaryStrong = Color(0xFF138120), ink = Color(0xFF1F5225)
+    )
+    val Pink = AppColorFamily(
+        background = Color(0xFFFFF5F9), surface = Color(0xFFFFE2EE), primarySecondary = Color(0xFFF9C6DB),
+        primary = Color(0xFFEF9BBE), primaryStrong = Color(0xFFAA0047), ink = Color(0xFF4E1B30)
+    )
+    val Orange = AppColorFamily(
+        background = Color(0xFFFFFAEF), surface = Color(0xFFFBEBD2), primarySecondary = Color(0xFFFFE2B6),
+        primary = Color(0xFFE1975E), primaryStrong = Color(0xFFEF6800), ink = Color(0xFF733200)
+    )
+
+    /** Warning / Primary. */
+    val Warning = Color(0xFFBD3F3F)
+
+    /** Warning / Primary-Strong. */
+    val WarningStrong = Color(0xFFD23535)
+}
+
+internal val LightColors = lightColorScheme(
+    primary = AppColors.Blue.primary,
+    onPrimary = AppColors.TextIconLight,
+    primaryContainer = AppColors.Blue.primarySecondary,
+    onPrimaryContainer = AppColors.Blue.ink,
+    secondary = AppColors.Blue.primarySecondary,
+    onSecondary = AppColors.Blue.ink,
+    surface = AppColors.Card,
+    surfaceVariant = AppColors.Blue.surface,
+    background = AppColors.BaseBackground,
+    onSurface = AppColors.TextIconDark,
+    onSurfaceVariant = AppColors.Blue.ink,
+    outline = AppColors.Blue.primarySecondary,
+    error = AppColors.Warning,
+    onError = AppColors.TextIconLight
 )
 
 private val AppTypography = Typography(
@@ -206,6 +259,6 @@ private val AppTypography = Typography(
 )
 
 @Composable
-fun AutumnFlashcardsTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = AppTypography, content = content)
+fun AutumnFlashcardsTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = LightColors, typography = AppTypography, content = content)
 }

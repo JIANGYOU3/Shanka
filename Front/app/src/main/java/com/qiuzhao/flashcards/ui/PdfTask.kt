@@ -194,7 +194,7 @@ internal fun PdfTaskScreen(state: PdfTaskState, onPause: () -> Unit, onResume: (
 
 @Composable
 private fun TaskGenerationCard(paused: Boolean, designScale: Float, modifier: Modifier = Modifier) {
-    val surface = if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFFF0F8FF) else Color(0xFF233D55)
+    val surface = AppColors.Blue.background
     Surface(
         shape = RoundedCornerShape((32 * designScale).dp),
         color = surface,
@@ -206,21 +206,21 @@ private fun TaskGenerationCard(paused: Boolean, designScale: Float, modifier: Mo
             verticalArrangement = Arrangement.spacedBy((20 * designScale).dp)
         ) {
             if (paused) {
-                MaterialSymbol("pause_circle", null, tint = Color(0xFF489FFF), size = fixedSp(80 * designScale), filled = true)
+                MaterialSymbol("pause_circle", null, tint = AppColors.Blue.primary, size = fixedSp(80 * designScale), filled = true)
             } else {
                 Md3ExpressiveIndeterminateRing(designScale)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((8 * designScale).dp)) {
                 AppText(if (paused) "生成已暂停" else "正在生成闪卡", AppTextRole.PageTitle, color = PageForegroundColor(), designScale = designScale)
                 if (paused) {
-                    AppText("已保留当前生成进度", AppTextRole.CardSubtitle, color = Color(0xFF8C939A), designScale = designScale, textAlign = TextAlign.Center)
+                    AppText("已保留当前生成进度", AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = designScale, textAlign = TextAlign.Center)
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy((4 * designScale).dp)
                     ) {
                         listOf("已整理学习内容", "正在生成卡片", "正在检查结果").forEach { label ->
-                            AppText(label, AppTextRole.CardSubtitle, color = Color(0xFF8C939A), designScale = designScale, textAlign = TextAlign.Center)
+                            AppText(label, AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = designScale, textAlign = TextAlign.Center)
                         }
                     }
                 }
@@ -243,7 +243,7 @@ private fun Md3ExpressiveIndeterminateRing(designScale: Float) {
         val inset = stroke / 2f
         val bounds = androidx.compose.ui.geometry.Rect(inset, inset, size.width - inset, size.height - inset)
         drawArc(
-            color = Color(0xFFD1E8FF),
+            color = AppColors.Blue.primarySecondary,
             startAngle = rotation - 220f,
             sweepAngle = 220f,
             useCenter = false,
@@ -252,7 +252,7 @@ private fun Md3ExpressiveIndeterminateRing(designScale: Float) {
             style = Stroke(stroke, cap = StrokeCap.Round)
         )
         drawArc(
-            color = Color(0xFF489FFF),
+            color = AppColors.Blue.primary,
             startAngle = rotation + 50f,
             sweepAngle = 44f,
             useCenter = false,
@@ -265,7 +265,7 @@ private fun Md3ExpressiveIndeterminateRing(designScale: Float) {
 
 @Composable
 private fun TaskCompletedCard(designScale: Float, modifier: Modifier = Modifier) {
-    val surface = if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFFF0F8FF) else Color(0xFF233D55)
+    val surface = AppColors.Blue.background
     Surface(
         shape = RoundedCornerShape((32 * designScale).dp),
         color = surface,
@@ -278,18 +278,18 @@ private fun TaskCompletedCard(designScale: Float, modifier: Modifier = Modifier)
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy((20 * designScale).dp)
         ) {
-            MaterialSymbol("check_circle", null, tint = Color(0xFF43B64B), size = fixedSp(80 * designScale), filled = true)
+            MaterialSymbol("check_circle", null, tint = AppColors.Green.primaryStrong, size = fixedSp(80 * designScale), filled = true)
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((8 * designScale).dp)) {
-                AppText("卡片组生成完成", AppTextRole.PageTitle, color = Color(0xFF1F2832), designScale = designScale)
-                AppText("共生成42张闪卡", AppTextRole.CardSubtitle, color = Color(0xFF8C939A), designScale = designScale)
+                AppText("卡片组生成完成", AppTextRole.PageTitle, color = AppColors.TextIconDark, designScale = designScale)
+                AppText("共生成42张闪卡", AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = designScale)
             }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)
             ) {
-                TaskTypeChip("基础记忆", "17", Color(0xFF84BFFF), Color(0xFF183A5E), designScale, Modifier.weight(1f))
-                TaskTypeChip("理解分析", "9", Color(0xFF7DCC85), Color(0xFF05460C), designScale, Modifier.weight(1f))
-                TaskTypeChip("综合应用", "16", Color(0xFFE87F77), Color(0xFF591B16), designScale, Modifier.weight(1f))
+                TaskTypeChip("基础记忆", "17", AppColors.Blue.primarySecondary, AppColors.Blue.ink, designScale, Modifier.weight(1f))
+                TaskTypeChip("理解分析", "9", AppColors.Green.primarySecondary, AppColors.Green.ink, designScale, Modifier.weight(1f))
+                TaskTypeChip("综合应用", "16", AppColors.Pink.primarySecondary, AppColors.Pink.ink, designScale, Modifier.weight(1f))
             }
         }
     }

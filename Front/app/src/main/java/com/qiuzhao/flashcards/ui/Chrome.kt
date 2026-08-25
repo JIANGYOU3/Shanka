@@ -180,7 +180,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     // Do not briefly render Home while the local account record is loading or the
     // first-login destination is being placed on the stack.
     if (!accountBootstrap.loaded || shouldOpenFirstLogin) {
-        Box(Modifier.fillMaxSize().background(Color(0xFFF0F8FF)))
+        Box(Modifier.fillMaxSize().background(AppColors.Blue.background))
         return
     }
     val selectedRootTab = when (navigationState.selectedTopLevel) {
@@ -191,7 +191,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     }
 
     val typedEntryProvider = entryProvider {
-        entry<AppRoute.Home> { HomeScreen(decks, dueCount, navigator) }
+        entry<AppRoute.Home> { HomeScreen(decks, projects, dueCount, navigator) }
         entry<AppRoute.Project> { ProjectScreen(projects, decks, projectSearchQuery, navigator) }
         entry<AppRoute.ProjectCreate> { ProjectCreateScreen(viewModel, navigator) }
         entry<AppRoute.ProjectDetail> { route ->
@@ -468,7 +468,7 @@ private fun ImageAvatar(
         modifier = Modifier.size(size).clip(RoundedCornerShape(999.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(Color(0xFF99C9FF), Color(0xFF489FFF))
+                    colors = listOf(AppColors.Blue.primarySecondary, AppColors.Blue.primary)
                 )
             )
             .padding((4f / 56f * size.value).dp)
@@ -476,12 +476,12 @@ private fun ImageAvatar(
     ) {
         if (account == null) {
             Surface(
-                color = Color.White,
+                color = AppColors.Card,
                 shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol("login", "登录", tint = Color(0xFF489FFF), size = fixedSp(24f / 56f * size.value), filled = true)
+                    MaterialSymbol("login", "登录", tint = AppColors.Blue.primary, size = fixedSp(24f / 56f * size.value), filled = true)
                 }
             }
         } else {
@@ -515,7 +515,7 @@ private fun StudySearchField(
             decorationBox = { innerTextField ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (query.isEmpty()) {
-                        AppText("搜索", AppTextRole.CardTitle, color = Color(0xFF8C97A3), designScale = designScale)
+                        AppText("搜索", AppTextRole.CardTitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = designScale)
                     }
                     innerTextField()
                 }

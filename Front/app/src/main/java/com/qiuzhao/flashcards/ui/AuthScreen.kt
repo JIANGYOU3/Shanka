@@ -84,7 +84,7 @@ internal fun LoginScreen(
     // visible only after its source button has completely settled.
     BackHandler(enabled = loginRevealStarted) {}
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFFF0F8FF))
+        modifier = Modifier.fillMaxSize().background(AppColors.Blue.background)
     ) {
         LoginBackgroundCards(scale)
         if (showBack) {
@@ -96,10 +96,10 @@ internal fun LoginScreen(
                 RoundIconButton(
                     symbol = "arrow_back",
                     description = "返回",
-                    color = Color(0xFFF0F8FF),
+                    color = AppColors.Blue.background,
                     onClick = nav::popBackStack,
                     size = (56 * scale).dp,
-                    tint = Color(0xFF374B61)
+                    tint = AppColors.Blue.ink
                 )
             }
         }
@@ -112,13 +112,13 @@ internal fun LoginScreen(
             AppText(
                 "欢迎使用，请登录",
                 AppTextRole.AuthHeroTitle,
-                color = Color(0xCC000000),
+                color = AppColors.TextIconDark,
                 designScale = scale,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height((56 * scale).dp))
             Surface(
-                color = Color.White,
+                color = AppColors.Card,
                 shape = RoundedCornerShape((48 * scale).dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -129,18 +129,18 @@ internal fun LoginScreen(
                     AuthField(
                         label = "邮箱", placeholder = "请输入邮箱", icon = "alternate_email",
                         value = email, onValueChange = { email = it }, secret = false, scale = scale,
-                        fieldColor = Color(0xFFEBF4FF), fieldCornerRadius = 32f
+                        fieldColor = AppColors.Blue.surface, fieldCornerRadius = 32f
                     )
                     AuthField(
                         label = "密码", placeholder = "请输入密码", icon = "lock",
                         value = password, onValueChange = { password = it }, secret = true, scale = scale,
-                        fieldColor = Color(0xFFEBF4FF), fieldCornerRadius = 32f
+                        fieldColor = AppColors.Blue.surface, fieldCornerRadius = 32f
                     )
                     AppText(
                         "忘记密码？",
                         AppTextRole.CardSubtitle,
                         modifier = Modifier.fillMaxWidth().clickable { message = "请使用注册邮箱联系支持以重置密码。" },
-                        color = Color(0xFF104176),
+                        color = AppColors.Blue.ink,
                         designScale = scale,
                         textAlign = TextAlign.End
                     )
@@ -148,8 +148,8 @@ internal fun LoginScreen(
                     AuthIconButton(
                         text = "完成登录",
                         icon = "login",
-                        color = Color(0xFF489FFF),
-                        contentColor = Color(0xE6FFFFFF),
+                        color = AppColors.Blue.primary,
+                        contentColor = AppColors.TextIconLight,
                         scale = scale,
                         enabled = !loginRevealStarted,
                         modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -168,8 +168,8 @@ internal fun LoginScreen(
                             AuthIconButton(
                                 text = "直接进入",
                                 icon = "front_hand",
-                                color = Color(0xFFEBF4FF),
-                                contentColor = Color(0xCC000000),
+                                color = AppColors.Blue.surface,
+                                contentColor = AppColors.TextIconDark,
                                 scale = scale,
                                 enabled = !loginRevealStarted,
                                 modifier = Modifier.weight(1f),
@@ -178,8 +178,8 @@ internal fun LoginScreen(
                             AuthIconButton(
                                 text = "还未注册",
                                 icon = "app_registration",
-                                color = Color(0xFFEBF4FF),
-                                contentColor = Color(0xCC000000),
+                                color = AppColors.Blue.surface,
+                                contentColor = AppColors.TextIconDark,
                                 scale = scale,
                                 enabled = !loginRevealStarted,
                                 modifier = Modifier.weight(1f)
@@ -191,8 +191,8 @@ internal fun LoginScreen(
                         AuthIconButton(
                             text = "还未注册",
                             icon = "app_registration",
-                            color = Color(0xFFEBF4FF),
-                            contentColor = Color(0xCC000000),
+                            color = AppColors.Blue.surface,
+                            contentColor = AppColors.TextIconDark,
                             scale = scale,
                             enabled = !loginRevealStarted
                         ) {
@@ -284,8 +284,8 @@ private fun LoginSuccessReveal(
             // The colour starts shifting after the expansion is visibly underway
             // and remains continuous through the Figma homepage's #FFFFFF.
             val color = lerp(
-                Color(0xFF489FFF),
-                Color.White,
+                AppColors.Blue.primary,
+                AppColors.Card,
                 ((fraction - .12f) / .88f).coerceIn(0f, 1f)
             )
             drawRoundRect(
@@ -349,12 +349,12 @@ private fun AuthField(
     onValueChange: (String) -> Unit,
     secret: Boolean,
     scale: Float,
-    fieldColor: Color = Color(0xFFF0F8FF),
+    fieldColor: Color = AppColors.Blue.background,
     fieldCornerRadius: Float = 16f
 ) {
     val textRole = if (value.isBlank()) AppTextRole.Supporting else AppTextRole.CardTitle
     Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-        AppText(label, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (8 * scale).dp), color = Color(0xFF242436), designScale = scale)
+        AppText(label, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (8 * scale).dp), color = AppColors.TextIconDark, designScale = scale)
         Surface(
             color = fieldColor,
             shape = RoundedCornerShape((fieldCornerRadius * scale).dp),
@@ -365,7 +365,7 @@ private fun AuthField(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = appInputTextStyle(textRole, scale, Color(0xFF242436)),
+                    textStyle = appInputTextStyle(textRole, scale, AppColors.TextIconDark),
                     visualTransformation = if (secret) PasswordVisualTransformation() else rememberBilingualInputTransformation(textRole, scale),
                     singleLine = true,
                     decorationBox = { inner ->
@@ -374,7 +374,7 @@ private fun AuthField(
                                 modifier = Modifier.align(Alignment.CenterStart),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                MaterialSymbol(icon, null, tint = Color(0xFF4C5964), size = fixedSp(24 * scale), filled = true)
+                                MaterialSymbol(icon, null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true)
                                 Spacer(Modifier.width((16 * scale).dp))
                             }
                             Box(
@@ -386,7 +386,7 @@ private fun AuthField(
                                     AppText(
                                         placeholder,
                                         AppTextRole.Supporting,
-                                        color = Color(0x80000000),
+                                        color = AppColors.TextIconDark.copy(alpha = .625f),
                                         designScale = scale
                                     )
                                 }
@@ -575,7 +575,7 @@ private fun AnimatedBackgroundCard(
     val turn = ((flipDegrees % 360f) + 360f) % 360f
     val faceRotation = turn % 180f
     val showingBack = turn in 90f..270f
-    val faceColor = if (showingBack) Color(0xFF90C4FF) else Color(0xFFCDE5FF)
+    val faceColor = if (showingBack) AppColors.Blue.primary else AppColors.Blue.primarySecondary
     // The Figma card wrappers are intentionally larger than the viewport. A
     // Compose child using those dimensions is constrained and re-centred by its
     // parent, which displaced the lower-left card. Draw in the viewport instead:
@@ -614,7 +614,7 @@ private fun AnimatedBackgroundCard(
 
 @Composable
 private fun AuthHintCard(text: String, scale: Float) = Surface(
-    color = Color(0xFFF0F8FF),
+    color = AppColors.Blue.background,
     shape = RoundedCornerShape((32 * scale).dp),
     modifier = Modifier.fillMaxWidth().height((72 * scale).dp)
 ) {
@@ -622,15 +622,15 @@ private fun AuthHintCard(text: String, scale: Float) = Surface(
         modifier = Modifier.padding(horizontal = (24 * scale).dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        AppText(text, AppTextRole.Supporting, color = Color(0xFF242436), designScale = scale)
+        AppText(text, AppTextRole.Supporting, color = AppColors.TextIconDark, designScale = scale)
     }
 }
 
 @Composable
 private fun AuthPrimaryButton(text: String, scale: Float, onClick: () -> Unit) = Surface(
     onClick = onClick,
-    color = Color(0xFF489FFF),
-    contentColor = Color(0xFFEBF5FF),
+    color = AppColors.Blue.primary,
+    contentColor = AppColors.TextIconLight,
     shape = RoundedCornerShape((24 * scale).dp),
     modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
 ) {
@@ -669,8 +669,8 @@ private fun AuthIconButton(
 @Composable
 private fun AuthSecondaryButton(text: String, scale: Float, onClick: () -> Unit) = Surface(
     onClick = onClick,
-    color = Color(0xFFF0F8FF),
-    contentColor = Color(0xFF1760AC),
+    color = AppColors.Blue.background,
+    contentColor = AppColors.Blue.ink,
     shape = RoundedCornerShape((24 * scale).dp),
     modifier = Modifier.fillMaxWidth().height((56 * scale).dp)
 ) {
@@ -679,9 +679,9 @@ private fun AuthSecondaryButton(text: String, scale: Float, onClick: () -> Unit)
 
 @Composable
 private fun AuthMessage(text: String, scale: Float) = Surface(
-    color = Color(0xFFFFECEA),
+    color = AppColors.Pink.background,
     shape = RoundedCornerShape((16 * scale).dp),
     modifier = Modifier.fillMaxWidth()
 ) {
-    AppText(text, AppTextRole.Supporting, modifier = Modifier.padding((16 * scale).dp), color = Color(0xFF9D2722), designScale = scale)
+    AppText(text, AppTextRole.Supporting, modifier = Modifier.padding((16 * scale).dp), color = AppColors.Warning, designScale = scale)
 }

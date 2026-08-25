@@ -174,8 +174,8 @@ internal fun PdfSettingsScreen(
     PdfFlowLayout("生成设置", onBack, footer = {
         Surface(
             onClick = { onPreview(basicBoundary, analysisBoundary) },
-            color = Color(0xFF489FFF),
-            contentColor = Color(0xFFEBF5FF),
+            color = AppColors.Blue.primary,
+            contentColor = AppColors.TextIconLight,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
         ) {
@@ -244,7 +244,7 @@ internal fun PdfSettingsScreen(
                 AppText(
                     "左右拉动拉杆可改变题库难度比例。\n从左到右对应从易到难。",
                     AppTextRole.CardSubtitle,
-                    color = Color(0xFF8C939A),
+                    color = AppColors.TextIconDark.copy(alpha = .55f),
                     designScale = scale
                 )
             }
@@ -256,8 +256,8 @@ internal fun PdfSettingsScreen(
                         val selected = coverage == label
                         Surface(
                             onClick = { onCoverageChange(label) },
-                            color = if (selected) Color(0xFF489FFF) else Color.White,
-                            contentColor = if (selected) Color(0xFFEBF5FF) else Color(0xFF001832),
+                            color = if (selected) AppColors.Blue.primary else AppColors.Card,
+                            contentColor = if (selected) AppColors.TextIconLight else AppColors.Blue.ink,
                             shape = RoundedCornerShape((32 * scale).dp),
                             modifier = Modifier.weight(1f).height((56 * scale).dp)
                         ) {
@@ -276,7 +276,7 @@ internal fun PdfSettingsScreen(
                 AppText(
                     "解释说明文字",
                     AppTextRole.CardSubtitle,
-                    color = Color(0xFF8C939A),
+                    color = AppColors.TextIconDark.copy(alpha = .55f),
                     designScale = scale
                 )
             }
@@ -291,7 +291,7 @@ internal fun PdfSettingsScreen(
 
 @Composable
 private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, content: @Composable ColumnScope.() -> Unit) = Surface(
-    color = Color(0xFFF0F8FF),
+    color = AppColors.Blue.background,
     shape = RoundedCornerShape((32 * scale).dp),
     modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = AppMotion.emphasisSpring())
 ) {
@@ -300,8 +300,8 @@ private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, co
         verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-            MaterialSymbol(icon, null, tint = Color(0xFF001832), size = fixedSp(24 * scale), filled = true)
-            AppText(title, AppTextRole.CardTitle, color = Color(0xFF001832), designScale = scale, maxLines = 1)
+            MaterialSymbol(icon, null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true)
+            AppText(title, AppTextRole.CardTitle, color = AppColors.Blue.ink, designScale = scale, maxLines = 1)
         }
         content()
     }
@@ -311,12 +311,12 @@ private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, co
 private fun PdfDestinationChoice(label: String, selected: Boolean, scale: Float, onClick: () -> Unit) = Surface(
     onClick = onClick,
     shape = RoundedCornerShape((32 * scale).dp),
-    color = if (selected) Color(0xFFC3E3FF) else Color.White,
+    color = if (selected) AppColors.Blue.surface else AppColors.Card,
     modifier = Modifier.fillMaxWidth().height((64 * scale).dp)
 ) {
     Row(Modifier.padding(horizontal = (16 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-        MaterialSymbol(if (selected) "radio_button_checked" else "radio_button_unchecked", null, tint = if (selected) Color(0xFF489FFF) else Color(0xFF001832), size = fixedSp(24 * scale), filled = selected)
-        AppText(label, AppTextRole.Body, color = Color(0xFF001832), designScale = scale, maxLines = 1)
+        MaterialSymbol(if (selected) "radio_button_checked" else "radio_button_unchecked", null, tint = if (selected) AppColors.Blue.primary else AppColors.Blue.ink, size = fixedSp(24 * scale), filled = selected)
+        AppText(label, AppTextRole.Body, color = AppColors.Blue.ink, designScale = scale, maxLines = 1)
     }
 }
 
@@ -329,15 +329,15 @@ private fun PdfDeckNameField(value: String, isExistingDeck: Boolean, scale: Floa
             readOnly = isExistingDeck,
             placeholder = { AppText("此处输入牌组名称", AppTextRole.CardSubtitle, designScale = scale) },
             trailingIcon = {
-                IconButton(onClick = onClear) { MaterialSymbol("cancel", "清除牌组选择", tint = Color(0xFF4C5964), size = fixedSp(24 * scale), filled = true) }
+                IconButton(onClick = onClear) { MaterialSymbol("cancel", "清除牌组选择", tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true) }
             },
-            textStyle = appInputTextStyle(AppTextRole.CardSubtitle, scale, Color(0xFF001832)),
+            textStyle = appInputTextStyle(AppTextRole.CardSubtitle, scale, AppColors.Blue.ink),
             visualTransformation = rememberBilingualInputTransformation(AppTextRole.CardSubtitle, scale),
             shape = RoundedCornerShape((16 * scale).dp),
             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color(0xFF17518A),
-                unfocusedBorderColor = Color(0xFF17518A),
-                cursorColor = Color(0xFF17518A)
+                focusedBorderColor = AppColors.Blue.primaryStrong,
+                unfocusedBorderColor = AppColors.Blue.primaryStrong,
+                cursorColor = AppColors.Blue.primaryStrong
             ),
             singleLine = true,
             modifier = Modifier.fillMaxSize().then(
@@ -348,8 +348,8 @@ private fun PdfDeckNameField(value: String, isExistingDeck: Boolean, scale: Floa
             "牌组名称",
             AppTextRole.Label,
             modifier = Modifier.align(Alignment.TopStart).offset(x = (12 * scale).dp, y = (-9 * scale).dp)
-                .background(Color(0xFFF0F8FF)).padding(horizontal = (4 * scale).dp).zIndex(1f),
-            color = Color(0xFF17518A),
+                .background(AppColors.Blue.background).padding(horizontal = (4 * scale).dp).zIndex(1f),
+            color = AppColors.Blue.primaryStrong,
             designScale = scale,
             maxLines = 1
         )
@@ -361,7 +361,7 @@ private fun PdfDeckPickerMenu(decks: List<DeckSummary>, scale: Float, onSelect: 
     Surface(
         // Figma 166:8299 menu surface (the destination rows keep their own
         // selected-state token, while this picker uses the lighter menu blue).
-        color = Color(0xFFD1E8FF),
+        color = AppColors.Blue.primarySecondary,
         shape = RoundedCornerShape((20 * scale).dp),
         modifier = Modifier.fillMaxWidth().height((231 * scale).dp).clip(RoundedCornerShape((20 * scale).dp))
     ) {
@@ -377,7 +377,7 @@ private fun PdfDeckPickerMenu(decks: List<DeckSummary>, scale: Float, onSelect: 
                     AppText(
                         "暂无可用牌组",
                         AppTextRole.Body,
-                        color = Color(0xBF001D36),
+                        color = AppColors.Blue.ink.copy(alpha = .75f),
                         designScale = scale
                     )
                 }
@@ -389,17 +389,17 @@ private fun PdfDeckPickerMenu(decks: List<DeckSummary>, scale: Float, onSelect: 
                     verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-                        MaterialSymbol("style", null, tint = Color(0xBF001D36), size = fixedSp(24 * scale), filled = true)
+                        MaterialSymbol("style", null, tint = AppColors.Blue.ink.copy(alpha = .75f), size = fixedSp(24 * scale), filled = true)
                         AppText(
                             displayDeckTitle(deck),
                             AppTextRole.Body,
-                            color = Color(0xBF001D36),
+                            color = AppColors.Blue.ink.copy(alpha = .75f),
                             designScale = scale,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    HorizontalDivider(color = Color(0x1A002A4D), thickness = 1.dp)
+                    HorizontalDivider(color = AppColors.Blue.ink.copy(alpha = .1f), thickness = 1.dp)
                 }
             }
         }
@@ -408,18 +408,18 @@ private fun PdfDeckPickerMenu(decks: List<DeckSummary>, scale: Float, onSelect: 
 
 @Composable
 private fun PdfRequirementField(value: String, onValueChange: (String) -> Unit, scale: Float) = Surface(
-    color = Color.White,
+    color = AppColors.Card,
     shape = RoundedCornerShape((32 * scale).dp),
     modifier = Modifier.fillMaxWidth().height((86 * scale).dp)
 ) {
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        textStyle = appInputTextStyle(AppTextRole.Body, scale, Color(0xFF001832)),
+        textStyle = appInputTextStyle(AppTextRole.Body, scale, AppColors.Blue.ink),
         visualTransformation = rememberBilingualInputTransformation(AppTextRole.Body, scale),
         modifier = Modifier.fillMaxSize().padding((16 * scale).dp),
         decorationBox = { input ->
-            if (value.isEmpty()) AppText("此处输入文本", AppTextRole.Body, color = Color(0x80000000), designScale = scale)
+            if (value.isEmpty()) AppText("此处输入文本", AppTextRole.Body, color = AppColors.TextIconDark.copy(alpha = .625f), designScale = scale)
             input()
         }
     )
@@ -435,22 +435,22 @@ private fun PdfDifficultyDistribution(
     val basic = basicBoundary.roundToInt()
     val analysis = (analysisBoundary - basicBoundary).roundToInt()
     val advanced = 100 - analysisBoundary.roundToInt()
-    val basicColor = Color(0xFF84BFFF)
-    val analysisColor = Color(0xFF7DCC85)
-    val advancedColor = Color(0xFFE87F77)
+    val basicColor = AppColors.Blue.primarySecondary
+    val analysisColor = AppColors.Green.primarySecondary
+    val advancedColor = AppColors.Pink.primarySecondary
 
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        PdfDifficultyLabel("基础记忆", basic, basicColor, Color(0xFF00254F), scale)
-        PdfDifficultyLabel("理解分析", analysis, analysisColor, Color(0xFF004E08), scale)
-        PdfDifficultyLabel("综合应用", advanced, advancedColor, Color(0xFF670700), scale)
+        PdfDifficultyLabel("基础记忆", basic, basicColor, AppColors.Blue.ink, scale)
+        PdfDifficultyLabel("理解分析", analysis, analysisColor, AppColors.Green.ink, scale)
+        PdfDifficultyLabel("综合应用", advanced, advancedColor, AppColors.Pink.ink, scale)
     }
     PdfDifficultyRangeSlider(
         basicBoundary = basicBoundary,
         analysisBoundary = analysisBoundary,
         scale = scale,
-        basicColor = Color(0xFF489FFF),
-        analysisColor = Color(0xFF489FFF),
-        advancedColor = Color(0xFF489FFF),
+        basicColor = AppColors.Blue.primary,
+        analysisColor = AppColors.Blue.primary,
+        advancedColor = AppColors.Blue.primary,
         onBoundariesChange = onBoundariesChange
     )
 }
@@ -478,7 +478,7 @@ private fun PdfDifficultyRangeSlider(
     advancedColor: Color,
     onBoundariesChange: (basicBoundary: Float, analysisBoundary: Float) -> Unit
 ) {
-    val thumbColor = Color(0xFFA9D2FF)
+    val thumbColor = AppColors.Blue.primarySecondary
     val currentBasic by rememberUpdatedState(basicBoundary)
     val currentAnalysis by rememberUpdatedState(analysisBoundary)
     val onCurrentBoundariesChange by rememberUpdatedState(onBoundariesChange)

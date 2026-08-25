@@ -141,6 +141,7 @@ import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.remote.Dashboard
+import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.R
@@ -188,16 +189,78 @@ internal data class DeckTheme(
 )
 
 internal val DeckThemes = listOf(
-    // Figma 257:6634: card panel is intentionally distinct from the secondary
-    // button/container token documented in Figma 258:7544.
-    DeckTheme("azure", "蓝色", Color(0xFF489FFF), Color(0xFF489FFF), Color(0xFF005AB8), Color(0xFF489FFF), Color(0xFFEFF6FF), Color(0xFFF0F8FF), Color(0xFFD0E7FF), Color(0xFFC3E1FF), Color(0xFF003C7A), Color(0xCC000000), Color(0xFF003C7A), Color(0xFFC3E1FF)),
-    DeckTheme("violet", "紫色", Color(0xFF716FDD), Color(0xFF716FDD), Color(0xFF3836B7), Color(0xFF716FDD), Color(0xFFEFF6FF), Color(0xFFF3F3FF), Color(0xFFE4E4FF), Color(0xFFDDDDFF), Color(0xFF38387A), Color(0xCC000000), Color(0xFF38387A), Color(0xFFDDDDFF)),
-    DeckTheme("mint", "绿色", Color(0xFF7AC583), Color(0xFF7AC583), Color(0xFF138120), Color(0xFF7AC583), Color(0xFFEFF6FF), Color(0xFFEAFBEB), Color(0xFFCDEFD1), Color(0xFFBFEEC4), Color(0xFF1F5225), Color(0xCC000000), Color(0xFF1F5225), Color(0xFFBFEEC4)),
-    DeckTheme("coral", "粉色", Color(0xFFEF9BBE), Color(0xFFEF9BBE), Color(0xFFAA0047), Color(0xFFEF9BBE), Color(0xFFEFF6FF), Color(0xFFFFF5F9), Color(0xFFFFE2EE), Color(0xFFF7CEDF), Color(0xFF4E1B30), Color(0xCC000000), Color(0xFF4E1B30), Color(0xFFF7CEDF)),
-    DeckTheme("amber", "黄色", Color(0xFFE1BA5E), Color(0xFFE1BA5E), Color(0xFF906500), Color(0xFFE1BA5E), Color(0xFFEFF6FF), Color(0xFFFFFAEF), Color(0xFFFBEED2), Color(0xFFF8E9C5), Color(0xFF51411B), Color(0xCC000000), Color(0xFF51411B), Color(0xFFF8E9C5))
+    deckTheme("azure", "蓝色", AppColors.Blue),
+    deckTheme("violet", "紫色", AppColors.Purple),
+    deckTheme("mint", "绿色", AppColors.Green),
+    deckTheme("coral", "粉色", AppColors.Pink),
+    deckTheme("amber", "黄色", AppColors.Orange)
+)
+
+/** Decks reference one of the five Figma families; no screen-local swatches. */
+private fun deckTheme(key: String, label: String, colors: AppColorFamily) = DeckTheme(
+    key = key,
+    label = label,
+    primary = colors.primary,
+    action = colors.primary,
+    progress = colors.primaryStrong,
+    progressFill = colors.primary,
+    onPrimary = AppColors.TextIconLight,
+    surface = colors.background,
+    cardPanel = colors.surface,
+    secondary = colors.primarySecondary,
+    strongText = colors.ink,
+    text = AppColors.TextIconDark,
+    mutedText = colors.ink,
+    progressTrack = colors.primarySecondary
 )
 
 internal fun deckTheme(deck: DeckSummary): DeckTheme = DeckThemes.firstOrNull { it.key == deck.themeKey } ?: DeckThemes.first()
+
+/**
+ * Card-group colour is owned by its project. The deck field remains a legacy
+ * fallback so standalone server decks keep their established appearance until
+ * the project migration is complete.
+ */
+internal fun deckTheme(deck: DeckSummary, projects: List<ProjectSummary>): DeckTheme =
+    deck.projectId
+        ?.let { projectId -> projects.firstOrNull { it.id == projectId } }
+        ?.let(::deckTheme)
+        ?: deckTheme(deck)
+
+internal fun deckTheme(project: ProjectSummary): DeckTheme =
+    DeckThemes.firstOrNull { it.key == project.themeKey } ?: DeckThemes.first()
+
+/** The project detail deliberately alternates quiet and tinted card surfaces. */
+internal enum class ProjectThemedCardVariant { TINTED, WHITE }
+
+internal fun projectThemedCardVariant(index: Int): ProjectThemedCardVariant =
+    if (index % 2 == 0) ProjectThemedCardVariant.TINTED else ProjectThemedCardVariant.WHITE
+
+internal data class ProjectThemedCardPalette(
+    val background: Color,
+    val panel: Color,
+    val badge: Color,
+    val progressTrack: Color
+)
+
+/** Nested surfaces retain their project colour even when the outer card is white. */
+internal fun projectThemedCardPalette(
+    theme: DeckTheme,
+    variant: ProjectThemedCardVariant
+): ProjectThemedCardPalette = when (variant) {
+    ProjectThemedCardVariant.TINTED -> ProjectThemedCardPalette(
+        background = theme.surface,
+        panel = theme.cardPanel,
+        badge = theme.cardPanel,
+        progressTrack = theme.surface
+    )
+    ProjectThemedCardVariant.WHITE -> ProjectThemedCardPalette(
+        background = AppColors.Card,
+        panel = theme.surface,
+        badge = theme.surface,
+        progressTrack = theme.cardPanel
+    )
+}
 
 @Composable
 internal fun studyDeckVisual(deck: DeckSummary, @Suppress("UNUSED_PARAMETER") index: Int): StudyDeckVisual {
@@ -215,9 +278,7 @@ internal fun studyDeckVisual(deck: DeckSummary, @Suppress("UNUSED_PARAMETER") in
         progress = theme.progress,
         progressFill = theme.progressFill,
         progressLabel = theme.strongText,
-        // The progress component's unfilled track uses the deck surface token.
-        // For violet this is Figma 248:6231's exact #F3F3FF.
-        progressTrack = theme.surface,
+        progressTrack = theme.progressTrack,
         action = theme.action
     )
 }

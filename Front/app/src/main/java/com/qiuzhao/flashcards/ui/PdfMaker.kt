@@ -509,7 +509,7 @@ private fun SmartFileImportScreen(
 @Composable
 private fun SmartInfoCard(text: String, scale: Float) {
     Surface(
-        color = Color(0xFFF0F8FF),
+        color = AppColors.Blue.background,
         shape = RoundedCornerShape((32 * scale).dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -517,7 +517,7 @@ private fun SmartInfoCard(text: String, scale: Float) {
             text = text,
             role = AppTextRole.Supporting,
             modifier = Modifier.padding((24 * scale).dp),
-            color = Color(0xBF000000),
+            color = AppColors.TextIconDark.copy(alpha = .75f),
             designScale = scale
         )
     }
@@ -529,7 +529,7 @@ private fun SmartSectionLabel(text: String, scale: Float) {
         text = text,
         role = AppTextRole.Supporting,
         modifier = Modifier.padding(start = (8 * scale).dp),
-        color = Color(0xFF1F2832),
+        color = AppColors.TextIconDark,
         designScale = scale
     )
 }
@@ -576,8 +576,8 @@ private fun SmartSwipeDeleteContainer(
         Surface(
             onClick = onDelete,
             shape = shape,
-            color = Color(0xFFBD3F3F),
-            contentColor = Color(0xFFFFEDED),
+            color = AppColors.Warning,
+            contentColor = AppColors.TextIconLight,
             modifier = Modifier.align(Alignment.CenterEnd).width(actionWidth).fillMaxHeight()
         ) {
             Column(
@@ -619,10 +619,10 @@ private fun SmartSelectableCard(
     // Figma 167:9679 / 222:4713.  These two selectable components share the
     // exact blue/green state pair; keeping it here prevents the file and
     // chapter flows from drifting apart again.
-    val surface = if (selected) Color(0xFFEAFBEB) else Color(0xFFF0F8FF)
-    val accent = if (selected) Color(0xFF7AC583) else Color(0xFF489FFF)
-    val primary = Color(0xCC000000)
-    val onAccent = if (selected) Color(0xFFEAFBEB) else Color(0xFFF0F8FF)
+    val surface = if (selected) AppColors.Green.background else AppColors.Blue.background
+    val accent = if (selected) AppColors.Green.primary else AppColors.Blue.primary
+    val primary = AppColors.TextIconDark
+    val onAccent = if (selected) AppColors.Green.background else AppColors.Blue.background
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape((32 * scale).dp),
@@ -654,7 +654,7 @@ private fun SmartSelectableCard(
                 AppText(
                     text = subtitle,
                     role = AppTextRole.CardSubtitle,
-                    color = Color(0x80000000),
+                    color = AppColors.TextIconDark.copy(alpha = .625f),
                     designScale = scale,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -686,7 +686,7 @@ private fun PdfRecognitionProgressCard() {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     Surface(
         shape = RoundedCornerShape((32 * scale).dp),
-        color = Color(0xFFF0F8FF),
+        color = AppColors.Blue.background,
         modifier = Modifier.fillMaxWidth().height((265 * scale).dp)
     ) {
         Column(
@@ -696,10 +696,10 @@ private fun PdfRecognitionProgressCard() {
         ) {
             PdfRecognitionRing(scale)
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
-                AppText("正在识别文件内容", AppTextRole.PageTitle, color = Color(0xFF1F2832), designScale = scale)
+                AppText("正在识别文件内容", AppTextRole.PageTitle, color = AppColors.TextIconDark, designScale = scale)
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) {
                     listOf("已识别文件", "正在整理内容", "正在检查结果").forEach { label ->
-                        AppText(label, AppTextRole.CardSubtitle, color = Color(0xFF8C939A), designScale = scale)
+                        AppText(label, AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = scale)
                     }
                 }
             }
@@ -715,8 +715,8 @@ private fun PdfRecognitionRing(scale: Float) {
         val stroke = with(this) { 8.dp.toPx() }
         val inset = stroke / 2f
         val bounds = androidx.compose.ui.geometry.Rect(inset, inset, size.width - inset, size.height - inset)
-        drawArc(Color(0xFFD1E8FF), rotation - 220f, 220f, false, bounds.topLeft, bounds.size, style = Stroke(stroke, cap = StrokeCap.Round))
-        drawArc(Color(0xFF489FFF), rotation + 50f, 44f, false, bounds.topLeft, bounds.size, style = Stroke(stroke, cap = StrokeCap.Round))
+        drawArc(AppColors.Blue.primarySecondary, rotation - 220f, 220f, false, bounds.topLeft, bounds.size, style = Stroke(stroke, cap = StrokeCap.Round))
+        drawArc(AppColors.Blue.primary, rotation + 50f, 44f, false, bounds.topLeft, bounds.size, style = Stroke(stroke, cap = StrokeCap.Round))
     }
 }
 
@@ -781,8 +781,8 @@ private fun PdfChapterScreen(
             BottomContentFade(scale, Modifier.align(Alignment.BottomCenter))
             Surface(
                 onClick = onNext,
-                color = Color(0xFF489FFF),
-                contentColor = Color(0xFFEBF5FF),
+                color = AppColors.Blue.primary,
+                contentColor = AppColors.TextIconLight,
                 shape = RoundedCornerShape((24 * scale).dp),
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(start = (16 * scale).dp, end = (16 * scale).dp, bottom = (32 * scale).dp)

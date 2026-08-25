@@ -65,11 +65,11 @@ internal fun ProjectScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
                 ProjectRootAction(
                     modifier = Modifier.weight(1f), icon = "create_new_folder", label = "添加项目",
-                    background = Color(0xFF489FFF), content = Color(0xFFEFF6FF)
+                    background = AppColors.Blue.primary, content = AppColors.TextIconLight
                 ) { nav.navigate(AppRoute.ProjectCreate) }
                 ProjectRootAction(
                     modifier = Modifier.weight(1f), icon = "edit_document", label = "资料管理",
-                    background = Color(0xFFEBF4FF), content = Color(0xFF425161)
+                    background = AppColors.Blue.primarySecondary, content = AppColors.Blue.ink
                 ) { nav.navigate(AppRoute.MaterialManagement) }
             }
             LazyColumn(
@@ -108,52 +108,21 @@ private fun ProjectRootAction(
 
 @Composable
 private fun ProjectSummaryCard(project: ProjectSummary, decks: List<DeckSummary>, scale: Float, onClick: () -> Unit) {
-    val theme = DeckThemes.firstOrNull { it.key == project.themeKey } ?: DeckThemes.first()
+    val theme = deckTheme(project)
     val totalCards = decks.sumOf { it.cardCount }
     val masteredCards = decks.sumOf { it.masteredCards }
     val ratio = if (totalCards == 0) 0f else masteredCards.toFloat() / totalCards
-    val percentage = (ratio * 100).toInt()
-    Surface(
-        onClick = onClick, color = theme.surface, contentColor = theme.text,
-        shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding((24 * scale).dp),
-            verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-                Surface(color = theme.primary, shape = RoundedCornerShape((16 * scale).dp), modifier = Modifier.size((56 * scale).dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        MaterialSymbol("heap_snapshot_multiple", null, tint = theme.onPrimary, size = fixedSp(24 * scale), filled = true)
-                    }
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) {
-                    AppText(project.name, AppTextRole.CardTitle, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        MaterialSymbol("brightness_alert", null, tint = Color(0xFFD23535), size = fixedSp(18 * scale), filled = true)
-                        AppText("高优先级", AppTextRole.CardSubtitle, color = Color(0xFFD23535), designScale = scale)
-                    }
-                }
-                Surface(color = theme.cardPanel, shape = RoundedCornerShape(999.dp), modifier = Modifier.height((36 * scale).dp)) {
-                    Row(Modifier.padding(horizontal = (16 * scale).dp, vertical = (6 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-                        MaterialSymbol("playing_cards", null, tint = theme.strongText, size = fixedSp(24 * scale), filled = true)
-                        AppText("${project.deckCount} group", AppTextRole.CardSubtitle, color = theme.strongText, designScale = scale)
-                    }
-                }
-            }
-            Surface(color = theme.cardPanel, shape = RoundedCornerShape((20 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        AppText("进度", AppTextRole.CardSubtitle, color = theme.strongText, designScale = scale)
-                        AppText("$percentage%", AppTextRole.MetricSmall, color = theme.progress, designScale = scale)
-                    }
-                    Box(Modifier.fillMaxWidth().height((20 * scale).dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = .58f))) {
-                        if (ratio > 0f) Box(Modifier.fillMaxHeight().fillMaxWidth(ratio).background(theme.progressFill))
-                    }
-                }
-            }
-        }
-    }
+    ProjectThemedCard(
+        title = project.name,
+        count = project.deckCount,
+        countLabel = "group",
+        progress = ratio,
+        theme = theme,
+        icon = "heap_snapshot_multiple",
+        variant = ProjectThemedCardVariant.TINTED,
+        designScale = scale,
+        onClick = onClick
+    )
 }
 
 /** Figma 588:1922. Geometry here deliberately mirrors the supplied creation screen. */
@@ -179,16 +148,16 @@ internal fun ProjectCreateScreen(viewModel: AppViewModel, nav: ScreenNavigator) 
                 contentPadding = PaddingValues(bottom = (112 * scale).dp)
             ) {
             item {
-                Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((72 * scale).dp)) {
+                Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((72 * scale).dp)) {
                     Box(Modifier.padding(horizontal = (24 * scale).dp), contentAlignment = Alignment.CenterStart) {
-                        AppText("可编辑主题色、名称，以及添加文件", AppTextRole.CardSubtitle, color = Color(0xCC242436), designScale = scale)
+                        AppText("可编辑主题色、名称，以及添加文件", AppTextRole.CardSubtitle, color = AppColors.TextIconDark, designScale = scale)
                     }
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-                    AppText("项目主题色", AppTextRole.SectionTitle, color = Color(0xCC000000), designScale = scale)
-                    Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((88 * scale).dp)) {
+                    AppText("项目主题色", AppTextRole.SectionTitle, color = AppColors.TextIconDark, designScale = scale)
+                    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((88 * scale).dp)) {
                         Row(Modifier.fillMaxSize().padding(horizontal = (12 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
                             DeckThemes.forEach { theme ->
                                 val selected = selectedTheme == theme.key
@@ -211,15 +180,15 @@ internal fun ProjectCreateScreen(viewModel: AppViewModel, nav: ScreenNavigator) 
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-                    AppText("项目名称", AppTextRole.SectionTitle, color = Color(0xCC000000), designScale = scale)
-                    Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((74 * scale).dp)) {
+                    AppText("项目名称", AppTextRole.SectionTitle, color = AppColors.TextIconDark, designScale = scale)
+                    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((74 * scale).dp)) {
                     androidx.compose.foundation.text.BasicTextField(
                         value = name, onValueChange = { name = it }, singleLine = true,
                         textStyle = appInputTextStyle(AppTextRole.CardTitle, scale, PageForegroundColor()),
                         visualTransformation = rememberBilingualInputTransformation(AppTextRole.CardTitle, scale),
                         modifier = Modifier.fillMaxSize().padding(horizontal = (24 * scale).dp),
                         decorationBox = { input -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                            if (name.isBlank()) AppText("例如：世界现代设计史", AppTextRole.CardTitle, color = Color(0xFF8C97A3), designScale = scale)
+                            if (name.isBlank()) AppText("例如：世界现代设计史", AppTextRole.CardTitle, color = AppColors.TextIconDark.copy(alpha = .55f), designScale = scale)
                             input()
                         } }
                     ) }
@@ -227,11 +196,11 @@ internal fun ProjectCreateScreen(viewModel: AppViewModel, nav: ScreenNavigator) 
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-                    AppText("添加学习资料", AppTextRole.SectionTitle, color = Color(0xCC000000), designScale = scale)
+                    AppText("添加学习资料", AppTextRole.SectionTitle, color = AppColors.TextIconDark, designScale = scale)
                     LearningMaterialsSection(scale)
                 }
             }
-                message?.let { item { AppText(it, AppTextRole.CardSubtitle, color = Color(0xFFD23535), designScale = scale) } }
+                message?.let { item { AppText(it, AppTextRole.CardSubtitle, color = AppColors.WarningStrong, designScale = scale) } }
             }
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter))
@@ -242,7 +211,7 @@ internal fun ProjectCreateScreen(viewModel: AppViewModel, nav: ScreenNavigator) 
                     if (error == null) nav.goBack()
                 }
             },
-            color = if (testMode) Color(0xFF489FFF) else Color(0xFFB7C7D9), contentColor = Color(0xFFEFF6FF),
+            color = if (testMode) AppColors.Blue.primary else AppColors.Blue.primarySecondary, contentColor = AppColors.TextIconLight,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp).fillMaxWidth().height((60 * scale).dp).zIndex(1f)
         ) {
@@ -272,21 +241,21 @@ private fun LearningMaterialsSection(scale: Float) = Column(verticalArrangement 
 private fun MaterialImportGroup(
     actionTitle: String, actionSubtitle: String, actionIcon: String, helpText: String,
     sampleFiles: List<Pair<String, String>>, scale: Float
-) = Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+) = Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
-        Surface(color = Color(0xFF489FFF), contentColor = Color.White, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((80 * scale).dp)) {
+        Surface(color = AppColors.Blue.primary, contentColor = AppColors.TextIconLight, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((80 * scale).dp)) {
             Row(Modifier.fillMaxSize().padding((12 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape(999.dp), modifier = Modifier.size((56 * scale).dp)) { Box(contentAlignment = Alignment.Center) { MaterialSymbol(actionIcon, null, tint = Color(0xFF425161), size = fixedSp(24 * scale), filled = true) } }
+                Surface(color = AppColors.Blue.background, shape = RoundedCornerShape(999.dp), modifier = Modifier.size((56 * scale).dp)) { Box(contentAlignment = Alignment.Center) { MaterialSymbol(actionIcon, null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true) } }
                 Spacer(Modifier.width((16 * scale).dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) {
                     AppText(actionTitle, AppTextRole.CardTitle, color = LocalContentColor.current, designScale = scale)
-                    AppText(actionSubtitle, AppTextRole.CardSubtitle, color = Color.White.copy(alpha = .75f), designScale = scale)
+                    AppText(actionSubtitle, AppTextRole.CardSubtitle, color = AppColors.TextIconLight.copy(alpha = .75f), designScale = scale)
                 }
                 MaterialSymbol("arrow_forward", actionTitle, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
             }
         }
-        Surface(color = Color.White, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-            Box(Modifier.padding((24 * scale).dp), contentAlignment = Alignment.CenterStart) { AppText(helpText, AppTextRole.Supporting, color = Color(0xFF242436), designScale = scale) }
+        Surface(color = AppColors.Card, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+            Box(Modifier.padding((24 * scale).dp), contentAlignment = Alignment.CenterStart) { AppText(helpText, AppTextRole.Supporting, color = AppColors.TextIconDark, designScale = scale) }
         }
         if (sampleFiles.isNotEmpty()) sampleFiles.forEach { (name, format) -> MaterialFileSample(name, format, scale) } else {
             TextMaterialSample("文本资料（标题）", scale)
@@ -297,19 +266,19 @@ private fun MaterialImportGroup(
 
 @Composable
 private fun MaterialFileSample(name: String, format: String, scale: Float) = Surface(
-    color = Color(0xFFD2EAFF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((104 * scale).dp)
+    color = AppColors.Blue.surface, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((104 * scale).dp)
 ) {
     Row(Modifier.fillMaxSize().padding((24 * scale).dp), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-        Surface(color = Color(0xFF489FFF), shape = RoundedCornerShape((16 * scale).dp), modifier = Modifier.size((56 * scale).dp)) { Box(contentAlignment = Alignment.Center) { MaterialSymbol("picture_as_pdf", null, tint = Color.White, size = fixedSp(24 * scale), filled = true) } }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) { AppText(name, AppTextRole.CardTitle, color = Color(0xCC000000), designScale = scale); AppText("xxxx 页", AppTextRole.CardSubtitle, color = Color(0x80000000), designScale = scale) }
-        Surface(color = Color(0xFF489FFF), shape = RoundedCornerShape((20 * scale).dp)) { Box(Modifier.padding(horizontal = (16 * scale).dp, vertical = (8 * scale).dp), contentAlignment = Alignment.Center) { AppText(format, AppTextRole.CardSubtitle, color = Color.White, designScale = scale) } }
+        Surface(color = AppColors.Blue.primary, shape = RoundedCornerShape((16 * scale).dp), modifier = Modifier.size((56 * scale).dp)) { Box(contentAlignment = Alignment.Center) { MaterialSymbol("picture_as_pdf", null, tint = AppColors.TextIconLight, size = fixedSp(24 * scale), filled = true) } }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) { AppText(name, AppTextRole.CardTitle, color = AppColors.TextIconDark, designScale = scale); AppText("xxxx 页", AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .625f), designScale = scale) }
+        Surface(color = AppColors.Blue.primary, shape = RoundedCornerShape((20 * scale).dp)) { Box(Modifier.padding(horizontal = (16 * scale).dp, vertical = (8 * scale).dp), contentAlignment = Alignment.Center) { AppText(format, AppTextRole.CardSubtitle, color = AppColors.TextIconLight, designScale = scale) } }
     }
 }
 
 @Composable
-private fun TextMaterialSample(title: String, scale: Float) = Surface(color = Color.White, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+private fun TextMaterialSample(title: String, scale: Float) = Surface(color = AppColors.Card, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
     Column(Modifier.padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
-        Surface(color = Color(0xFFD2EAFF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) { AppText(title, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = Color(0xE6242436), designScale = scale) }
-        Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth()) { AppText("此处最多显示两行可以吗。此处最多显示两行。超出省略号", AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = Color(0x80242436), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        Surface(color = AppColors.Blue.surface, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) { AppText(title, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = AppColors.TextIconDark, designScale = scale) }
+        Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth()) { AppText("此处最多显示两行可以吗。此处最多显示两行。超出省略号", AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = AppColors.TextIconDark.copy(alpha = .625f), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
 }

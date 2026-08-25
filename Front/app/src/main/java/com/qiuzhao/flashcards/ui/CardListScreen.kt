@@ -349,10 +349,10 @@ internal fun CardListScreen(
 
 @Composable
 internal fun CardListActionButton(label: String, icon: String, primary: Boolean, modifier: Modifier, designScale: Float = 1f, theme: DeckTheme? = null, onClick: () -> Unit) {
-    val primaryColor = theme?.primary ?: Color(0xFF489FFF)
-    val primaryContent = theme?.onPrimary ?: Color(0xFFEFF6FF)
-    val secondaryColor = theme?.secondary ?: Color(0xFFEBF4FF)
-    val secondaryContent = theme?.strongText ?: Color(0xFF001631)
+    val primaryColor = theme?.primary ?: AppColors.Blue.primary
+    val primaryContent = theme?.onPrimary ?: AppColors.TextIconLight
+    val secondaryColor = theme?.secondary ?: AppColors.Blue.surface
+    val secondaryContent = theme?.strongText ?: AppColors.Blue.ink
     Button(
         onClick = onClick,
         modifier = modifier.fillMaxHeight(),
@@ -402,8 +402,8 @@ private fun CardListItem(card: FlashcardEntity, number: Int, designScale: Float,
             CardListSwipeAction(
                 label = "删除该卡",
                 icon = "delete",
-                color = Color(0xFFBD3F3F),
-                contentColor = Color(0xFFFFEDED),
+                color = AppColors.Warning,
+                contentColor = AppColors.TextIconLight,
                 modifier = Modifier.weight(1f),
                 designScale = designScale,
                 onClick = onDelete
@@ -460,9 +460,9 @@ private fun CardListSwipeAction(label: String, icon: String, color: Color, conte
 private data class CardListTagStyle(val label: String, val container: Color, val content: Color)
 
 private val CardListTagStyles = listOf(
-    CardListTagStyle("基础记忆", Color(0xFF84BFFF), Color(0xFF00254F)),
-    CardListTagStyle("理解分析", Color(0xFF7DCC85), Color(0xFF07550F)),
-    CardListTagStyle("综合应用", Color(0xFFE87F77), Color(0xFF591B16))
+    CardListTagStyle("基础记忆", AppColors.Blue.primarySecondary, AppColors.Blue.ink),
+    CardListTagStyle("理解分析", AppColors.Green.primarySecondary, AppColors.Green.ink),
+    CardListTagStyle("综合应用", AppColors.Pink.primarySecondary, AppColors.Pink.ink)
 )
 
 private fun cardListTagStyle(number: Int): CardListTagStyle =

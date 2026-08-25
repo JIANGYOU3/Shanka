@@ -252,7 +252,7 @@ internal fun LegacyProjectDeckList(decks: List<DeckSummary>, viewModel: AppViewM
 @Composable
 private fun StudyAddDeckButton(designScale: Float, onClick: () -> Unit) {
     Surface(
-        onClick = onClick, color = Color(0xFF489FFF), contentColor = Color(0xFFEBF5FF),
+        onClick = onClick, color = AppColors.Blue.primary, contentColor = AppColors.TextIconLight,
         shape = RoundedCornerShape((24 * designScale).dp),
         modifier = Modifier.width((163 * designScale).dp).height((60 * designScale).dp)
     ) {
@@ -291,7 +291,7 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
         Surface(
             onClick = onDelete,
             shape = containerShape,
-            color = Color(0xFFBD3F3F),
+            color = AppColors.Warning,
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(deleteWidth)
         ) {
             Column(
@@ -299,9 +299,9 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                MaterialSymbol("delete", "删除卡组", tint = Color(0xFFFFEDED), size = fixedSp(24 * designScale), filled = true)
+                MaterialSymbol("delete", "删除卡组", tint = AppColors.TextIconLight, size = fixedSp(24 * designScale), filled = true)
                 Spacer(Modifier.height((4 * designScale).dp))
-                Text("删除卡组", color = Color(0xFFFFEDED), fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale))
+                Text("删除卡组", color = AppColors.TextIconLight, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale))
             }
         }
     Card(
@@ -332,8 +332,8 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * designScale).dp)) {
                         MixedLanguageText(displayDeckTitle(deck), modifier = Modifier.fillMaxWidth(), color = visual.titleColor, chineseFont = AppFonts.MiSansBold, latinFont = AppFonts.GoogleSansFlexBold, fontSize = fixedSp(20 * designScale), lineHeight = fixedSp(24 * designScale), maxLines = 1, overflow = TextOverflow.Ellipsis, includeFontPadding = false)
                         Row(horizontalArrangement = Arrangement.spacedBy((4 * designScale).dp), verticalAlignment = Alignment.CenterVertically) {
-                            MaterialSymbol("brightness_alert", null, tint = Color(0xFFD23535), size = fixedSp(18 * designScale), filled = true)
-                            Text("高优先级", color = Color(0xFFD23535), fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle())
+                            MaterialSymbol("brightness_alert", null, tint = AppColors.WarningStrong, size = fixedSp(18 * designScale), filled = true)
+                            Text("高优先级", color = AppColors.WarningStrong, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle())
                         }
                     }
                 }
@@ -353,7 +353,7 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
                         Text("进度", color = visual.progressLabel, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle())
                         Text("${progressPercent}%", color = visual.progress, fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(24 * designScale), lineHeight = fixedSp(28 * designScale), style = figmaCardTextStyle())
                     }
-                    Box(Modifier.fillMaxWidth().height((20 * designScale).dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = .5f))) {
+                    Box(Modifier.fillMaxWidth().height((20 * designScale).dp).clip(RoundedCornerShape(999.dp)).background(AppColors.Card.copy(alpha = .5f))) {
                         if (masteryRatio > 0f) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(masteryRatio).background(visual.progressFill))
                         }

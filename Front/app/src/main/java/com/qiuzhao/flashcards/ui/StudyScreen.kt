@@ -262,7 +262,7 @@ private fun ReviewStudy(
         )
         LinearProgressIndicator(
             progress = { position.toFloat() / total },
-            color = Color(0xFF489FFF), trackColor = Color(0xFFD1E8FF),
+            color = AppColors.Blue.primary, trackColor = AppColors.Blue.primarySecondary,
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = (16 * designScale).dp)
                 .padding(top = (88 * designScale).dp).height((4 * designScale).dp)
         )
@@ -304,8 +304,8 @@ private fun ReviewQuestionControls(
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     Row(Modifier.fillMaxWidth().height((60 * scale).dp), horizontalArrangement = Arrangement.spacedBy((15 * scale).dp)) {
         ReviewNavigationButton("arrow_back", canGoPrevious, Modifier.weight(1f), scale, onPrevious)
-        ReviewCountBadge("check", rememberedCount, Color(0xFFDBFCDE), Color(0xFF0C8617), Modifier.weight(1f), scale)
-        ReviewCountBadge("close", forgottenCount, Color(0xFFFFF4F3), Color(0xFFBD3F3F), Modifier.weight(1f), scale)
+        ReviewCountBadge("check", rememberedCount, AppColors.Green.background, AppColors.Green.primaryStrong, Modifier.weight(1f), scale)
+        ReviewCountBadge("close", forgottenCount, AppColors.Pink.background, AppColors.Warning, Modifier.weight(1f), scale)
         ReviewNavigationButton("arrow_forward", canGoNext, Modifier.weight(1f), scale, onNext)
     }
 }
@@ -317,9 +317,9 @@ private fun ReviewAnswerControls(canGoPrevious: Boolean, canGoNext: Boolean, onP
         ReviewNavigationButton("arrow_back", enabled = canGoPrevious, Modifier.weight(1f), scale, onPrevious)
         Surface(
             onClick = onHard,
-            color = Color(0xFFF0F8FF),
-            contentColor = Color(0xFF002D5F),
-            border = androidx.compose.foundation.BorderStroke((2 * scale).dp, Color(0xFF002D5F)),
+            color = AppColors.Blue.background,
+            contentColor = AppColors.Blue.ink,
+            border = androidx.compose.foundation.BorderStroke((2 * scale).dp, AppColors.Blue.ink),
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.height((59 * scale).dp)
         ) {
@@ -337,8 +337,8 @@ private fun ReviewNavigationButton(symbol: String, enabled: Boolean, modifier: M
     Surface(
         onClick = onClick,
         enabled = enabled,
-        color = Color(0xFF489FFF),
-        contentColor = Color.White,
+        color = AppColors.Blue.primary,
+        contentColor = AppColors.TextIconLight,
         shape = RoundedCornerShape((24 * scale).dp),
         modifier = modifier.fillMaxHeight()
     ) {
@@ -444,11 +444,9 @@ private fun ReviewCardFace(
     designScale: Float,
     backFace: Boolean
 ) {
-    val lightSurface = MaterialTheme.colorScheme.background.luminance() > .5f
-    val faceGradient = if (lightSurface) {
-        if (backFace) Brush.verticalGradient(listOf(Color(0xFFD1E8FF), Color(0xFF88C1FF)))
-        else Brush.verticalGradient(listOf(Color(0xFFF0F8FF), Color(0xFFD1E8FF)))
-    } else Brush.verticalGradient(listOf(Color(0xFF233D55), Color(0xFF182D40)))
+    val faceGradient = if (backFace) {
+        Brush.verticalGradient(listOf(AppColors.Blue.primarySecondary, AppColors.Blue.primary))
+    } else Brush.verticalGradient(listOf(AppColors.Blue.background, AppColors.Blue.primarySecondary))
     Box(
         // The layer must wrap both the gradient and its text. Keeping it before
         // background prevents the invisible reverse face from painting over the
@@ -465,16 +463,16 @@ private fun ReviewCardFace(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            MaterialSymbol(symbol, null, tint = if (lightSurface) Color(0xFF00152A) else Color(0xFFE0EEFC), size = fixedSp(44 * designScale), filled = true)
+            MaterialSymbol(symbol, null, tint = AppColors.Blue.ink, size = fixedSp(44 * designScale), filled = true)
             Spacer(Modifier.height((16 * designScale).dp))
             // Figma 44:2446 / 44:2452 / 48:4553: heading is the project's MiSans
             // Semibold token (520) and body is its Medium token (380). Use fixed faces rather
             // than a requested system weight so every phone renders identically.
-            Text(title, color = if (lightSurface) Color(0xFF00152A) else Color(0xFFE0EEFC), fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(24 * designScale), lineHeight = fixedSp(32 * designScale), textAlign = TextAlign.Center)
+            Text(title, color = AppColors.Blue.ink, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(24 * designScale), lineHeight = fixedSp(32 * designScale), textAlign = TextAlign.Center)
             Spacer(Modifier.height((8 * designScale).dp))
             MixedLanguageText(
                 text = content,
-                color = if (lightSurface) Color(0xFF00152A) else Color(0xFFE0EEFC),
+                color = AppColors.Blue.ink,
                 chineseFont = AppFonts.MiSansMedium,
                 latinFont = AppFonts.GoogleSansFlex,
                 fontSize = fixedSp(24 * designScale),
@@ -501,8 +499,8 @@ private fun FreeStudy(cards: List<FlashcardEntity>, onBack: () -> Unit, onUpdate
         )
         LinearProgressIndicator(
             progress = { (pager.currentPage + 1).toFloat() / displayedCards.size },
-            color = Color(0xFF489FFF),
-            trackColor = Color(0xFFD1E8FF),
+            color = AppColors.Blue.primary,
+            trackColor = AppColors.Blue.primarySecondary,
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = (16 * designScale).dp)
                 .padding(top = (88 * designScale).dp).height((4 * designScale).dp)
         )
@@ -530,8 +528,8 @@ private fun FreeStudy(cards: List<FlashcardEntity>, onBack: () -> Unit, onUpdate
             ) {
                 Surface(
                     onClick = { editingCard = displayedCards.getOrNull(pager.currentPage) },
-                    color = Color(0xFFEBF4FF),
-                    contentColor = Color(0xFF001631),
+                    color = AppColors.Blue.surface,
+                    contentColor = AppColors.Blue.ink,
                     shape = RoundedCornerShape((24 * designScale).dp),
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 ) {
@@ -553,8 +551,8 @@ private fun FreeStudy(cards: List<FlashcardEntity>, onBack: () -> Unit, onUpdate
                         }
                         scope.launch { pager.scrollToPage(0) }
                     },
-                    color = Color(0xFF489FFF),
-                    contentColor = Color(0xFFEBF5FF),
+                    color = AppColors.Blue.primary,
+                    contentColor = AppColors.TextIconLight,
                     shape = RoundedCornerShape((24 * designScale).dp),
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 ) {

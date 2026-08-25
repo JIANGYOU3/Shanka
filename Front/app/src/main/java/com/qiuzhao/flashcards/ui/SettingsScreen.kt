@@ -155,11 +155,9 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
-    val theme by viewModel.darkTheme.collectAsState()
     val frontendTestMode by viewModel.frontendTestMode.collectAsState()
     val remoteApiStatus by viewModel.apiKeyStatus.collectAsState()
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
-    var showThemePicker by remember { mutableStateOf(false) }
     var showAiKeyDialog by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
     var savingApiKey by remember { mutableStateOf(false) }
@@ -175,7 +173,7 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
         nav.navigate(AppRoute.SettingsUnbuilt(title))
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF0F8FF)) {
+    Surface(modifier = Modifier.fillMaxSize(), color = AppColors.Blue.background) {
         Box(Modifier.fillMaxSize()) {
             // Figma 66:4804: this is one deliberately tight menu, with 4dp inside
             // a group and a 20dp break between groups. It scrolls below the fixed header.
@@ -195,30 +193,20 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
                 ) {
                     item {
                         SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("头像与昵称", "badge", Color(0xFF69C56B), Color(0xFF095222), designScale) {
+                            SettingsMenuRow("头像与昵称", "badge", AppColors.Green.primary, AppColors.Green.ink, designScale) {
                                 nav.navigate(AppRoute.SettingsIdentity)
                             }
-                            SettingsMenuRow("学习档案", "article_person", Color(0xFF69C56B), Color(0xFF095222), designScale) {
+                            SettingsMenuRow("学习档案", "article_person", AppColors.Green.primary, AppColors.Green.ink, designScale) {
                                 openUnbuilt("学习档案")
                             }
                         }
                     }
                     item {
                         SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("主题与外观", "palette", Color(0xFF64AEFF), Color(0xFF064B8C), designScale) {
-                                showThemePicker = true
-                            }
-                            SettingsMenuRow("深色模式", "routine", Color(0xFF64AEFF), Color(0xFF064B8C), designScale) {
-                                openUnbuilt("深色模式")
-                            }
-                        }
-                    }
-                    item {
-                        SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("API设置", "experiment", Color(0xFFD9BAFD), Color(0xFF5422A0), designScale) {
+                            SettingsMenuRow("API设置", "experiment", AppColors.Purple.primarySecondary, AppColors.Purple.ink, designScale) {
                                 showAiKeyDialog = true
                             }
-                            SettingsMenuRow("（后续ai相关的设置）", "article_person", Color(0xFFD9BAFD), Color(0xFF5422A0), designScale) {
+                            SettingsMenuRow("（后续ai相关的设置）", "article_person", AppColors.Purple.primarySecondary, AppColors.Purple.ink, designScale) {
                                 openUnbuilt("AI 设置")
                             }
                             SettingsFrontendTestModeRow(
@@ -230,13 +218,13 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
                     }
                     item {
                         SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("数据隐私与安全条款", "admin_panel_settings", Color(0xFFFFB683), Color(0xFF74350E), designScale) {
+                            SettingsMenuRow("数据隐私与安全条款", "admin_panel_settings", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
                                 openUnbuilt("数据隐私与安全条款")
                             }
-                            SettingsMenuRow("用户协议", "person_raised_hand", Color(0xFFFFB683), Color(0xFF74350E), designScale) {
+                            SettingsMenuRow("用户协议", "person_raised_hand", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
                                 openUnbuilt("用户协议")
                             }
-                            SettingsMenuRow("关于应用", "info", Color(0xFFFFB683), Color(0xFF74350E), designScale) {
+                            SettingsMenuRow("关于应用", "info", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
                                 openUnbuilt("关于应用")
                             }
                         }
@@ -259,16 +247,6 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
         }
     }
 
-    if (showThemePicker) {
-        ThemeModeDialog(
-            selectedTheme = theme,
-            onSelect = {
-                viewModel.setDarkTheme(it)
-                showThemePicker = false
-            },
-            onDismiss = { showThemePicker = false }
-        )
-    }
     if (showAiKeyDialog) {
         AiServiceDialog(
             currentKey = apiKey,
@@ -286,7 +264,7 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
 @Composable
 internal fun SettingsIdentityScreen(nav: ScreenNavigator) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Surface(Modifier.fillMaxSize(), color = Color(0xFFF0F8FF)) {
+    Surface(Modifier.fillMaxSize(), color = AppColors.Blue.background) {
         Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier.fillMaxSize()
@@ -314,12 +292,12 @@ internal fun SettingsIdentityScreen(nav: ScreenNavigator) {
 @Composable
 internal fun SettingsUnbuiltScreen(title: String, nav: ScreenNavigator) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Surface(Modifier.fillMaxSize(), color = Color(0xFFF0F8FF)) {
+    Surface(Modifier.fillMaxSize(), color = AppColors.Blue.background) {
         Box(Modifier.fillMaxSize()) {
             Text(
                 "未构建",
                 modifier = Modifier.align(Alignment.Center),
-                color = Color(0xFF8C939A),
+                color = AppColors.TextIconDark.copy(alpha = .55f),
                 fontFamily = AppFonts.MiSansMedium,
                 fontWeight = FontWeight.Normal,
                 fontSize = fixedSp(16 * scale),
@@ -412,7 +390,7 @@ private fun SettingsMenuRow(
 ) {
     Surface(
         onClick = onClick,
-        color = Color.White,
+        color = AppColors.Card,
         shape = RoundedCornerShape((24 * designScale).dp),
         modifier = Modifier.fillMaxWidth().height((76 * designScale).dp)
     ) {
@@ -433,7 +411,7 @@ private fun SettingsMenuRow(
             MixedLanguageText(
                 text = title,
                 modifier = Modifier.weight(1f),
-                color = Color(0xFF242436),
+                color = AppColors.TextIconDark,
                 chineseFont = AppFonts.MiSansSemibold,
                 latinFont = AppFonts.GoogleSansFlexSemibold,
                 fontSize = fixedSp(20 * designScale),
@@ -445,7 +423,7 @@ private fun SettingsMenuRow(
                 modifier = Modifier.size((52 * designScale).dp),
                 contentAlignment = Alignment.Center
             ) {
-                MaterialSymbol("arrow_forward", "进入$title", tint = Color(0xFF1F2832), size = fixedSp(24 * designScale))
+                MaterialSymbol("arrow_forward", "进入$title", tint = AppColors.TextIconDark, size = fixedSp(24 * designScale))
             }
         }
     }
@@ -459,7 +437,7 @@ private fun SettingsFrontendTestModeRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Surface(
-        color = Color.White,
+        color = AppColors.Card,
         shape = RoundedCornerShape((24 * designScale).dp),
         modifier = Modifier.fillMaxWidth().height((76 * designScale).dp)
     ) {
@@ -469,18 +447,18 @@ private fun SettingsFrontendTestModeRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                color = Color(0xFFD9BAFD),
+                color = AppColors.Purple.primarySecondary,
                 shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.size((52 * designScale).dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol("dropper_eye", null, tint = Color(0xFF5422A0), size = fixedSp(24 * designScale), filled = true)
+                    MaterialSymbol("dropper_eye", null, tint = AppColors.Purple.ink, size = fixedSp(24 * designScale), filled = true)
                 }
             }
             Text(
                 text = "前端测试模式",
                 modifier = Modifier.weight(1f),
-                color = Color(0xFF242436),
+                color = AppColors.TextIconDark,
                 fontFamily = AppFonts.MiSansSemibold,
                 fontWeight = FontWeight.Normal,
                 fontSize = fixedSp(20 * designScale),
@@ -498,11 +476,11 @@ private fun SettingsFrontendTestModeRow(
                     onCheckedChange = onCheckedChange,
                     modifier = Modifier.semantics { contentDescription = "前端测试模式" },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFF6530B5),
-                        uncheckedThumbColor = Color(0xFF79747E),
-                        uncheckedTrackColor = Color(0xFFE7E0EC),
-                        uncheckedBorderColor = Color(0xFF79747E)
+                        checkedThumbColor = AppColors.Card,
+                        checkedTrackColor = AppColors.Purple.primary,
+                        uncheckedThumbColor = AppColors.TextIconDark.copy(alpha = .55f),
+                        uncheckedTrackColor = AppColors.Purple.surface,
+                        uncheckedBorderColor = AppColors.TextIconDark.copy(alpha = .55f)
                     )
                 )
             }
@@ -519,7 +497,7 @@ private fun SettingsIdentityRow(
     scale: Float
 ) {
     Surface(
-        color = Color.White,
+        color = AppColors.Card,
         shape = RoundedCornerShape((32 * scale).dp),
         modifier = Modifier.fillMaxWidth().height((76 * scale).dp)
     ) {
@@ -529,18 +507,18 @@ private fun SettingsIdentityRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                color = Color(0xFF69C56B),
+                color = AppColors.Green.primary,
                 shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.size((52 * scale).dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol(symbol, null, tint = Color(0xFF095222), size = fixedSp(24 * scale), filled = true)
+                    MaterialSymbol(symbol, null, tint = AppColors.Green.ink, size = fixedSp(24 * scale), filled = true)
                 }
             }
             Text(
                 title,
                 modifier = Modifier.weight(1f),
-                color = Color(0xFF242436),
+                color = AppColors.TextIconDark,
                 fontFamily = AppFonts.MiSansSemibold,
                 fontWeight = FontWeight.Normal,
                 fontSize = fixedSp((if (avatar) 18 else 20) * scale),
@@ -556,7 +534,7 @@ private fun SettingsIdentityRow(
             } else if (value != null) {
                 Text(
                     value,
-                    color = Color(0xFF242436),
+                    color = AppColors.TextIconDark,
                     fontFamily = AppFonts.MiSansSemibold,
                     fontWeight = FontWeight.Normal,
                     fontSize = fixedSp(20 * scale),
@@ -568,53 +546,3 @@ private fun SettingsIdentityRow(
     }
 }
 
-@Composable
-private fun ThemeModeDialog(
-    selectedTheme: Boolean?,
-    onSelect: (Boolean?) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "主题外观",
-                color = PageForegroundColor(),
-                fontFamily = AppFonts.MiSansSemibold,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp(20f)
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ThemeChoice("跟随系统", selectedTheme == null) { onSelect(null) }
-                ThemeChoice("浅色", selectedTheme == false) { onSelect(false) }
-                ThemeChoice("深色", selectedTheme == true) { onSelect(true) }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal)
-            }
-        }
-    )
-}
-
-@Composable
-private fun ThemeChoice(label: String, selected: Boolean, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                label,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontFamily = AppFonts.MiSansBold,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp(16f)
-            )
-            if (selected) {
-                MaterialSymbol("check", "当前选择", tint = Color(0xFF489FFF), size = fixedSp(20f), filled = true)
-            }
-        }
-    }
-}

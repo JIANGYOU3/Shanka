@@ -67,9 +67,8 @@ internal fun AppBottomNavigation(
     require(items.size == 3) { "The Figma bottom navigation has exactly three destinations." }
     require(selectedIndex in items.indices) { "Selected bottom-navigation item must exist." }
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    val lightSurface = MaterialTheme.colorScheme.background.luminance() > .5f
     Surface(
-        color = if (lightSurface) Color(0xFF4A545F) else Color(0xFF253644),
+        color = AppColors.NavigationBar,
         shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         shadowElevation = 14.dp,
         modifier = modifier.fillMaxWidth().navigationBarsPadding()
@@ -90,7 +89,7 @@ internal fun AppBottomNavigation(
                 label = "bottom navigation selection indicator"
             )
             Surface(
-                color = if (lightSurface) Color(0xFFECF5FF) else Color(0xFF36546C),
+                color = AppColors.Blue.surface,
                 shape = RoundedCornerShape((24 * designScale).dp),
                 modifier = Modifier.width(itemWidth).fillMaxHeight()
                     .graphicsLayer { translationX = indicatorTranslationPx }
@@ -101,7 +100,6 @@ internal fun AppBottomNavigation(
                     AppBottomNavigationItemContent(
                         item = item,
                         selected = index == selectedIndex,
-                        lightSurface = lightSurface,
                         designScale = designScale,
                         modifier = Modifier.weight(1f)
                     )
@@ -115,16 +113,11 @@ internal fun AppBottomNavigation(
 private fun AppBottomNavigationItemContent(
     item: AppBottomNavigationItem,
     selected: Boolean,
-    lightSurface: Boolean,
     designScale: Float,
     modifier: Modifier
 ) {
     val contentColor by animateColorAsState(
-        targetValue = if (selected) {
-            if (lightSurface) Color(0xFF425161) else Color(0xFFE5F1FF)
-        } else {
-            if (lightSurface) Color(0xCCFFFFFF) else Color(0xFFB8C7D6)
-        },
+        targetValue = if (selected) AppColors.NavigationBar else AppColors.TextIconLight,
         animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
         label = "${item.label} navigation color"
     )
@@ -164,11 +157,11 @@ private fun AppBottomNavigationItemContent(
 internal fun ProjectSectionSwitcher(
     selected: ProjectDetailSection,
     onSelect: (ProjectDetailSection) -> Unit,
+    theme: DeckTheme,
     modifier: Modifier = Modifier
 ) {
-    val lightSurface = MaterialTheme.colorScheme.background.luminance() > .5f
     Surface(
-        color = if (lightSurface) Color(0xFFD0E7FF) else MaterialTheme.colorScheme.surfaceVariant,
+        color = theme.cardPanel,
         shape = RoundedCornerShape(32.dp),
         modifier = modifier.fillMaxWidth().height(84.dp)
     ) {
@@ -186,7 +179,7 @@ internal fun ProjectSectionSwitcher(
             Surface(
                 // This selection track is a Figma product token, not the
                 // device's dynamic Material primary color.
-                color = Color(0xFF489FFF),
+                color = theme.primary,
                 shape = RoundedCornerShape(24.dp),
                 modifier = Modifier.width(itemWidth).fillMaxHeight()
                     .graphicsLayer { translationX = indicatorTranslationPx }
@@ -197,6 +190,7 @@ internal fun ProjectSectionSwitcher(
                     label = "数据统计",
                     symbol = "monitoring",
                     selected = selected == ProjectDetailSection.STATISTICS,
+                    theme = theme,
                     onClick = { onSelect(ProjectDetailSection.STATISTICS) },
                     modifier = Modifier.weight(1f)
                 )
@@ -205,6 +199,7 @@ internal fun ProjectSectionSwitcher(
                     label = "卡组管理",
                     symbol = "style",
                     selected = selected == ProjectDetailSection.DECKS,
+                    theme = theme,
                     onClick = { onSelect(ProjectDetailSection.DECKS) },
                     modifier = Modifier.weight(1f)
                 )
@@ -219,11 +214,12 @@ private fun ProjectSectionItem(
     label: String,
     symbol: String,
     selected: Boolean,
+    theme: DeckTheme,
     onClick: () -> Unit,
     modifier: Modifier
 ) {
     val color by animateColorAsState(
-        targetValue = if (selected) Color(0xE6FFFFFF) else Color(0xCC000000),
+        targetValue = if (selected) theme.onPrimary else theme.text,
         animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
         label = "$section project section color"
     )
@@ -260,7 +256,7 @@ internal fun ProjectMetricCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color.White,
+        color = AppColors.Card,
         shape = RoundedCornerShape(32.dp),
         modifier = modifier.widthIn(min = 0.dp).height(176.dp)
     ) {
@@ -270,7 +266,7 @@ internal fun ProjectMetricCard(
         ) {
             Surface(color = accent, shape = RoundedCornerShape(999.dp), modifier = Modifier.size(48.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol(symbol, null, tint = Color.White, size = fixedSp(24f), filled = true)
+                    MaterialSymbol(symbol, null, tint = AppColors.TextIconLight, size = fixedSp(24f), filled = true)
                 }
             }
             Column {

@@ -392,7 +392,7 @@ private fun ImportMethodOption(
 ) = Column(verticalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
     Surface(
         onClick = onClick,
-        color = Color(0xFFD0E7FF),
+        color = AppColors.Blue.surface,
         shape = RoundedCornerShape((32 * scale).dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -401,18 +401,18 @@ private fun ImportMethodOption(
             horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(color = Color(0xFF489FFF), shape = RoundedCornerShape(999.dp), modifier = Modifier.size((56 * scale).dp)) {
-                Box(contentAlignment = Alignment.Center) { MaterialSymbol(icon, null, tint = Color(0xFFF0F8FF), size = fixedSp(24 * scale)) }
+            Surface(color = AppColors.Blue.primary, shape = RoundedCornerShape(999.dp), modifier = Modifier.size((56 * scale).dp)) {
+                Box(contentAlignment = Alignment.Center) { MaterialSymbol(icon, null, tint = AppColors.Blue.background, size = fixedSp(24 * scale)) }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy((4 * scale).dp)) {
-                AppText(title, AppTextRole.CardTitle, color = Color(0xCC000000), designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                AppText(subtitle, AppTextRole.CardSubtitle, color = Color(0x80000000), designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AppText(title, AppTextRole.CardTitle, color = AppColors.TextIconDark, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AppText(subtitle, AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .625f), designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            MaterialSymbol("arrow_forward", null, tint = Color(0xFF001631), size = fixedSp(24 * scale))
+            MaterialSymbol("arrow_forward", null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale))
         }
     }
-    Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-        AppText(detail, AppTextRole.Supporting, modifier = Modifier.padding((24 * scale).dp), color = Color(0xFF242436), designScale = scale)
+    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+        AppText(detail, AppTextRole.Supporting, modifier = Modifier.padding((24 * scale).dp), color = AppColors.TextIconDark, designScale = scale)
     }
 }
 
@@ -446,7 +446,7 @@ private fun PasteTextImportScreen(
                                 Text(
                                     errors.first(),
                                     modifier = Modifier.padding(start = (8 * designScale).dp),
-                                    color = Color(0xFFC83232),
+                                    color = AppColors.WarningStrong,
                                     fontFamily = AppFonts.MiSansMedium,
                                     fontWeight = FontWeight.Normal,
                                     fontSize = fixedSp(13 * designScale),
@@ -483,9 +483,8 @@ internal fun ImportActionButton(
     designScale: Float,
     onClick: () -> Unit
 ) {
-    val dark = MaterialTheme.colorScheme.background.luminance() <= .5f
-    val container = if (primary) Color(0xFF489FFF) else if (dark) Color(0xFF203A52) else Color(0xFFEBF4FF)
-    val content = if (primary) Color(0xFFEBF5FF) else if (dark) Color(0xFFD7EBFF) else Color(0xFF001631)
+    val container = if (primary) AppColors.Blue.primary else AppColors.Blue.primarySecondary
+    val content = if (primary) AppColors.TextIconLight else AppColors.Blue.ink
     Button(
         onClick = onClick,
         modifier = modifier.fillMaxHeight(),

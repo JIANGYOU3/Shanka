@@ -209,11 +209,11 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                             Surface(
                                 onClick = { deleteConfirmationVisible = true },
                                 shape = RoundedCornerShape((24 * designScale).dp),
-                                color = Color(0xFFBD3F3F),
+                                color = AppColors.Warning,
                                 modifier = Modifier.size((60 * designScale).dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    MaterialSymbol("delete", "删除牌组", tint = Color(0xFFFFEDED), size = fixedSp(24 * designScale), filled = true)
+                                    MaterialSymbol("delete", "删除牌组", tint = AppColors.TextIconLight, size = fixedSp(24 * designScale), filled = true)
                                 }
                             }
                         }
@@ -256,7 +256,7 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                         onSuccess = nav::popBackStack,
                         onFailure = { deleteFailed = true }
                     )
-                }) { Text("删除", color = Color(0xFFBD3F3F)) }
+                }) { Text("删除", color = AppColors.Warning) }
             },
             dismissButton = { TextButton(onClick = { deleteConfirmationVisible = false }) { Text("取消") } }
         )
@@ -272,9 +272,8 @@ internal fun DetailPrimaryButton(
     designScale: Float,
     onClick: () -> Unit
 ) {
-    val dark = MaterialTheme.colorScheme.background.luminance() <= .5f
-    val container = if (primary) Color(0xFF489FFF) else if (dark) Color(0xFF203A52) else Color(0xFFEBF4FF)
-    val content = if (primary) Color(0xFFEBF5FF) else if (dark) Color(0xFFD7EBFF) else Color(0xFF001631)
+    val container = if (primary) AppColors.Blue.primary else AppColors.Blue.primarySecondary
+    val content = if (primary) AppColors.TextIconLight else AppColors.Blue.ink
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height((60 * designScale).dp),
@@ -398,24 +397,24 @@ private fun ChapterProgressCard(progress: DeckProgress, masteryRatio: Float, des
                 ChapterQuestionTypeStat(
                     count = foundationCards,
                     label = "基础记忆",
-                    container = Color(0xFF84BFFF),
-                    content = Color(0xFF183A5E),
+                    container = AppColors.Blue.primarySecondary,
+                    content = AppColors.Blue.ink,
                     designScale = designScale,
                     modifier = Modifier.weight(1f)
                 )
                 ChapterQuestionTypeStat(
                     count = understandingCards,
                     label = "理解分析",
-                    container = Color(0xFF7DCC85),
-                    content = Color(0xFF05460C),
+                    container = AppColors.Green.primarySecondary,
+                    content = AppColors.Green.ink,
                     designScale = designScale,
                     modifier = Modifier.weight(1f)
                 )
                 ChapterQuestionTypeStat(
                     count = applicationCards,
                     label = "综合应用",
-                    container = Color(0xFFE87F77),
-                    content = Color(0xFF591B16),
+                    container = AppColors.Pink.primarySecondary,
+                    content = AppColors.Pink.ink,
                     designScale = designScale,
                     modifier = Modifier.weight(1f)
                 )
