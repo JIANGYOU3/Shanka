@@ -163,6 +163,7 @@ internal typealias ScreenNavigator = AppNavigator
 
 private val LightHeaderControlBackground = Color(0xFFEBF0F5)
 private val LightHeaderControlIcon = Color(0xFF374B61)
+private val LightSecondaryHeaderActionBackground = Color(0xFFEBF4FF)
 private val PageTitleColor = Color(0xFF1F2832)
 
 /** White-screen titles are the Figma #1F2832; dark surfaces use the theme's contrast color. */
@@ -187,6 +188,18 @@ internal fun HeaderControlIconColor(): Color = if (MaterialTheme.colorScheme.bac
     Color(0xFFD2E2F1)
 }
 
+/**
+ * Figma 209:2733's secondary-page action surface. Root-level controls keep
+ * their neutral #EBF0F5 treatment; secondary-page back/edit controls use this
+ * blue secondary-emphasis token unless a themed page supplies its own surface.
+ */
+@Composable
+internal fun SecondaryHeaderActionBackgroundColor(theme: DeckTheme? = null): Color = when {
+    theme != null -> theme.surface
+    MaterialTheme.colorScheme.background.luminance() > .5f -> LightSecondaryHeaderActionBackground
+    else -> Color(0xFF20303F)
+}
+
 /** Keeps Figma's optical type scale stable even when the phone font-size setting changes. */
 @Composable
 internal fun fixedSp(value: Float) = with(LocalDensity.current) { value.dp.toSp() }
@@ -195,6 +208,20 @@ internal fun fixedSp(value: Float) = with(LocalDensity.current) { value.dp.toSp(
 internal fun figmaCardTextStyle() = TextStyle(
     platformStyle = PlatformTextStyle(includeFontPadding = false)
 )
+
+/** Figma 378:1775's Chinese-only root navigation label tokens. */
+@Composable
+internal fun navigationBarLabelTextStyle(selected: Boolean, designScale: Float): TextStyle {
+    val spec = AppTypographyTokens.navigationBarLabelSpec(selected)
+    return TextStyle(
+        fontFamily = AppTypographyTokens.fontFamily(AppTextLanguage.Chinese, spec.weight),
+        fontWeight = FontWeight.Normal,
+        fontSize = fixedSp(spec.size * designScale),
+        lineHeight = fixedSp(spec.lineHeight * designScale),
+        letterSpacing = fixedSp(spec.letterSpacing * designScale),
+        platformStyle = PlatformTextStyle(includeFontPadding = false)
+    )
+}
 
 /** All product copy enters Compose through this script-aware text renderer. */
 @Composable
@@ -217,16 +244,17 @@ internal fun AppText(
     val cjkSize = fixedSp(cjkSpec.size * designScale)
     val latinSize = fixedSp(latinSpec.size * designScale)
     val lineHeight = fixedSp(AppTypographyTokens.lineHeight(role) * designScale)
-    val letterSpacing = fixedSp(cjkSpec.letterSpacing * designScale)
+    val cjkLetterSpacing = fixedSp(cjkSpec.letterSpacing * designScale)
+    val latinLetterSpacing = fixedSp(latinSpec.letterSpacing * designScale)
     Text(
-        text = bilingualAnnotatedString(text, AppTypographyTokens.fontFamily(AppTextLanguage.Latin, latinSpec.weight), latinSize, letterSpacing, textDecoration),
+        text = bilingualAnnotatedString(text, AppTypographyTokens.fontFamily(AppTextLanguage.Latin, latinSpec.weight), latinSize, latinLetterSpacing, textDecoration),
         modifier = modifier,
         color = color,
         fontFamily = AppTypographyTokens.fontFamily(AppTextLanguage.Chinese, cjkSpec.weight),
         fontWeight = FontWeight.Normal,
         fontSize = cjkSize,
         lineHeight = lineHeight,
-        letterSpacing = letterSpacing,
+        letterSpacing = cjkLetterSpacing,
         textAlign = textAlign,
         textDecoration = textDecoration,
         softWrap = softWrap,

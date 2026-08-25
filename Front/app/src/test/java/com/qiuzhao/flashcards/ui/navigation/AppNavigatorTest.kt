@@ -25,14 +25,14 @@ class AppNavigatorTest {
         val state = state()
         val navigator = AppNavigator(state)
 
-        navigator.navigate(AppRoute.Library)
+        navigator.navigate(AppRoute.Project)
         navigator.navigate(AppRoute.Deck("deck-2"))
         navigator.navigate(AppRoute.Data)
-        navigator.navigate(AppRoute.Library)
+        navigator.navigate(AppRoute.Project)
 
         assertEquals(AppRoute.Deck("deck-2"), state.currentRoute)
         navigator.goBack()
-        assertEquals(AppRoute.Library, state.currentRoute)
+        assertEquals(AppRoute.Project, state.currentRoute)
         navigator.goBack()
         assertEquals(AppRoute.Home, state.selectedTopLevel)
     }
@@ -72,7 +72,7 @@ class AppNavigatorTest {
         override var selectedTopLevel: AppRoute = AppRoute.Home
         private val stacks = mapOf<AppRoute, MutableList<NavKey>>(
             AppRoute.Home to mutableListOf(AppRoute.Home),
-            AppRoute.Library to mutableListOf(AppRoute.Library),
+            AppRoute.Project to mutableListOf(AppRoute.Project),
             AppRoute.Data to mutableListOf(AppRoute.Data)
         )
 

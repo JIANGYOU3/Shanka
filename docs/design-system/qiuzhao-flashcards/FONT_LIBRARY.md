@@ -29,12 +29,22 @@
 
 字号/行高/字距单位均为 dp（字距在 Compose 中以等值 sp 传入）。混排行高取中英文两套规范中较大的值，避免裁切。Figma 展示名 `MetricMeduim` 在代码中统一为 `MetricMedium`，数值不变。
 
+## 导航栏专用文字
+
+Figma `378:1775` 额外定义了当前三个根导航的中文标签；它们不是通用 `Label`，必须使用 `navigationBarLabelTextStyle`，且不能继续沿用历史的 14/16、selected 700 规则。
+
+| 状态 | 中文（MiSans） | 当前英文规范 |
+| --- | --- | --- |
+| 选中 | Bold 630, 14/18, 0.6 | 未在此 Figma 节点定义；根导航文案保持中文 |
+| 未选中 | Semibold 520, 14/18, 0.6 | 未在此 Figma 节点定义；根导航文案保持中文 |
+
 按钮、徽标和操作文字统一使用 `Label`：中文 Bold 630；英文/数字 ExtraBold 800。因此按钮不会采用较细的默认 Material 标签字重。
 
 ## Compose 使用规则
 
 - 展示文案使用 `AppText(text, role, ...)`。
 - 实时输入使用 `appInputTextStyle(role, ...)` 与 `rememberBilingualInputTransformation(role, ...)`；该变换保持 `OffsetMapping.Identity`，不改变原文、光标、选区或输入法组合范围。
+- 根导航标签使用 `navigationBarLabelTextStyle(selected, designScale)`；其字体 token 来自 Figma `378:1775`。
 - 仅 `MaterialSymbol` 可以直接设置字体族。
 
 ## 图标

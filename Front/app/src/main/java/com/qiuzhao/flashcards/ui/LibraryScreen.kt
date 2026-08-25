@@ -155,7 +155,8 @@ import kotlinx.coroutines.delay
 
 
 @Composable
-internal fun LibraryScreen(decks: List<DeckSummary>, viewModel: AppViewModel, searchQuery: String, nav: ScreenNavigator) {
+/** Kept temporarily as a reusable legacy deck list while project screens migrate. */
+internal fun LegacyProjectDeckList(decks: List<DeckSummary>, viewModel: AppViewModel, searchQuery: String, nav: ScreenNavigator) {
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     val sideInset = 16 * designScale
     var pendingDeletedDecks by remember { mutableStateOf<Set<String>>(emptySet()) }

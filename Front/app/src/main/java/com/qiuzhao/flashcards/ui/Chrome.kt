@@ -140,6 +140,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
+import com.qiuzhao.flashcards.data.remote.LEGACY_UNASSIGNED_PROJECT_ID
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.ImportParser
@@ -161,12 +162,13 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     val navigator = remember { AppNavigator(navigationState) }
     val activity = LocalContext.current as? Activity
     val decks by viewModel.decks.collectAsState()
+    val projects by viewModel.projects.collectAsState()
     val dueCount by viewModel.dueCount.collectAsState()
     val dashboard by viewModel.dashboard.collectAsState()
     val weeklyActivity by viewModel.weeklyActivity.collectAsState()
     val accountBootstrap by viewModel.accountBootstrap.collectAsState()
     val account = accountBootstrap.account
-    var studySearchQuery by remember { mutableStateOf("") }
+    var projectSearchQuery by remember { mutableStateOf("") }
     var initialAuthNavigationHandled by rememberSaveable { mutableStateOf(false) }
     val shouldOpenFirstLogin = accountBootstrap.loaded && account == null && !initialAuthNavigationHandled
     LaunchedEffect(shouldOpenFirstLogin) {
@@ -183,14 +185,24 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     }
     val selectedRootTab = when (navigationState.selectedTopLevel) {
         AppRoute.Home -> RootTab.HOME
-        AppRoute.Library -> RootTab.STUDY
+        AppRoute.Project -> RootTab.PROJECT
         AppRoute.Data -> RootTab.DATA
         else -> error("Top-level navigation state must be a root route")
     }
 
     val typedEntryProvider = entryProvider {
         entry<AppRoute.Home> { HomeScreen(decks, dueCount, navigator) }
-        entry<AppRoute.Library> { LibraryScreen(decks, viewModel, studySearchQuery, navigator) }
+        entry<AppRoute.Project> { ProjectScreen(projects, decks, projectSearchQuery, navigator) }
+        entry<AppRoute.ProjectCreate> { ProjectCreateScreen(viewModel, navigator) }
+        entry<AppRoute.ProjectDetail> { route ->
+            val project = projects.firstOrNull { it.id == route.id }
+            if (project == null) LoadingScreen() else ProjectDetailScreen(
+                project,
+                decks.filter { (it.projectId ?: LEGACY_UNASSIGNED_PROJECT_ID) == project.id },
+                navigator
+            )
+        }
+        entry<AppRoute.MaterialManagement> { SettingsUnbuiltScreen("资料管理", navigator) }
         entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
         entry<AppRoute.Deck> { route ->
             val deck = decks.firstOrNull { it.id == route.id }
@@ -254,16 +266,16 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             Box(Modifier.fillMaxSize()) {
                 RootPersistentHeader(
                     selected = selectedRootTab,
-                    searchQuery = studySearchQuery,
-                    onSearchQueryChange = { studySearchQuery = it },
                     onSettings = { navigator.navigate(AppRoute.Settings) },
                     account = account,
-                    onAvatar = { navigator.navigate(AppRoute.Login) }
+                    onAvatar = { navigator.navigate(AppRoute.Login) },
+                    projectSearchQuery = projectSearchQuery,
+                    onProjectSearchChange = { projectSearchQuery = it }
                 )
                 BottomNavBar(
                     selected = selectedRootTab,
                     onHome = { navigator.navigate(AppRoute.Home) },
-                    onStudy = { navigator.navigate(AppRoute.Library) },
+                    onProject = { navigator.navigate(AppRoute.Project) },
                     onData = { navigator.navigate(AppRoute.Data) },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
@@ -283,45 +295,26 @@ internal fun AppBar(title: String, onBack: (() -> Unit)? = null, actions: @Compo
 @Composable
 private fun RootPersistentHeader(
     selected: RootTab,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
     onSettings: () -> Unit,
     account: LocalAccount?,
-    onAvatar: () -> Unit
+    onAvatar: () -> Unit,
+    projectSearchQuery: String,
+    onProjectSearchChange: (String) -> Unit
 ) {
-    if (selected == RootTab.STUDY) {
-        // Figma 15:3030: the Study variant retains the same 16dp-safe-area
-        // information bar, with a 226dp search field between its two controls.
+    if (selected == RootTab.PROJECT) {
         val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
         Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding()
-                .padding(start = (16 * scale).dp, top = (16 * scale).dp, end = (16 * scale).dp)
-                .height((56 * scale).dp).zIndex(2f),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = (16 * scale).dp, top = (16 * scale).dp, end = (16 * scale).dp).height((56 * scale).dp),
+            horizontalArrangement = Arrangement.spacedBy((16 * scale).dp), verticalAlignment = Alignment.CenterVertically
         ) {
             SettingsHeaderButton(onSettings, (56 * scale).dp)
-            Box(
-                modifier = Modifier.width((258 * scale).dp).fillMaxHeight()
-                    .padding(horizontal = (16 * scale).dp),
-                contentAlignment = Alignment.Center
-            ) {
-                StudySearchField(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            StudySearchField(projectSearchQuery, onProjectSearchChange, Modifier.weight(1f), scale)
             ImageAvatar((56 * scale).dp, account, onAvatar)
         }
     } else {
         ScreenTopInformationBar(
-            title = null,
-            subtitle = null,
-            onBack = null,
-            onSettings = onSettings,
-            account = account,
-            onAvatar = onAvatar,
-            modifier = Modifier.zIndex(2f)
+            title = null, subtitle = null, onBack = null, onSettings = onSettings,
+            account = account, onAvatar = onAvatar, modifier = Modifier.zIndex(2f)
         )
     }
 }
@@ -341,6 +334,10 @@ internal fun ScreenTopInformationBar(
     onAvatar: (() -> Unit)? = null,
     backContainer: Color? = null,
     titleColor: Color? = null,
+    onTrailingAction: (() -> Unit)? = null,
+    trailingActionSymbol: String = "edit",
+    trailingActionDescription: String = "编辑",
+    trailingActionContainer: Color? = null,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -353,6 +350,10 @@ internal fun ScreenTopInformationBar(
         onAvatar = onAvatar,
         backContainer = backContainer,
         titleColor = titleColor,
+        onTrailingAction = onTrailingAction,
+        trailingActionSymbol = trailingActionSymbol,
+        trailingActionDescription = trailingActionDescription,
+        trailingActionContainer = trailingActionContainer,
         modifier = modifier.fillMaxWidth().statusBarsPadding()
             .padding(start = (16 * scale).dp, top = (16 * scale).dp, end = (16 * scale).dp)
     )
@@ -368,6 +369,10 @@ private fun TopInformationBarContent(
     onAvatar: (() -> Unit)?,
     backContainer: Color?,
     titleColor: Color?,
+    onTrailingAction: (() -> Unit)?,
+    trailingActionSymbol: String,
+    trailingActionDescription: String,
+    trailingActionContainer: Color?,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -378,7 +383,7 @@ private fun TopInformationBarContent(
         } else {
             Surface(
                 onClick = onBack,
-                color = backContainer ?: HeaderControlBackgroundColor(),
+                color = backContainer ?: SecondaryHeaderActionBackgroundColor(),
                 contentColor = titleColor ?: HeaderControlIconColor(),
                 shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.size((56 * scale).dp).align(Alignment.CenterStart)
@@ -401,95 +406,47 @@ private fun TopInformationBarContent(
                     AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
                 }
             }
+            onTrailingAction?.let { action ->
+                Surface(
+                    onClick = action,
+                    color = trailingActionContainer ?: backContainer ?: SecondaryHeaderActionBackgroundColor(),
+                    contentColor = titleColor ?: HeaderControlIconColor(),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.size((56 * scale).dp).align(Alignment.CenterEnd)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        MaterialSymbol(
+                            trailingActionSymbol,
+                            trailingActionDescription,
+                            tint = LocalContentColor.current,
+                            size = fixedSp(24 * scale),
+                            filled = true
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
-private enum class RootTab { HOME, STUDY, DATA }
+private enum class RootTab { HOME, PROJECT, DATA }
 
 @Composable
-private fun BottomNavBar(selected: RootTab, onHome: () -> Unit, onStudy: () -> Unit, onData: () -> Unit, modifier: Modifier = Modifier) {
-    val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
+private fun BottomNavBar(selected: RootTab, onHome: () -> Unit, onProject: () -> Unit, onData: () -> Unit, modifier: Modifier = Modifier) {
     val selectedIndex = when (selected) {
         RootTab.HOME -> 0
-        RootTab.STUDY -> 1
+        RootTab.PROJECT -> 1
         RootTab.DATA -> 2
     }
-    Surface(
-        color = if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFF4A545F) else Color(0xFF253644), shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
-        shadowElevation = 14.dp,
-        // Figma 15:3716 / 15:3715: outer nav is 370×85 on the 402dp canvas.
-        // Its 12dp padding leaves an exact 61dp-high selected range.
-        modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp).height((85 * designScale).dp)
-    ) {
-        BoxWithConstraints(Modifier.fillMaxSize().padding((12 * designScale).dp)) {
-            val itemGap = (32 * designScale).dp
-            val itemWidth = (maxWidth - itemGap * 2) / 3
-            val indicatorOffset by animateDpAsState(
-                targetValue = (itemWidth + itemGap) * selectedIndex,
-                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-                label = "bottom navigation indicator"
-            )
-
-            // The Figma variants share a single light selection capsule. Keeping it as
-            // one composable lets it travel between tabs instead of flashing in place.
-            Surface(
-                color = if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFFECF5FF) else Color(0xFF36546C),
-                shape = RoundedCornerShape((24 * designScale).dp),
-                modifier = Modifier.width(itemWidth).fillMaxSize().offset(x = indicatorOffset)
-            ) {}
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(itemGap)) {
-                BottomNavItem("主页", "home", selected == RootTab.HOME, onHome, Modifier.weight(1f), designScale)
-                BottomNavItem("学习", "playing_cards", selected == RootTab.STUDY, onStudy, Modifier.weight(1f), designScale)
-                BottomNavItem("数据", "query_stats", selected == RootTab.DATA, onData, Modifier.weight(1f), designScale)
-            }
-        }
-    }
-}
-
-@Composable
-private fun BottomNavItem(label: String, symbol: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier, designScale: Float) {
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) {
-            if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFF374B61) else Color(0xFFE5F1FF)
-        } else {
-            if (MaterialTheme.colorScheme.background.luminance() > .5f) Color(0xFFECECEC).copy(alpha = .75f) else Color(0xFFB8C7D6)
-        },
-        animationSpec = tween(durationMillis = 180),
-        label = "$label navigation color"
+    AppBottomNavigation(
+        selectedIndex = selectedIndex,
+        items = listOf(
+            AppBottomNavigationItem("主页", "home", onHome),
+            AppBottomNavigationItem("项目", "playing_cards", onProject),
+            AppBottomNavigationItem("数据", "query_stats", onData)
+        ),
+        modifier = modifier
     )
-    Surface(
-        onClick = onClick, color = Color.Transparent,
-        contentColor = contentColor,
-        shape = RoundedCornerShape((24 * designScale).dp), modifier = modifier.fillMaxSize()
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            AnimatedContent(
-                targetState = selected,
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
-                label = "$label navigation icon"
-            ) { isSelected ->
-                MaterialSymbol(symbol, label, tint = contentColor, size = fixedSp(25.263f * designScale), filled = isSelected)
-            }
-            Spacer(Modifier.height((4 * designScale).dp))
-            AnimatedContent(
-                targetState = selected,
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
-                label = "$label navigation label"
-            ) { isSelected ->
-                Text(
-                    label,
-                    // Figma navigation labels: 520 when idle, Heavy 700 when selected.
-                    fontFamily = if (isSelected) AppFonts.MiSansHeavy else AppFonts.MiSansSemibold,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = fixedSp(14 * designScale),
-                    lineHeight = fixedSp(16 * designScale),
-                    letterSpacing = fixedSp(.6f * designScale),
-                    color = contentColor
-                )
-            }
-        }
-    }
 }
 
 /** Figma 15:3032: the shared main-screen settings control. */

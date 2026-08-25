@@ -21,8 +21,13 @@ import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.remote.GeneratedTask
 import com.qiuzhao.flashcards.data.remote.PdfChapter
 import com.qiuzhao.flashcards.data.remote.PdfFile
+import com.qiuzhao.flashcards.data.remote.MaterialSummary
+import com.qiuzhao.flashcards.data.remote.MaterialStatus
+import com.qiuzhao.flashcards.data.remote.MaterialType
+import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.data.remote.RemoteFlashcardRepository
+import com.qiuzhao.flashcards.data.remote.projectsForDisplay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -89,9 +94,21 @@ private const val DEFAULT_WEEKLY_GOAL = 50
 
 /** Local-only fixture data for visual and interaction testing. Edit these values to exercise UI states without changing a server record. */
 private object FrontendTestFixtures {
+    val projects: List<ProjectSummary> = listOf(
+        ProjectSummary(id = "frontend-project-design", name = "世界现代设计史", themeKey = "violet", materialCount = 2),
+        ProjectSummary(id = "frontend-project-mechanics", name = "机械振动基础", themeKey = "azure", materialCount = 1)
+    )
+
+    val materials: List<MaterialSummary> = listOf(
+        MaterialSummary("frontend-material-design-pdf", "世界现代设计史.pdf", MaterialType.PDF, MaterialStatus.READY, listOf("frontend-project-design"), chapterCount = 12),
+        MaterialSummary("frontend-material-design-md", "课堂笔记.md", MaterialType.MARKDOWN, MaterialStatus.READY, listOf("frontend-project-design")),
+        MaterialSummary("frontend-material-mechanics-pdf", "振动系统.pdf", MaterialType.PDF, MaterialStatus.PARSING, listOf("frontend-project-mechanics"), chapterCount = 3)
+    )
+
     val decks: List<DeckSummary> = listOf(
-        DeckSummary(id = "frontend-test-design", name = "设计心理学 · 测试卡组", chapter = 3, source = "FRONTEND_TEST", themeKey = "azure", cardCount = 48, dueCount = 12, masteredCards = 31, reviewCount = 86, masteryRatio = .65f),
-        DeckSummary(id = "frontend-test-agent", name = "Agent 工程 · 测试卡组", chapter = 6, source = "FRONTEND_TEST", themeKey = "violet", cardCount = 26, dueCount = 6, masteredCards = 14, reviewCount = 43, masteryRatio = .54f)
+        DeckSummary(id = "frontend-test-design", name = "现代设计史", chapter = 3, source = "FRONTEND_TEST", themeKey = "violet", cardCount = 48, dueCount = 12, masteredCards = 31, reviewCount = 86, masteryRatio = .65f, projectId = "frontend-project-design", materialScopes = listOf(com.qiuzhao.flashcards.data.remote.DeckMaterialScope("frontend-material-design-pdf", listOf("chapter-1")))),
+        DeckSummary(id = "frontend-test-agent", name = "乌尔姆学院", chapter = 6, source = "FRONTEND_TEST", themeKey = "violet", cardCount = 26, dueCount = 6, masteredCards = 14, reviewCount = 43, masteryRatio = .54f, projectId = "frontend-project-design", materialScopes = listOf(com.qiuzhao.flashcards.data.remote.DeckMaterialScope("frontend-material-design-pdf", listOf("chapter-2")))),
+        DeckSummary(id = "frontend-test-legacy", name = "未归类卡组", source = "FRONTEND_TEST", themeKey = "azure", cardCount = 12, dueCount = 3, masteredCards = 4, reviewCount = 9)
     )
 
     val cards: Map<String, List<FlashcardEntity>> = mapOf(
@@ -158,12 +175,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _frontendTestDecks: MutableStateFlow<List<DeckSummary>> = MutableStateFlow(FrontendTestFixtures.decks)
     private val _frontendTestCards: MutableStateFlow<Map<String, List<FlashcardEntity>>> = MutableStateFlow(FrontendTestFixtures.cards)
+    private val _frontendTestProjects: MutableStateFlow<List<ProjectSummary>> = MutableStateFlow(FrontendTestFixtures.projects)
+    private val _frontendTestMaterials: MutableStateFlow<List<MaterialSummary>> = MutableStateFlow(FrontendTestFixtures.materials)
     val decks: StateFlow<List<DeckSummary>> = combine(frontendTestMode, repository.decks, _frontendTestDecks) { enabled, remote, test ->
         if (enabled) test else remote
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val dueCount: StateFlow<Int> = combine(frontendTestMode, repository.dueCount(), _frontendTestDecks) { enabled, remote, test ->
         if (enabled) test.sumOf { it.dueCount } else remote
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    /** Production decks remain visible in a per-device legacy project until the project API is live. */
+    val projects: StateFlow<List<ProjectSummary>> = combine(frontendTestMode, repository.decks, _frontendTestProjects, _frontendTestDecks) { enabled, remote, testProjects, testDecks ->
+        if (enabled) projectsForDisplay(testProjects, testDecks) else projectsForDisplay(emptyList(), remote)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Real materials stay empty until the backend confirms the materials list endpoint. */
+    val materials: StateFlow<List<MaterialSummary>> = combine(frontendTestMode, _frontendTestMaterials) { enabled, test ->
+        if (enabled) test else emptyList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _studyCards = MutableStateFlow<List<FlashcardEntity>>(emptyList())
     val studyCards: StateFlow<List<FlashcardEntity>> = _studyCards
@@ -210,6 +237,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setFrontendTestMode(enabled: Boolean) = viewModelScope.launch {
         getApplication<Application>().dataStore.edit { it[FRONTEND_TEST_MODE] = enabled }
+    }
+
+    /**
+     * Project creation is intentionally local to the visual-test mode until the
+     * project write contract is supplied by the service. This prevents a new UI
+     * from guessing a production endpoint or silently creating orphaned decks.
+     */
+    fun createFrontendTestProject(name: String, themeKey: String, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val normalizedName = name.trim()
+        when {
+            !frontendTestMode.value -> onResult("项目服务尚未接入，当前只能在 UI 测试模式中创建项目")
+            normalizedName.isBlank() -> onResult("请填写项目名称")
+            else -> {
+                val id = "frontend-project-${System.currentTimeMillis()}"
+                _frontendTestProjects.value = _frontendTestProjects.value + ProjectSummary(
+                    id = id,
+                    name = normalizedName,
+                    themeKey = themeKey
+                )
+                onResult(null)
+            }
+        }
     }
 
     /** Local-only account shell until the authentication service is connected. */

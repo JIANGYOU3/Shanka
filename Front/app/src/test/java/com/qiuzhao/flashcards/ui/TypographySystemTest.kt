@@ -31,6 +31,7 @@ class TypographySystemTest {
         assertEquals(FigmaTextSpec(40f, 40f, -.6f, 700), AppTypographyTokens.spec(AppTextRole.MetricMedium, AppTextLanguage.Latin))
         assertEquals(FigmaTextSpec(20f, 27f, 0f, 400), AppTypographyTokens.spec(AppTextRole.Body, AppTextLanguage.Latin))
         assertEquals(.4f, AppTypographyTokens.spec(AppTextRole.Label, AppTextLanguage.Latin).letterSpacing)
+        assertEquals(.6f, AppTypographyTokens.spec(AppTextRole.Label, AppTextLanguage.Chinese).letterSpacing)
         AppTextRole.values().forEach { role ->
             assertEquals(
                 maxOf(
@@ -40,5 +41,17 @@ class TypographySystemTest {
                 AppTypographyTokens.lineHeight(role)
             )
         }
+    }
+
+    @Test
+    fun `navigation labels retain the Figma selected and unselected Chinese specs`() {
+        assertEquals(
+            FigmaTextSpec(size = 14f, lineHeight = 18f, letterSpacing = .6f, weight = 630),
+            AppTypographyTokens.navigationBarLabelSpec(selected = true)
+        )
+        assertEquals(
+            FigmaTextSpec(size = 14f, lineHeight = 18f, letterSpacing = .6f, weight = 520),
+            AppTypographyTokens.navigationBarLabelSpec(selected = false)
+        )
     }
 }

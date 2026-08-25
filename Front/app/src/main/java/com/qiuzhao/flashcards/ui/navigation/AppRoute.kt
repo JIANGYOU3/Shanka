@@ -1,14 +1,26 @@
 package com.qiuzhao.flashcards.ui.navigation
 
 import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Type-safe destinations for the Compose-only Navigation 3 graph. */
 @Serializable
 sealed interface AppRoute : NavKey {
     @Serializable data object Home : AppRoute
-    @Serializable data object Library : AppRoute
+    /**
+     * The former Library root. Keeping its old serial name restores a saved
+     * Navigation 3 state from an installed pre-project build as Project.
+     */
+    @Serializable
+    @SerialName("com.qiuzhao.flashcards.ui.navigation.AppRoute.Library")
+    data object Project : AppRoute
     @Serializable data object Data : AppRoute
+    @Serializable data class ProjectDetail(val id: String) : AppRoute
+    @Serializable data object ProjectCreate : AppRoute
+    @Serializable data object MaterialManagement : AppRoute
+    @Serializable data object MaterialImport : AppRoute
+    @Serializable data object TextImport : AppRoute
     @Serializable data class Deck(val id: String) : AppRoute
     @Serializable data class Study(val deckId: String, val reviewMode: Boolean) : AppRoute
     @Serializable data object Import : AppRoute
@@ -26,4 +38,6 @@ sealed interface AppRoute : NavKey {
     @Serializable data class SettingsUnbuilt(val title: String) : AppRoute
 }
 
-val TopLevelRoutes: Set<AppRoute> = setOf(AppRoute.Home, AppRoute.Library, AppRoute.Data)
+/** Figma 568:2326 defines this root navigation order. */
+val RootNavigationRoutes: List<AppRoute> = listOf(AppRoute.Home, AppRoute.Project, AppRoute.Data)
+val TopLevelRoutes: Set<AppRoute> = RootNavigationRoutes.toSet()

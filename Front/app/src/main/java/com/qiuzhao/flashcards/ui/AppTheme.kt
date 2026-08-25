@@ -146,12 +146,19 @@ internal object AppTypographyTokens {
         AppTextRole.MetricLarge to FigmaTextSpec(48f, 48f, 0f, 700)
     )
 
+    /** Figma 378:1775. Root navigation labels are currently Chinese-only product copy. */
+    private val selectedNavigationBarLabel = FigmaTextSpec(14f, 18f, .6f, 630)
+    private val unselectedNavigationBarLabel = FigmaTextSpec(14f, 18f, .6f, 520)
+
     fun spec(role: AppTextRole, language: AppTextLanguage): FigmaTextSpec =
         if (language == AppTextLanguage.Chinese) chinese.getValue(role) else latin.getValue(role)
 
     fun lineHeight(role: AppTextRole): Float = maxOf(
         chinese.getValue(role).lineHeight, latin.getValue(role).lineHeight
     )
+
+    fun navigationBarLabelSpec(selected: Boolean): FigmaTextSpec =
+        if (selected) selectedNavigationBarLabel else unselectedNavigationBarLabel
 
     fun fontFamily(language: AppTextLanguage, weight: Int): FontFamily = when (language) {
         AppTextLanguage.Chinese -> when (weight) {

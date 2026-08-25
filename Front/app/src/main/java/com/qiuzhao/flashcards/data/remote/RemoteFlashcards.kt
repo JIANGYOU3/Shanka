@@ -42,8 +42,79 @@ data class DeckSummary(
     val dueCount: Int = 0,
     val masteredCards: Int = 0,
     val reviewCount: Int = 0,
-    val masteryRatio: Float? = null
+    val masteryRatio: Float? = null,
+    /** Null is a legacy standalone deck until the server migration assigns a project. */
+    val projectId: String? = null,
+    /** Explicit source selections; a deck never implicitly reads every project material. */
+    val materialScopes: List<DeckMaterialScope> = emptyList()
 )
+
+data class DeckMaterialScope(
+    val materialId: String,
+    val chapterIds: List<String> = emptyList(),
+    val sourceLocator: String? = null
+)
+
+data class ProjectSummary(
+    val id: String,
+    val name: String,
+    val themeKey: String = "azure",
+    val deckCount: Int = 0,
+    val materialCount: Int = 0
+)
+
+data class ProjectDetail(
+    val project: ProjectSummary,
+    val decks: List<DeckSummary> = emptyList(),
+    val materials: List<MaterialSummary> = emptyList()
+)
+
+enum class ProjectStatisticsRange { TOTAL, TODAY }
+
+/** Server-derived metrics for exactly one selected range; null means the server did not provide it. */
+data class ProjectStatistics(
+    val range: ProjectStatisticsRange,
+    val reviewedCards: Int = 0,
+    val cardCount: Int? = null,
+    val dueCards: Int? = null,
+    val masteredCards: Int? = null,
+    val studyDurationMinutes: Int? = null,
+    val masteryRatio: Float? = null,
+    val reviewStateDistribution: Map<String, Int> = emptyMap()
+)
+
+enum class MaterialType { PDF, MARKDOWN, TEXT, UNKNOWN }
+enum class MaterialStatus { PENDING, PARSING, READY, FAILED, UNKNOWN }
+
+data class MaterialSummary(
+    val id: String,
+    val name: String,
+    val type: MaterialType = MaterialType.UNKNOWN,
+    val status: MaterialStatus = MaterialStatus.UNKNOWN,
+    val projectIds: List<String> = emptyList(),
+    val chapterCount: Int = 0,
+    val errorCode: String? = null
+)
+
+const val LEGACY_UNASSIGNED_PROJECT_ID = "legacy-unassigned"
+private const val LEGACY_UNASSIGNED_PROJECT_NAME = "未归类项目"
+
+/**
+ * Produces a stable project list while the backend migrates legacy standalone decks.
+ * Unknown project IDs receive a neutral placeholder so no deck disappears from the UI.
+ */
+fun projectsForDisplay(knownProjects: List<ProjectSummary>, decks: List<DeckSummary>): List<ProjectSummary> {
+    val byId = knownProjects.associateBy { it.id }.toMutableMap()
+    decks.mapNotNull { it.projectId }.distinct().forEach { projectId ->
+        byId.putIfAbsent(projectId, ProjectSummary(id = projectId, name = "未命名项目"))
+    }
+    if (decks.any { it.projectId == null }) {
+        byId.putIfAbsent(LEGACY_UNASSIGNED_PROJECT_ID, ProjectSummary(LEGACY_UNASSIGNED_PROJECT_ID, LEGACY_UNASSIGNED_PROJECT_NAME))
+    }
+    return byId.values
+        .map { project -> project.copy(deckCount = decks.count { deck -> (deck.projectId ?: LEGACY_UNASSIGNED_PROJECT_ID) == project.id }) }
+        .sortedWith(compareBy<ProjectSummary> { it.id != LEGACY_UNASSIGNED_PROJECT_ID }.thenBy { it.name })
+}
 
 data class DeckProgress(
     val cardCount: Int,
@@ -60,7 +131,9 @@ data class FlashcardEntity(
     val code: String? = null,
     val position: Int = 0,
     val source: String = "MANUAL",
-    val version: Int = 0
+    val version: Int = 0,
+    val sourceMaterialId: String? = null,
+    val sourceLocator: String? = null
 )
 
 enum class Rating { AGAIN, HARD, GOOD, EASY }
@@ -462,6 +535,81 @@ private fun values(value: JSONObject, key: String): List<JSONObject> {
     return List(array.length()) { index -> array.optJSONObject(index) }.filterNotNull()
 }
 
+/** Candidate server contract parser. No project endpoint is invoked until the backend exposes it. */
+fun projectDetail(value: JSONObject): ProjectDetail {
+    val projectValue = value.optJSONObject("project") ?: value
+    val project = project(projectValue) ?: error("Project response missing id")
+    return ProjectDetail(
+        project = project,
+        decks = values(value, "decks").mapNotNull(::deck),
+        materials = values(value, "materials").mapNotNull(::material)
+    )
+}
+
+fun projectStatistics(value: JSONObject, range: ProjectStatisticsRange): ProjectStatistics = ProjectStatistics(
+    range = range,
+    reviewedCards = value.optInt("reviewed_count", value.optInt("completed", 0)),
+    cardCount = value.optIntOrNull("card_count"),
+    dueCards = value.optIntOrNull("due_count"),
+    masteredCards = value.optIntOrNull("mastered_card_count") ?: value.optIntOrNull("mastered_cards"),
+    studyDurationMinutes = value.optIntOrNull("study_duration_minutes"),
+    masteryRatio = value.optDoubleOrNull("mastery_ratio")?.toFloat(),
+    reviewStateDistribution = reviewStateDistribution(value.optJSONObject("review_state_distribution"))
+)
+
+private fun project(value: JSONObject): ProjectSummary? {
+    val id = value.optString("id", value.optString("project_id")); if (id.isBlank()) return null
+    return ProjectSummary(
+        id = id,
+        name = value.optString("name", "未命名项目"),
+        themeKey = value.optString("theme_key", value.optString("theme", "azure")),
+        deckCount = value.optInt("deck_count", 0),
+        materialCount = value.optInt("material_count", 0)
+    )
+}
+
+private fun material(value: JSONObject): MaterialSummary? {
+    val id = value.optString("id", value.optString("material_id", value.optString("file_id"))); if (id.isBlank()) return null
+    val projectIds = value.optJSONArray("project_ids")?.let { array ->
+        List(array.length()) { index -> array.optString(index) }.filter { it.isNotBlank() }
+    } ?: value.optString("project_id").takeIf { it.isNotBlank() }?.let(::listOf).orEmpty()
+    return MaterialSummary(
+        id = id,
+        name = value.optString("name", value.optString("filename", "未命名资料")),
+        type = materialType(value.optString("type", value.optString("material_type"))),
+        status = materialStatus(value.optString("status")),
+        projectIds = projectIds,
+        chapterCount = value.optInt("chapter_count", values(value, "chapters").size),
+        errorCode = value.optString("error_code").ifBlank { null }
+    )
+}
+
+private fun materialType(value: String): MaterialType = when (value.trim().uppercase()) {
+    "PDF", "APPLICATION/PDF" -> MaterialType.PDF
+    "MD", "MARKDOWN", "TEXT/MARKDOWN" -> MaterialType.MARKDOWN
+    "TEXT", "PLAIN_TEXT", "TXT", "TEXT/PLAIN" -> MaterialType.TEXT
+    else -> MaterialType.UNKNOWN
+}
+
+private fun materialStatus(value: String): MaterialStatus = when (value.trim().uppercase()) {
+    "PENDING", "UPLOADING" -> MaterialStatus.PENDING
+    "PARSING", "PROCESSING" -> MaterialStatus.PARSING
+    "PARSED", "READY", "AVAILABLE" -> MaterialStatus.READY
+    "FAILED", "ERROR" -> MaterialStatus.FAILED
+    else -> MaterialStatus.UNKNOWN
+}
+
+private fun reviewStateDistribution(value: JSONObject?): Map<String, Int> {
+    if (value == null) return emptyMap()
+    val result = linkedMapOf<String, Int>()
+    val keys = value.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        result[key] = value.optInt(key, 0)
+    }
+    return result
+}
+
 /** `/samples` is specified as an object whose array property is implementation-defined. */
 private fun sampleCards(value: JSONObject): List<JSONObject> {
     val keys = listOf("samples", "sample_cards", "cards", "items", "data")
@@ -481,14 +629,38 @@ private fun sampleCards(value: JSONObject): List<JSONObject> {
 
 private fun deck(value: JSONObject): DeckSummary? {
     val id = value.optString("id", value.optString("deck_id")); if (id.isBlank()) return null
-    return DeckSummary(id, value.optString("name", "未命名牌组"), source = value.optString("source", "MANUAL"), cardCount = value.optInt("card_count", 0), dueCount = value.optInt("due_count", 0), masteredCards = value.optInt("mastered_card_count", value.optInt("mastered", value.optInt("mastered_cards", 0))), reviewCount = value.optInt("review_count", 0), masteryRatio = value.optDoubleOrNull("mastery_ratio")?.toFloat())
+    return DeckSummary(
+        id = id,
+        name = value.optString("name", "未命名牌组"),
+        source = value.optString("source", "MANUAL"),
+        cardCount = value.optInt("card_count", 0),
+        dueCount = value.optInt("due_count", 0),
+        masteredCards = value.optInt("mastered_card_count", value.optInt("mastered", value.optInt("mastered_cards", 0))),
+        reviewCount = value.optInt("review_count", 0),
+        masteryRatio = value.optDoubleOrNull("mastery_ratio")?.toFloat(),
+        projectId = value.optString("project_id").ifBlank { null },
+        materialScopes = values(value, "material_scopes").mapNotNull(::materialScope)
+    )
 }
 
 private fun deckOrThrow(value: JSONObject): DeckSummary = deck(value) ?: error("Deck response missing id")
 
 private fun card(value: JSONObject, fallbackDeckId: String): FlashcardEntity? {
     val id = value.optString("id", value.optString("card_id")); if (id.isBlank()) return null
-    return FlashcardEntity(id, value.optString("deck_id", fallbackDeckId), value.optString("front"), value.optString("back"), value.optString("code").ifBlank { null }, value.optInt("position", 0), value.optString("source", "MANUAL"), value.optInt("version", 0))
+    return FlashcardEntity(
+        id, value.optString("deck_id", fallbackDeckId), value.optString("front"), value.optString("back"),
+        value.optString("code").ifBlank { null }, value.optInt("position", 0), value.optString("source", "MANUAL"), value.optInt("version", 0),
+        value.optString("source_material_id", value.optString("material_id")).ifBlank { null },
+        value.optString("source_locator").ifBlank { null }
+    )
+}
+
+private fun materialScope(value: JSONObject): DeckMaterialScope? {
+    val materialId = value.optString("material_id", value.optString("file_id")); if (materialId.isBlank()) return null
+    val chapterIds = value.optJSONArray("chapter_ids")?.let { array ->
+        List(array.length()) { index -> array.optString(index) }.filter { it.isNotBlank() }
+    }.orEmpty()
+    return DeckMaterialScope(materialId, chapterIds, value.optString("source_locator").ifBlank { null })
 }
 
 private fun pdf(value: JSONObject): PdfFile {
