@@ -92,7 +92,8 @@ internal fun ProjectScreen(
                 ) { nav.navigate(AppRoute.MaterialManagement) }
             }
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth()
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp),
                 contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * scale).dp)
             ) {
@@ -145,7 +146,7 @@ private fun ProjectSummaryCard(project: ProjectSummary, decks: List<DeckSummary>
         progress = ratio,
         theme = theme,
         icon = "heap_snapshot_multiple",
-        variant = ProjectThemedCardVariant.TINTED,
+        variant = ProjectThemedCardVariant.BASE_PAGE,
         designScale = scale,
         onClick = onClick
     )
@@ -178,7 +179,7 @@ internal fun ProjectCreateScreen(
         Box(
             Modifier.fillMaxSize().statusBarsPadding()
                 .padding(top = (88 * scale).dp, start = (16 * scale).dp, end = (16 * scale).dp)
-                .clipToBounds()
+                .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp))
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -186,7 +187,7 @@ internal fun ProjectCreateScreen(
                 contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp)
             ) {
                 item {
-                    Surface(color = theme.cardPanel, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((72 * scale).dp)) {
+                    Surface(color = theme.cardPanel, shape = RoundedCornerShape((AppShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth().height((72 * scale).dp)) {
                         Box(Modifier.padding(horizontal = (24 * scale).dp), contentAlignment = Alignment.CenterStart) {
                             AppText("可编辑主题色、名称，以及添加文件", AppTextRole.CardSubtitle, color = theme.text, designScale = scale)
                         }
@@ -247,7 +248,7 @@ internal fun ProjectCreateScreen(
                 item {
                     ProjectCreationPanel(theme, scale) {
                         ProjectSectionLabel("bookmark_stacks", "管理已添加的学习资料", theme, scale)
-                        Surface(color = AppColors.Card, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = AppColors.Card, shape = RoundedCornerShape((AppShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()) {
                             AppText("右滑卡片可进行编辑与删除", AppTextRole.Supporting, modifier = Modifier.padding((24 * scale).dp), color = theme.text, designScale = scale)
                         }
                         val textItems = materials.filter { it.type == ProjectDraftMaterialType.TEXT }
@@ -300,7 +301,7 @@ internal fun ProjectCreateScreen(
 
 @Composable
 private fun ProjectCreationPanel(theme: DeckTheme, scale: Float, content: @Composable ColumnScope.() -> Unit) = Surface(
-    color = theme.surface, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
+    color = theme.surface, shape = RoundedCornerShape((AppShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()
 ) { Column(Modifier.padding((20 * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp), content = content) }
 
 @Composable
@@ -314,7 +315,7 @@ private fun ProjectSectionLabel(icon: String, label: String, theme: DeckTheme, s
 @Composable
 private fun ProjectMaterialActionCard(icon: String, title: String, subtitle: String, theme: DeckTheme, scale: Float, onClick: () -> Unit) = Surface(
     onClick = onClick, color = theme.primary, contentColor = theme.onPrimary,
-    shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height((80 * scale).dp)
+    shape = RoundedCornerShape((AppButtonShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth().height((80 * scale).dp)
 ) {
     Row(Modifier.fillMaxSize().padding((12 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(color = theme.cardPanel, shape = RoundedCornerShape(999.dp), modifier = Modifier.size((56 * scale).dp)) {
@@ -331,7 +332,7 @@ private fun ProjectMaterialActionCard(icon: String, title: String, subtitle: Str
 
 @Composable
 private fun ProjectMaterialGroupTitle(title: String, theme: DeckTheme, scale: Float) = Surface(
-    color = theme.cardPanel, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
+    color = theme.cardPanel, shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()
 ) { AppText(title, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (28 * scale).dp, vertical = (16 * scale).dp), color = theme.text, designScale = scale) }
 
 @Composable
@@ -340,7 +341,7 @@ private fun ProjectDraftFileCard(material: ProjectDraftMaterial, theme: DeckThem
 ) {
     Surface(
         color = theme.secondary,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         modifier = Modifier.fillMaxSize()
     ) {
         Row(Modifier.fillMaxSize().padding((20 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
@@ -370,11 +371,11 @@ private fun ProjectDraftTextCard(material: ProjectDraftMaterial, theme: DeckThem
 ) {
     Surface(
         color = AppColors.Card,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         modifier = Modifier.fillMaxSize()
     ) {
         Column(Modifier.fillMaxSize().padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
-            Surface(color = theme.secondary, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+            Surface(color = theme.secondary, shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()) {
                 AppText(material.title, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = theme.text, designScale = scale)
             }
             Surface(color = theme.cardPanel, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -393,7 +394,7 @@ private fun ProjectSwipeContainer(height: Float, actions: List<ProjectSwipeActio
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val offset by animateFloatAsState(dragOffset, label = "project material swipe")
     val dragState = rememberDraggableState { delta -> dragOffset = (dragOffset + delta).coerceIn(-revealPx, 0f) }
-    val cardShape = RoundedCornerShape((32 * scale).dp)
+    val cardShape = RoundedCornerShape((AppShapeRadius * scale).dp)
     Box(
         Modifier
             .fillMaxWidth()
@@ -403,7 +404,7 @@ private fun ProjectSwipeContainer(height: Float, actions: List<ProjectSwipeActio
     ) {
         Column(Modifier.align(Alignment.CenterEnd).width(actionWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
             actions.forEach { action ->
-                Surface(onClick = action.onClick, color = action.background, contentColor = action.content, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Surface(onClick = action.onClick, color = action.background, contentColor = action.content, shape = RoundedCornerShape((AppButtonShapeRadius * scale).dp), modifier = Modifier.weight(1f).fillMaxWidth()) {
                     Column(Modifier.fillMaxSize(), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         MaterialSymbol(action.icon, null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
                         Spacer(Modifier.height((4 * scale).dp))
@@ -445,7 +446,8 @@ internal fun ProjectTextEditorScreen(route: AppRoute.ProjectTextEditor, viewMode
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar("导入文本", null, nav::goBack, backContainer = theme.cardPanel, titleColor = theme.text)
         LazyColumn(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp).clipToBounds(),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp)
+                .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
             contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp), verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
         ) {
             item { ProjectTextField("文件标题", title, { title = it }, "标题标题", singleLine = true, theme = theme, scale = scale) }
@@ -465,7 +467,7 @@ internal fun ProjectTextEditorScreen(route: AppRoute.ProjectTextEditor, viewMode
 @Composable
 private fun ProjectTextField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String, singleLine: Boolean, theme: DeckTheme, scale: Float) = Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
     AppText(label, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (8 * scale).dp), color = theme.text, designScale = scale)
-    Surface(color = theme.surface, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth().height(if (singleLine) (75 * scale).dp else (260 * scale).dp)) {
+    Surface(color = theme.surface, shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth().height(if (singleLine) (75 * scale).dp else (260 * scale).dp)) {
         androidx.compose.foundation.text.BasicTextField(
             value = value, onValueChange = onValueChange, singleLine = singleLine,
             textStyle = appInputTextStyle(AppTextRole.Body, scale, theme.text), visualTransformation = rememberBilingualInputTransformation(AppTextRole.Body, scale),

@@ -258,7 +258,7 @@ internal fun PdfSettingsScreen(
                             onClick = { onCoverageChange(label) },
                             color = if (selected) AppColors.Blue.primary else AppColors.Card,
                             contentColor = if (selected) AppColors.TextIconLight else AppColors.Blue.ink,
-                            shape = RoundedCornerShape((32 * scale).dp),
+                            shape = RoundedCornerShape((AppButtonShapeRadius * scale).dp),
                             modifier = Modifier.weight(1f).height((56 * scale).dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -292,7 +292,7 @@ internal fun PdfSettingsScreen(
 @Composable
 private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, content: @Composable ColumnScope.() -> Unit) = Surface(
     color = AppColors.Blue.background,
-    shape = RoundedCornerShape((32 * scale).dp),
+    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
     modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = AppMotion.emphasisSpring())
 ) {
     Column(
@@ -310,7 +310,7 @@ private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, co
 @Composable
 private fun PdfDestinationChoice(label: String, selected: Boolean, scale: Float, onClick: () -> Unit) = Surface(
     onClick = onClick,
-    shape = RoundedCornerShape((32 * scale).dp),
+    shape = RoundedCornerShape((AppButtonShapeRadius * scale).dp),
     color = if (selected) AppColors.Blue.surface else AppColors.Card,
     modifier = Modifier.fillMaxWidth().height((64 * scale).dp)
 ) {
@@ -409,7 +409,7 @@ private fun PdfDeckPickerMenu(decks: List<DeckSummary>, scale: Float, onSelect: 
 @Composable
 private fun PdfRequirementField(value: String, onValueChange: (String) -> Unit, scale: Float) = Surface(
     color = AppColors.Card,
-    shape = RoundedCornerShape((32 * scale).dp),
+    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
     modifier = Modifier.fillMaxWidth().height((86 * scale).dp)
 ) {
     BasicTextField(

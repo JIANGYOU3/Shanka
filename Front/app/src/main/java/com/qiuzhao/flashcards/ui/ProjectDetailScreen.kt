@@ -57,8 +57,8 @@ internal fun ProjectDetailScreen(project: ProjectSummary, decks: List<DeckSummar
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
     var section by rememberSaveable { mutableStateOf(ProjectDetailSection.STATISTICS) }
-    // Figma 15:3030 uses the project family's Background token for the page
-    // canvas. Cards then alternate Surface and pure white above it.
+    // The coloured project canvas uses the family Background token; every
+    // project-owned deck card then lifts to that family's Surface token.
     Box(Modifier.fillMaxSize().background(theme.background)) {
         ScreenTopInformationBar(
             title = project.name, subtitle = null, onBack = nav::goBack,
@@ -99,7 +99,7 @@ private fun ProjectStatisticsContent(decks: List<DeckSummary>, theme: DeckTheme,
     val reviewed = if (showToday) due else decks.sumOf { it.reviewCount }
     val ratio = if (totalCards == 0) 0f else mastered.toFloat() / totalCards
     LazyColumn(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
         // Statistics has no fixed bottom action bar. A 32dp tail places the
         // final cards just above the system navigation area, as in Figma.
         contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
@@ -175,9 +175,9 @@ private fun ProjectStreakMetrics(scale: Float) = Row(
 
 @Composable
 private fun ProjectDecksContent(project: ProjectSummary, decks: List<DeckSummary>, scale: Float, nav: ScreenNavigator, modifier: Modifier) = LazyColumn(
-    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((32 * scale).dp)), contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
+    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)), contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
 ) {
-    itemsIndexed(decks, key = { _, deck -> deck.id }) { index, deck ->
+    itemsIndexed(decks, key = { _, deck -> deck.id }) { _, deck ->
         val theme = deckTheme(project)
         val progress = deck.masteryRatio ?: if (deck.cardCount == 0) 0f else deck.masteredCards.toFloat() / deck.cardCount
         ProjectThemedCard(
@@ -187,7 +187,7 @@ private fun ProjectDecksContent(project: ProjectSummary, decks: List<DeckSummary
             progress = progress,
             theme = theme,
             icon = "heap_snapshot_multiple",
-            variant = projectThemedCardVariant(index),
+            variant = ProjectThemedCardVariant.THEME_BACKGROUND,
             designScale = scale,
             onClick = { nav.navigate(AppRoute.Deck(deck.id)) }
         )

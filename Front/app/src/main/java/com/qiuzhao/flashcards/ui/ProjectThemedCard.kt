@@ -49,7 +49,7 @@ internal fun ProjectThemedCard(
         onClick = onClick,
         color = palette.background,
         contentColor = theme.text,
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(

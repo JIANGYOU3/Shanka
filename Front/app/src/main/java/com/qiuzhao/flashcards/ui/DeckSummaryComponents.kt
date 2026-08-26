@@ -74,7 +74,7 @@ internal fun LearningDataProgressCard(
     Surface(
         color = theme.primary,
         contentColor = theme.onPrimary,
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         modifier = modifier.fillMaxWidth().height((225 * designScale).dp)
     ) {
         Column(
@@ -236,7 +236,7 @@ internal fun DeckQuestionTypesCard(
     designScale: Float,
     modifier: Modifier = Modifier
 ) {
-    Surface(color = theme.cardPanel, shape = RoundedCornerShape((32 * designScale).dp), modifier = modifier.fillMaxWidth().height((101 * designScale).dp)) {
+    Surface(color = theme.cardPanel, shape = RoundedCornerShape((AppShapeRadius * designScale).dp), modifier = modifier.fillMaxWidth().height((101 * designScale).dp)) {
         Row(Modifier.fillMaxSize().padding((12 * designScale).dp), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
             DeckQuestionType(foundationCards, "基础记忆", Color.White, theme.text, designScale, Modifier.weight(1f))
             DeckQuestionType(understandingCards, "理解分析", theme.secondary, theme.strongText, designScale, Modifier.weight(1f))
@@ -277,7 +277,7 @@ internal fun ReviewProgressCard(
     require(entries.size == 5) { "Review progress cards require exactly five Figma columns." }
     Surface(
         color = AppColors.Card,
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         modifier = modifier.fillMaxWidth().height((277 * designScale).dp)
     ) {
         Column(

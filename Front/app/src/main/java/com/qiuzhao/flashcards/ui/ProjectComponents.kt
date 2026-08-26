@@ -163,7 +163,7 @@ internal fun ProjectSectionSwitcher(
 ) {
     Surface(
         color = theme.cardPanel,
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(AppShapeRadius.dp),
         modifier = modifier.fillMaxWidth().height(84.dp)
     ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {

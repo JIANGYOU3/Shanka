@@ -171,7 +171,7 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
             Box(
                 Modifier.fillMaxSize()
                     .padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
-                    .clip(RoundedCornerShape((AppShapeRadius * designScale).dp))
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

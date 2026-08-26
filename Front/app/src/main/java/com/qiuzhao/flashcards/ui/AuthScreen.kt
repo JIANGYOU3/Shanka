@@ -39,6 +39,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -331,7 +332,8 @@ private fun AuthLayout(title: String, onBack: () -> Unit, content: androidx.comp
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().imePadding()
-                    .padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp),
+                    .padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp)
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
                 contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) { content(scale) }
@@ -615,7 +617,7 @@ private fun AnimatedBackgroundCard(
 @Composable
 private fun AuthHintCard(text: String, scale: Float) = Surface(
     color = AppColors.Blue.background,
-    shape = RoundedCornerShape((32 * scale).dp),
+    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
     modifier = Modifier.fillMaxWidth().height((72 * scale).dp)
 ) {
     Box(

@@ -56,8 +56,8 @@ internal fun StatisticsMetricCard(
     val appearance = statisticsMetricAppearance(kind)
     val isTinted = surface == StatisticsMetricSurface.Tinted
     Surface(
-        color = if (isTinted) appearance.tintedBackground else AppColors.Card,
-        shape = RoundedCornerShape((32 * designScale).dp),
+        color = statisticsMetricContainerColor(kind, surface),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         modifier = modifier.height((176 * designScale).dp)
     ) {
         Column(
@@ -126,21 +126,30 @@ private fun statisticsMetricAppearance(kind: StatisticsMetricKind): StatisticsMe
     StatisticsMetricKind.LearningTime -> StatisticsMetricAppearance(
         symbol = "acute", label = "学习时长", labelColor = Color(0xFF484100),
         whiteIconBackground = Color(0xFFB7AC4A), tintedIconBackground = Color(0xFFB7AC4A),
-        tintedBackground = AppColors.Orange.background
+        tintedBackground = AppColors.Orange.surface
     )
     StatisticsMetricKind.LongestStreak -> StatisticsMetricAppearance(
         symbol = "fire_check", label = "单次最大连胜", labelColor = Color(0xFF650800),
         whiteIconBackground = Color(0xFFD94C3D), tintedIconBackground = AppColors.WarningStrong,
-        tintedBackground = AppColors.Pink.background
+        tintedBackground = AppColors.Pink.surface
     )
     StatisticsMetricKind.OpenCount -> StatisticsMetricAppearance(
         symbol = "coffee", label = "打开次数", labelColor = Color(0xFF36002E),
         whiteIconBackground = Color(0xFFA63E97), tintedIconBackground = Color(0xFFA63E97),
-        tintedBackground = AppColors.Purple.background
+        tintedBackground = AppColors.Purple.surface
     )
     StatisticsMetricKind.MasteredCards -> StatisticsMetricAppearance(
         symbol = "editor_choice", label = "已掌握卡片", labelColor = Color(0xFF004904),
         whiteIconBackground = Color(0xFF2E8B3A), tintedIconBackground = AppColors.Green.primaryStrong,
-        tintedBackground = AppColors.Green.background
+        tintedBackground = AppColors.Green.surface
     )
+}
+
+internal fun statisticsMetricContainerColor(
+    kind: StatisticsMetricKind,
+    surface: StatisticsMetricSurface
+): Color = if (surface == StatisticsMetricSurface.Tinted) {
+    statisticsMetricAppearance(kind).tintedBackground
+} else {
+    AppColors.Card
 }

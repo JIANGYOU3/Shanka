@@ -174,7 +174,15 @@ internal object AppTypographyTokens {
     }
 }
 
-val AppShapeRadius = 32
+/** Figma shared geometry: main cards, root switchers and navigation containers. */
+val AppShapeRadius = 36
+
+/** Figma shared geometry: card internals, control containers and all buttons. */
+val AppNestedShapeRadius = 24
+val AppButtonShapeRadius = 24
+
+/** Fixed clipping boundary for every full-page scrollable content viewport. */
+val AppScrollableContentClipRadius = 24
 
 /** One six-step Figma colour family. */
 internal data class AppColorFamily(
@@ -204,24 +212,24 @@ internal object AppColors {
     val NavigationBar = Color(0xFF425161)
 
     val Blue = AppColorFamily(
-        background = Color(0xFFF1F9FF), surface = Color(0xFFD9EBFF), primarySecondary = Color(0xFFB0D7FF),
-        primary = Color(0xFF489FFF), primaryStrong = Color(0xFF006EE0), ink = Color(0xFF003C7A)
+        background = Color(0xFFEEF4FA), surface = Color(0xFFCCE6FF), primarySecondary = Color(0xFFB0D7FF),
+        primary = Color(0xFF389DFF), primaryStrong = Color(0xFF0063C4), ink = Color(0xFF003C7A)
     )
     val Purple = AppColorFamily(
         background = Color(0xFFF3F3FF), surface = Color(0xFFE4E4FF), primarySecondary = Color(0xFFC8C8FF),
         primary = Color(0xFF716FDD), primaryStrong = Color(0xFF3836B7), ink = Color(0xFF38387A)
     )
     val Green = AppColorFamily(
-        background = Color(0xFFEAFBEB), surface = Color(0xFFCDEFD1), primarySecondary = Color(0xFFA3DFAA),
-        primary = Color(0xFF7AC583), primaryStrong = Color(0xFF138120), ink = Color(0xFF1F5225)
+        background = Color(0xFFEAF4E5), surface = Color(0xFFD6EEC9), primarySecondary = Color(0xFFB6DCA6),
+        primary = Color(0xFF65AA56), primaryStrong = Color(0xFF278B00), ink = Color(0xFF1F5225)
     )
     val Pink = AppColorFamily(
-        background = Color(0xFFFFF5F9), surface = Color(0xFFFFE2EE), primarySecondary = Color(0xFFF9C6DB),
-        primary = Color(0xFFEF9BBE), primaryStrong = Color(0xFFAA0047), ink = Color(0xFF4E1B30)
+        background = Color(0xFFF9EFF3), surface = Color(0xFFF8DBE3), primarySecondary = Color(0xFFFFBFD3),
+        primary = Color(0xFFF16692), primaryStrong = Color(0xFFAA0047), ink = Color(0xFF730022)
     )
     val Orange = AppColorFamily(
-        background = Color(0xFFFFFAEF), surface = Color(0xFFFBEBD2), primarySecondary = Color(0xFFFFE2B6),
-        primary = Color(0xFFE1975E), primaryStrong = Color(0xFFEF6800), ink = Color(0xFF733200)
+        background = Color(0xFFFAF2EB), surface = Color(0xFFFBE7C8), primarySecondary = Color(0xFFF4DDBA),
+        primary = Color(0xFFE48A4A), primaryStrong = Color(0xFFD15700), ink = Color(0xFF642A00)
     )
 
     /** Warning / Primary. */

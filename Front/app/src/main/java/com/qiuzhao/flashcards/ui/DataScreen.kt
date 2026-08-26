@@ -164,7 +164,7 @@ internal fun DataScreen(dueCount: Int, dashboard: Dashboard?, weeklyActivity: We
                 // The data content viewport is a rounded surface on all four
                 // sides; keeping the top corners here restores the Figma crop
                 // instead of letting the first card paint into the square edge.
-                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(AppShapeRadius.dp))) {
+                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(AppScrollableContentClipRadius.dp))) {
                     // The common root-navigation tail aligns the final card just above
                     // the floating navigation instead of leaving an oversized blank area.
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
@@ -187,7 +187,7 @@ private fun WeeklyActivityCard(designScale: Float, weeklyActivity: WeeklyActivit
     }
     val labels = listOf("M", "T", "W", "T", "F", "S", "S")
     Card(
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         colors = CardDefaults.cardColors(containerColor = AppColors.Blue.background),
         modifier = Modifier.fillMaxWidth().height((272 * designScale).dp)
     ) {

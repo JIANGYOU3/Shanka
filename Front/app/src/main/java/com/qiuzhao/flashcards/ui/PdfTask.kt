@@ -196,7 +196,7 @@ internal fun PdfTaskScreen(state: PdfTaskState, onPause: () -> Unit, onResume: (
 private fun TaskGenerationCard(paused: Boolean, designScale: Float, modifier: Modifier = Modifier) {
     val surface = AppColors.Blue.background
     Surface(
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         color = surface,
         modifier = modifier.fillMaxWidth().height((265 * designScale).dp)
     ) {
@@ -267,7 +267,7 @@ private fun Md3ExpressiveIndeterminateRing(designScale: Float) {
 private fun TaskCompletedCard(designScale: Float, modifier: Modifier = Modifier) {
     val surface = AppColors.Blue.background
     Surface(
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
         color = surface,
         // Figma 140:3415 is a hug-content card.  Its height must be derived
         // from the icon, text block, chip row and the prescribed gaps.

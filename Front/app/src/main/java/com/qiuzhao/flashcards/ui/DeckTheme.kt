@@ -218,9 +218,9 @@ private fun deckTheme(key: String, label: String, colors: AppColorFamily) = Deck
     strongText = colors.ink,
     text = AppColors.TextIconDark,
     mutedText = colors.ink,
-    // Figma 257:6634: the unfinished segment returns to the outer card's
-    // Background step, never the stronger Primary-Secondary step.
-    progressTrack = colors.background,
+    // Figma 258:6804 / 645:2168: the unfinished segment is the family's
+    // Primary-Secondary step; Background belongs to the enclosing panel.
+    progressTrack = colors.primarySecondary,
     cardIconCornerRadius = if (key == "violet") 24 else 16,
     cardProgressPanelPadding = if (key == "violet") 16 else 12
 )
@@ -241,11 +241,12 @@ internal fun deckTheme(deck: DeckSummary, projects: List<ProjectSummary>): DeckT
 internal fun deckTheme(project: ProjectSummary): DeckTheme =
     DeckThemes.firstOrNull { it.key == project.themeKey } ?: DeckThemes.first()
 
-/** The project detail deliberately alternates quiet and tinted card surfaces. */
-internal enum class ProjectThemedCardVariant { TINTED, WHITE }
-
-internal fun projectThemedCardVariant(index: Int): ProjectThemedCardVariant =
-    if (index % 2 == 0) ProjectThemedCardVariant.TINTED else ProjectThemedCardVariant.WHITE
+/**
+ * A card group's outer level is derived from the canvas behind it, rather than
+ * from its position in a list. This keeps every project-owned deck consistent
+ * across the three root pages and a project's coloured detail page.
+ */
+internal enum class ProjectThemedCardVariant { BASE_PAGE, THEME_BACKGROUND }
 
 internal data class ProjectThemedCardPalette(
     val background: Color,
@@ -255,23 +256,22 @@ internal data class ProjectThemedCardPalette(
 )
 
 /**
- * Figma 15:3030 keeps a visible three-level project hierarchy:
- * canvas = background, tinted card = surface, alternating card = white.
- * Both card variants place their nested progress and count panels on the
- * project background, with primary-secondary as the unfinished track.
+ * Figma 184:616 / 494:1447 / 19:621: a card on the neutral white canvas uses
+ * the family's Background step; the same card on a family Background canvas
+ * uses Surface. Its nested panel always supplies the next visible level.
  */
 internal fun projectThemedCardPalette(
     theme: DeckTheme,
     variant: ProjectThemedCardVariant
 ): ProjectThemedCardPalette = when (variant) {
-    ProjectThemedCardVariant.TINTED -> ProjectThemedCardPalette(
-        background = theme.cardPanel,
-        panel = theme.background,
-        badge = theme.background,
+    ProjectThemedCardVariant.BASE_PAGE -> ProjectThemedCardPalette(
+        background = theme.background,
+        panel = theme.cardPanel,
+        badge = theme.cardPanel,
         progressTrack = theme.secondary
     )
-    ProjectThemedCardVariant.WHITE -> ProjectThemedCardPalette(
-        background = AppColors.Card,
+    ProjectThemedCardVariant.THEME_BACKGROUND -> ProjectThemedCardPalette(
+        background = theme.cardPanel,
         panel = theme.background,
         badge = theme.background,
         progressTrack = theme.secondary

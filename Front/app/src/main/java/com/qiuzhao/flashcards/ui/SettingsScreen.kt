@@ -184,7 +184,7 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
                         top = (148 * designScale).dp,
                         end = (16 * designScale).dp
                     )
-                    .clip(RoundedCornerShape(AppShapeRadius.dp))
+                    .clip(RoundedCornerShape(AppScrollableContentClipRadius.dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -243,7 +243,6 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
                     )
                     .zIndex(1f)
             )
-            BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
         }
     }
 
@@ -269,7 +268,7 @@ internal fun SettingsIdentityScreen(nav: ScreenNavigator) {
             Box(
                 Modifier.fillMaxSize()
                     .padding(start = (16 * scale).dp, top = (148 * scale).dp, end = (16 * scale).dp)
-                    .clip(RoundedCornerShape((32 * scale).dp))
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp))
             ) {
                 SettingsMenuGroup(scale) {
                     SettingsIdentityRow("头像", "account_circle", avatar = true, scale = scale)
@@ -284,7 +283,6 @@ internal fun SettingsIdentityScreen(nav: ScreenNavigator) {
                     .padding(start = (16 * scale).dp, top = (64 * scale).dp, end = (16 * scale).dp)
                     .zIndex(1f)
             )
-            BottomContentFade(scale, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -498,7 +496,7 @@ private fun SettingsIdentityRow(
 ) {
     Surface(
         color = AppColors.Card,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         modifier = Modifier.fillMaxWidth().height((76 * scale).dp)
     ) {
         Row(

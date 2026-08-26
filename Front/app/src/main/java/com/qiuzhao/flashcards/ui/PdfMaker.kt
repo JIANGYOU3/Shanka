@@ -156,8 +156,8 @@ import kotlinx.coroutines.delay
 // Root list content begins with a card. A rounded top crop would remove content
 // from that card's 24dp inset, so only the lower viewport corners are rounded.
 private val BottomRoundedViewportShape = RoundedCornerShape(
-    bottomStart = AppShapeRadius.dp,
-    bottomEnd = AppShapeRadius.dp
+    bottomStart = AppScrollableContentClipRadius.dp,
+    bottomEnd = AppScrollableContentClipRadius.dp
 )
 
 private enum class PdfMakerStep { HOME, READING, READ_ERROR, CHAPTERS, SETTINGS, PREVIEW, TASK }
@@ -510,7 +510,7 @@ private fun SmartFileImportScreen(
 private fun SmartInfoCard(text: String, scale: Float) {
     Surface(
         color = AppColors.Blue.background,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         AppText(
@@ -561,7 +561,7 @@ private fun SmartSwipeDeleteContainer(
     onDelete: () -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
-    val shape = RoundedCornerShape((32 * scale).dp)
+    val shape = RoundedCornerShape((AppShapeRadius * scale).dp)
     val actionWidth = (112 * scale).dp
     val revealWidthPx = with(LocalDensity.current) { ((112 - 16) * scale).dp.toPx() }
     var dragOffset by remember(key) { mutableFloatStateOf(0f) }
@@ -625,7 +625,7 @@ private fun SmartSelectableCard(
     val onAccent = if (selected) AppColors.Green.background else AppColors.Blue.background
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         color = surface,
         modifier = modifier
     ) {
@@ -685,7 +685,7 @@ private fun PdfReadingScreen(onBack: () -> Unit) = PdfFlowLayout("正在识别",
 private fun PdfRecognitionProgressCard() {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     Surface(
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         color = AppColors.Blue.background,
         modifier = Modifier.fillMaxWidth().height((265 * scale).dp)
     ) {

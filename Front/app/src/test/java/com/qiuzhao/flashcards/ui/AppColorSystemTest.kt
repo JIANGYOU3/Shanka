@@ -10,7 +10,7 @@ class AppColorSystemTest {
     @Test
     fun figmaFamiliesPreserveTheirSixVariableSteps() {
         assertEquals(
-            AppColorFamily(Color(0xFFF1F9FF), Color(0xFFD9EBFF), Color(0xFFB0D7FF), Color(0xFF489FFF), Color(0xFF006EE0), Color(0xFF003C7A)),
+            AppColorFamily(Color(0xFFEEF4FA), Color(0xFFCCE6FF), Color(0xFFB0D7FF), Color(0xFF389DFF), Color(0xFF0063C4), Color(0xFF003C7A)),
             AppColors.Blue
         )
         assertEquals(
@@ -18,15 +18,15 @@ class AppColorSystemTest {
             AppColors.Purple
         )
         assertEquals(
-            AppColorFamily(Color(0xFFEAFBEB), Color(0xFFCDEFD1), Color(0xFFA3DFAA), Color(0xFF7AC583), Color(0xFF138120), Color(0xFF1F5225)),
+            AppColorFamily(Color(0xFFEAF4E5), Color(0xFFD6EEC9), Color(0xFFB6DCA6), Color(0xFF65AA56), Color(0xFF278B00), Color(0xFF1F5225)),
             AppColors.Green
         )
         assertEquals(
-            AppColorFamily(Color(0xFFFFF5F9), Color(0xFFFFE2EE), Color(0xFFF9C6DB), Color(0xFFEF9BBE), Color(0xFFAA0047), Color(0xFF4E1B30)),
+            AppColorFamily(Color(0xFFF9EFF3), Color(0xFFF8DBE3), Color(0xFFFFBFD3), Color(0xFFF16692), Color(0xFFAA0047), Color(0xFF730022)),
             AppColors.Pink
         )
         assertEquals(
-            AppColorFamily(Color(0xFFFFFAEF), Color(0xFFFBEBD2), Color(0xFFFFE2B6), Color(0xFFE1975E), Color(0xFFEF6800), Color(0xFF733200)),
+            AppColorFamily(Color(0xFFFAF2EB), Color(0xFFFBE7C8), Color(0xFFF4DDBA), Color(0xFFE48A4A), Color(0xFFD15700), Color(0xFF642A00)),
             AppColors.Orange
         )
     }
@@ -51,7 +51,7 @@ class AppColorSystemTest {
         assertEquals(AppColors.Purple.background, violet.background)
         assertEquals(AppColors.Purple.surface, violet.cardPanel)
         assertEquals(AppColors.Purple.primarySecondary, violet.secondary)
-        assertEquals(AppColors.Purple.background, violet.progressTrack)
+        assertEquals(AppColors.Purple.primarySecondary, violet.progressTrack)
         assertEquals(AppColors.Purple.primary, violet.progressFill)
         assertEquals(AppColors.Purple.primaryStrong, violet.progress)
         assertEquals(AppColors.Purple.ink, violet.strongText)
@@ -64,7 +64,7 @@ class AppColorSystemTest {
     }
 
     @Test
-    fun projectThemeOverridesLegacyDeckThemeAndWhiteCardsKeepProjectAccents() {
+    fun projectThemeOverridesLegacyDeckThemeAndCardsFollowTheirCanvas() {
         val project = ProjectSummary(id = "project-1", name = "项目", themeKey = "violet")
         val deck = DeckSummary(
             id = "deck-1", name = "卡组", chapter = 1, source = "REMOTE",
@@ -72,15 +72,17 @@ class AppColorSystemTest {
         )
 
         val theme = deckTheme(deck, listOf(project))
-        val whitePalette = projectThemedCardPalette(theme, ProjectThemedCardVariant.WHITE)
+        val basePagePalette = projectThemedCardPalette(theme, ProjectThemedCardVariant.BASE_PAGE)
+        val themePagePalette = projectThemedCardPalette(theme, ProjectThemedCardVariant.THEME_BACKGROUND)
 
         assertEquals(AppColors.Purple.primary, theme.primary)
-        assertEquals(AppColors.Card, whitePalette.background)
-        assertEquals(AppColors.Purple.background, whitePalette.panel)
-        assertEquals(AppColors.Purple.primarySecondary, whitePalette.progressTrack)
-        assertEquals(AppColors.Purple.surface, projectThemedCardPalette(theme, ProjectThemedCardVariant.TINTED).background)
-        assertEquals(ProjectThemedCardVariant.TINTED, projectThemedCardVariant(0))
-        assertEquals(ProjectThemedCardVariant.WHITE, projectThemedCardVariant(1))
+        assertEquals(AppColors.Purple.background, basePagePalette.background)
+        assertEquals(AppColors.Purple.surface, basePagePalette.panel)
+        assertEquals(AppColors.Purple.surface, basePagePalette.badge)
+        assertEquals(AppColors.Purple.primarySecondary, basePagePalette.progressTrack)
+        assertEquals(AppColors.Purple.surface, themePagePalette.background)
+        assertEquals(AppColors.Purple.background, themePagePalette.panel)
+        assertEquals(AppColors.Purple.primarySecondary, themePagePalette.progressTrack)
     }
 
     @Test
@@ -100,5 +102,22 @@ class AppColorSystemTest {
     fun rootPageBackgroundUsesTheFigmaBaseBackground() {
         assertEquals(Color.White, AppColors.BaseBackground)
         assertEquals(AppColors.BaseBackground, LightColors.background)
+    }
+
+    @Test
+    fun statisticsCardsUseSurfaceOnWhiteDataAndWhiteOnThemeBackgrounds() {
+        assertEquals(AppColors.Orange.surface, statisticsMetricContainerColor(StatisticsMetricKind.LearningTime, StatisticsMetricSurface.Tinted))
+        assertEquals(AppColors.Pink.surface, statisticsMetricContainerColor(StatisticsMetricKind.LongestStreak, StatisticsMetricSurface.Tinted))
+        assertEquals(AppColors.Purple.surface, statisticsMetricContainerColor(StatisticsMetricKind.OpenCount, StatisticsMetricSurface.Tinted))
+        assertEquals(AppColors.Green.surface, statisticsMetricContainerColor(StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.Tinted))
+        assertEquals(AppColors.Card, statisticsMetricContainerColor(StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White))
+    }
+
+    @Test
+    fun sharedCornerTokensFollowTheUpdatedFigmaHierarchy() {
+        assertEquals(36, AppShapeRadius)
+        assertEquals(24, AppNestedShapeRadius)
+        assertEquals(24, AppButtonShapeRadius)
+        assertEquals(24, AppScrollableContentClipRadius)
     }
 }

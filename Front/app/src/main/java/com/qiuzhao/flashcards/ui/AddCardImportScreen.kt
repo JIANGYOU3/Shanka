@@ -167,7 +167,7 @@ internal fun AddCardScreen(deckId: String, viewModel: AppViewModel, nav: ScreenN
             Box(
                 Modifier.fillMaxSize()
                     .padding(start = (16 * designScale).dp, top = (148 * designScale).dp, end = (16 * designScale).dp)
-                    .clip(RoundedCornerShape(AppShapeRadius.dp))
+                    .clip(RoundedCornerShape(AppScrollableContentClipRadius.dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -294,7 +294,8 @@ internal fun ImportScreen(viewModel: AppViewModel, nav: ScreenNavigator, existin
     } else {
         Scaffold(topBar = { AppBar(if (existingDeckId == null) "导入卡片组" else "批量导入", nav::popBackStack) }) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp)
+                .clip(RoundedCornerShape(AppScrollableContentClipRadius.dp)),
             contentPadding = PaddingValues(bottom = NaturalScrollTail.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -355,7 +356,7 @@ private fun ImportMethodChoiceScreen(
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp)
-                    .clip(RoundedCornerShape((32 * scale).dp)),
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
                 contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) {
@@ -397,7 +398,7 @@ private fun ImportMethodOption(
     Surface(
         onClick = onClick,
         color = AppColors.Blue.surface,
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -415,7 +416,7 @@ private fun ImportMethodOption(
             MaterialSymbol("arrow_forward", null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale))
         }
     }
-    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((AppShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()) {
         AppText(detail, AppTextRole.Supporting, modifier = Modifier.padding((24 * scale).dp), color = AppColors.TextIconDark, designScale = scale)
     }
 }
@@ -435,7 +436,7 @@ private fun PasteTextImportScreen(
             Box(
                 Modifier.fillMaxSize()
                     .padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
-                    .clip(RoundedCornerShape((16 * designScale).dp))
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

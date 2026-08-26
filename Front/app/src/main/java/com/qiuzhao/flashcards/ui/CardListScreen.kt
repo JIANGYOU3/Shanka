@@ -206,7 +206,7 @@ internal fun CardListScreen(
                     // Figma 118:2389: cards begin 194dp from the design canvas top.
                     .padding(start = (16 * designScale).dp, top = (194 * designScale).dp, end = (16 * designScale).dp)
                     .height((693 * designScale).dp)
-                    .clip(RoundedCornerShape((AppShapeRadius * designScale).dp))
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -374,7 +374,7 @@ internal fun CardListActionButton(label: String, icon: String, primary: Boolean,
 
 @Composable
 private fun CardListItem(card: FlashcardEntity, number: Int, designScale: Float, theme: DeckTheme, onEdit: () -> Unit, onDelete: () -> Unit) {
-    val shape = RoundedCornerShape((32 * designScale).dp)
+    val shape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     val actionWidth = (112 * designScale).dp
     // The panel remains 112dp wide. The front card stops 16dp into it, exactly
     // matching Figma 143:3526, so the exposed panel measures 96dp.
@@ -441,7 +441,7 @@ private fun CardListItem(card: FlashcardEntity, number: Int, designScale: Float,
 private fun CardListSwipeAction(label: String, icon: String, color: Color, contentColor: Color, modifier: Modifier, designScale: Float, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape((32 * designScale).dp),
+        shape = RoundedCornerShape((AppButtonShapeRadius * designScale).dp),
         color = color,
         modifier = modifier.fillMaxWidth()
     ) {

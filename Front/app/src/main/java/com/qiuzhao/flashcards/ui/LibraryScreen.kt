@@ -184,7 +184,7 @@ internal fun LegacyProjectDeckList(decks: List<DeckSummary>, viewModel: AppViewM
                     // This viewport fills all space down to the navigation safe area. Only
                     // its own deck flow scrolls; the fixed header and add button do not.
                     modifier = Modifier.weight(1f).fillMaxWidth()
-                        .clip(RoundedCornerShape(AppShapeRadius.dp))
+                        .clip(RoundedCornerShape(AppScrollableContentClipRadius.dp))
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -284,7 +284,7 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
     }
     // Figma 257:6634 is the shared card-group component used by the project,
     // home and library lists.  Keep its 32dp outer corner and 199dp geometry.
-    val containerShape = RoundedCornerShape((32 * designScale).dp)
+    val containerShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Box(
         modifier = Modifier.fillMaxWidth().height((199 * designScale).dp).clip(containerShape)
     ) {

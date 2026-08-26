@@ -361,16 +361,24 @@ private fun bilingualAnnotatedString(
     }
 }
 
-/** Figma node 19:1446: a visual, non-interactive finish above the floating nav. */
+/**
+ * Figma 720:2251: a visual, non-interactive bottom mask for pages with a
+ * fixed bottom action or the root navigation. It deliberately stays out of
+ * pages without a bottom control so their content reaches the system area
+ * without an artificial white fade.
+ */
 @Composable
 internal fun BottomContentFade(designScale: Float, modifier: Modifier = Modifier) {
     Box(
         modifier.fillMaxWidth()
-            .height((97 * designScale).dp)
+            .height((163 * designScale).dp)
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    1f to MaterialTheme.colorScheme.background.copy(alpha = .75f)
+                    // Figma's `to-[64.825%]` is the gradient end position:
+                    // white reaches 90% opacity here and remains solid below.
+                    .64825f to Color.White.copy(alpha = .9f),
+                    1f to Color.White.copy(alpha = .9f)
                 )
             )
             .zIndex(.5f)
@@ -488,7 +496,7 @@ internal fun MixedLanguageText(
 @Composable
 internal fun DescriptionInfoCard(text: String, scale: Float) {
     Surface(
-        shape = RoundedCornerShape((32 * scale).dp),
+        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
         color = AppColors.Purple.background,
         modifier = Modifier.fillMaxWidth().heightIn(min = (102 * scale).dp)
     ) {

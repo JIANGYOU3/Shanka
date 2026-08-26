@@ -399,7 +399,7 @@ private fun FigmaReviewCard(
     )
     val frontAlpha = if (rotation <= 90f) 1f else 0f
     val backAlpha = if (rotation > 90f) 1f else 0f
-    val faceShape = RoundedCornerShape((32 * designScale).dp)
+    val faceShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Box(
         modifier = modifier
             .offset { IntOffset(offsetX.roundToInt(), 0) }
@@ -595,7 +595,7 @@ private fun FreeStudyCard(card: FlashcardEntity, flipped: Boolean, onFlip: () ->
         animationSpec = AppMotion.emphasisSpring(),
         label = "free study flip"
     )
-    val shape = RoundedCornerShape((32 * designScale).dp)
+    val shape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Box(modifier = modifier.clip(shape).clickable(onClick = onFlip)) {
         ReviewCardFace(
             title = "问题",

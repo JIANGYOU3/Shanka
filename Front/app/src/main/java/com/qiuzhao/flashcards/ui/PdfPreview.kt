@@ -166,7 +166,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
         Box(Modifier.fillMaxSize()) {
             Surface(
                 color = AppColors.Blue.background,
-                shape = RoundedCornerShape((32 * designScale).dp),
+                shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
                 modifier = Modifier.fillMaxWidth().padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
                     .height((56 * designScale).dp)
             ) {
@@ -184,7 +184,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
             Box(
                 Modifier.padding(start = (16 * designScale).dp, top = (208 * designScale).dp, end = (16 * designScale).dp)
                     .fillMaxWidth().height((580 * designScale).dp)
-                    .clip(RoundedCornerShape((AppShapeRadius * designScale).dp))
+                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
