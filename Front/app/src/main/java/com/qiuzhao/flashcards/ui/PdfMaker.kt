@@ -510,7 +510,7 @@ private fun SmartFileImportScreen(
 private fun SmartInfoCard(text: String, scale: Float) {
     Surface(
         color = AppColors.Blue.background,
-        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
+        shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         AppText(

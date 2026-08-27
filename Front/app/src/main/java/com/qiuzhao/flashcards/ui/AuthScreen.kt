@@ -617,7 +617,7 @@ private fun AnimatedBackgroundCard(
 @Composable
 private fun AuthHintCard(text: String, scale: Float) = Surface(
     color = AppColors.Blue.background,
-    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
+    shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
     modifier = Modifier.fillMaxWidth().height((72 * scale).dp)
 ) {
     Box(

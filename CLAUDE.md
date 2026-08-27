@@ -15,6 +15,16 @@
   `cmd.exe /c "set JAVA_HOME=C:\Users\admin\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2 && call gradlew.bat :app:assembleDebug --console=plain"`。
 - `testDebugUnitTest` 报 ClassNotFoundException 而编译产物 .class 存在 → 多为该临时 Windows 环境问题，非代码问题。
 
+## Figma 设计 → 代码（Figma 读取方式，非显然）
+
+- 默认优先用 Codex 应用内 Figma 连接器工具（`get_design_context` / `get_screenshot` / `use_figma`）。
+- 当会话是**非 Codex 原生模型**、或连接器“插件安装失败”时，这些工具不会被注入；改用
+  **Figma REST API + Personal Access Token（PAT，`figd_...`，权限 File content: read）**，
+  读取节点树、导出节点渲染图，再严格按 Figma + 真机比对。完整流程见
+  `docs/design-system/qiuzhao-flashcards/FIGMA_IMPLEMENTATION_WORKFLOW.md`。
+- 已知节点：`493:1386` = `资料管理-导入/编辑资料-导入文本`（全局蓝白页，不继承项目主题），
+  实现在 `ui/ProjectScreen.kt` 的 `ProjectTextEditorScreen` / `ProjectTextField`。
+
 ## 演示 / 真实边界（防误判）
 
 - `PdfSmartCardsFlow` 是 **demo-only**，其"完成卡片"是 `PdfSampleCards`，不入库。

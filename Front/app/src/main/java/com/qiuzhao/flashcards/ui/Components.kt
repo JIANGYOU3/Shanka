@@ -368,7 +368,7 @@ private fun bilingualAnnotatedString(
  * without an artificial white fade.
  */
 @Composable
-internal fun BottomContentFade(designScale: Float, modifier: Modifier = Modifier) {
+internal fun BottomContentFade(designScale: Float, modifier: Modifier = Modifier, color: Color = Color.White) {
     Box(
         modifier.fillMaxWidth()
             .height((163 * designScale).dp)
@@ -376,9 +376,11 @@ internal fun BottomContentFade(designScale: Float, modifier: Modifier = Modifier
                 Brush.verticalGradient(
                     0f to Color.Transparent,
                     // Figma's `to-[64.825%]` is the gradient end position:
-                    // white reaches 90% opacity here and remains solid below.
-                    .64825f to Color.White.copy(alpha = .9f),
-                    1f to Color.White.copy(alpha = .9f)
+                    // the page background reaches 90% opacity here and remains
+                    // solid below. The colour must match the page canvas so a
+                    // themed page fades into its own background, not white.
+                    .64825f to color.copy(alpha = .9f),
+                    1f to color.copy(alpha = .9f)
                 )
             )
             .zIndex(.5f)
@@ -496,7 +498,7 @@ internal fun MixedLanguageText(
 @Composable
 internal fun DescriptionInfoCard(text: String, scale: Float) {
     Surface(
-        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
+        shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
         color = AppColors.Purple.background,
         modifier = Modifier.fillMaxWidth().heightIn(min = (102 * scale).dp)
     ) {

@@ -22,9 +22,12 @@ sealed interface AppRoute : NavKey {
     @Serializable data class ProjectEdit(val id: String) : AppRoute
     @Serializable data class ProjectTextEditor(
         val materialId: String? = null,
-        val themeKey: String = "azure"
+        val themeKey: String = "azure",
+        val projectId: String? = null
     ) : AppRoute
     @Serializable data object MaterialManagement : AppRoute
+    /** A given project's own materials; colour follows the project theme. */
+    @Serializable data class ProjectMaterialManagement(val projectId: String) : AppRoute
     @Serializable data object MaterialImport : AppRoute
     @Serializable data object TextImport : AppRoute
     @Serializable data class Deck(val id: String) : AppRoute

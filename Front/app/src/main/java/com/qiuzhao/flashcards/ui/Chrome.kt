@@ -210,10 +210,15 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             if (project == null) LoadingScreen() else ProjectDetailScreen(
                 project,
                 decks.filter { (it.projectId ?: LEGACY_UNASSIGNED_PROJECT_ID) == project.id },
-                navigator
+                navigator,
+                onDeleteDeck = { viewModel.deleteDeck(it) }
             )
         }
-        entry<AppRoute.MaterialManagement> { SettingsUnbuiltScreen("资料管理", navigator) }
+        entry<AppRoute.MaterialManagement> { MaterialManagementScreen(project = null, viewModel, navigator) }
+        entry<AppRoute.ProjectMaterialManagement> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else MaterialManagementScreen(project, viewModel, navigator)
+        }
         entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
         entry<AppRoute.Deck> { route ->
             val deck = decks.firstOrNull { it.id == route.id }

@@ -416,7 +416,7 @@ private fun ImportMethodOption(
             MaterialSymbol("arrow_forward", null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale))
         }
     }
-    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((AppShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppColors.Blue.background, shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp), modifier = Modifier.fillMaxWidth()) {
         AppText(detail, AppTextRole.Supporting, modifier = Modifier.padding((24 * scale).dp), color = AppColors.TextIconDark, designScale = scale)
     }
 }

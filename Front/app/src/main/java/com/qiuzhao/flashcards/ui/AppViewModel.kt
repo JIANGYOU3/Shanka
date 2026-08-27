@@ -189,6 +189,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _frontendTestMaterials: MutableStateFlow<List<MaterialSummary>> = MutableStateFlow(FrontendTestFixtures.materials)
     private val _projectCreationMaterials = MutableStateFlow<List<ProjectDraftMaterial>>(emptyList())
     internal val projectCreationMaterials: StateFlow<List<ProjectDraftMaterial>> = _projectCreationMaterials
+    /** Per-project material store so a project's 资料管理 page only shows its own materials. */
+    private val _projectMaterials = MutableStateFlow<Map<String, List<ProjectDraftMaterial>>>(emptyMap())
+    internal val projectMaterials: StateFlow<Map<String, List<ProjectDraftMaterial>>> = _projectMaterials
     val decks: StateFlow<List<DeckSummary>> = combine(frontendTestMode, repository.decks, _frontendTestDecks) { enabled, remote, test ->
         if (enabled) test else remote
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -288,6 +291,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _projectCreationMaterials.value = _projectCreationMaterials.value.filterNot { it.id == id }
     }
 
+    internal fun projectMaterialList(projectId: String): List<ProjectDraftMaterial> = _projectMaterials.value[projectId].orEmpty()
+
+    internal fun deleteProjectMaterial(projectId: String, materialId: String) {
+        _projectMaterials.value = _projectMaterials.value.toMutableMap().also { map ->
+            map[projectId] = map[projectId].orEmpty().filterNot { it.id == materialId }
+        }
+    }
+
+    internal fun upsertProjectMaterial(projectId: String, material: ProjectDraftMaterial) {
+        _projectMaterials.value = _projectMaterials.value.toMutableMap().also { map ->
+            val current = map[projectId].orEmpty()
+            map[projectId] = if (current.any { it.id == material.id }) {
+                current.map { if (it.id == material.id) material else it }
+            } else {
+                current + material
+            }
+        }
+    }
+
     fun createFrontendTestProject(name: String, themeKey: String, onResult: (String?) -> Unit) = viewModelScope.launch {
         val normalizedName = name.trim()
         when {
@@ -318,6 +340,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         projectIds = listOf(id)
                     )
                 }
+                _projectMaterials.value = _projectMaterials.value.toMutableMap().also { it[id] = creationMaterials }
                 resetProjectCreationDraft()
                 onResult(null)
             }

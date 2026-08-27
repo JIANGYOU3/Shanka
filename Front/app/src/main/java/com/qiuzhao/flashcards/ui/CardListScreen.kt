@@ -441,7 +441,7 @@ private fun CardListItem(card: FlashcardEntity, number: Int, designScale: Float,
 private fun CardListSwipeAction(label: String, icon: String, color: Color, contentColor: Color, modifier: Modifier, designScale: Float, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape((AppButtonShapeRadius * designScale).dp),
+        shape = RoundedCornerShape((36 * designScale).dp),
         color = color,
         modifier = modifier.fillMaxWidth()
     ) {
@@ -460,7 +460,7 @@ private fun CardListSwipeAction(label: String, icon: String, color: Color, conte
 }
 
 /** Figma 118:2389 cycles the card-type pill independently from the deck theme. */
-private data class CardListTagStyle(val label: String, val container: Color, val content: Color)
+internal data class CardListTagStyle(val label: String, val container: Color, val content: Color)
 
 private val CardListTagStyles = listOf(
     CardListTagStyle("基础记忆", AppColors.Blue.primarySecondary, AppColors.Blue.ink),
@@ -468,15 +468,19 @@ private val CardListTagStyles = listOf(
     CardListTagStyle("综合应用", AppColors.Pink.primarySecondary, AppColors.Pink.ink)
 )
 
-private fun cardListTagStyle(number: Int): CardListTagStyle =
+internal fun cardListTagStyle(number: Int): CardListTagStyle =
     CardListTagStyles[(number - 1).mod(CardListTagStyles.size)]
 
 @Composable
 private fun CardListFace(card: FlashcardEntity, number: Int, answer: Boolean, rotation: Float, alpha: Float, shape: RoundedCornerShape, designScale: Float, theme: DeckTheme) {
     val density = LocalDensity.current.density
     val tagStyle = cardListTagStyle(number)
+    // Figma 118:2389: the question face is the ink surface, the answer face is
+    // one family step deeper than the page (page background -> surface).
+    val faceColor = if (answer) theme.cardPanel else theme.strongText
+    val faceContent = if (answer) theme.strongText else AppColors.TextIconLight
     Surface(
-        color = theme.surface,
+        color = faceColor,
         shape = shape,
         modifier = Modifier.fillMaxSize().graphicsLayer {
             rotationY = if (answer) rotation - 180f else rotation
@@ -494,13 +498,13 @@ private fun CardListFace(card: FlashcardEntity, number: Int, answer: Boolean, ro
                     MaterialSymbol(
                         if (answer) "wb_incandescent" else "book_5",
                         null,
-                        tint = theme.text,
+                        tint = faceContent,
                         size = fixedSp(24 * designScale),
                         filled = true
                     )
                     Text(
                         if (answer) "答案" else "问题",
-                        color = theme.text,
+                        color = faceContent,
                         fontFamily = AppFonts.MiSansSemibold,
                         fontWeight = FontWeight.Normal,
                         fontSize = fixedSp(24 * designScale),
@@ -522,7 +526,7 @@ private fun CardListFace(card: FlashcardEntity, number: Int, answer: Boolean, ro
             }
             Text(
                 if (answer) card.back else card.front,
-                color = theme.text,
+                color = faceContent,
                 fontFamily = AppFonts.MiSansMedium,
                 fontWeight = FontWeight.Normal,
                 fontSize = fixedSp(20 * designScale),

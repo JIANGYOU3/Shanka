@@ -166,7 +166,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
         Box(Modifier.fillMaxSize()) {
             Surface(
                 color = AppColors.Blue.background,
-                shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
+                shape = RoundedCornerShape((AppNestedShapeRadius * designScale).dp),
                 modifier = Modifier.fillMaxWidth().padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
                     .height((56 * designScale).dp)
             ) {
