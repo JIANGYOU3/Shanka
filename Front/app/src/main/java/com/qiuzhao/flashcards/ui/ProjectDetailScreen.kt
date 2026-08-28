@@ -82,8 +82,7 @@ internal fun ProjectDetailScreen(project: ProjectSummary, decks: List<DeckSummar
             ProjectDeckActions(
                 theme = deckTheme(project),
                 scale = scale,
-                onAddDeck = { },
-                onManageMaterials = { nav.navigate(AppRoute.ProjectMaterialManagement(project.id)) },
+                onAddDeck = { nav.navigate(AppRoute.DeckGeneration(project.id)) },
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(1f)
             )
         }
@@ -205,22 +204,16 @@ private fun ProjectDeckActions(
     theme: DeckTheme,
     scale: Float,
     onAddDeck: () -> Unit,
-    onManageMaterials: () -> Unit,
     modifier: Modifier = Modifier
-) = Row(
-    modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp),
-    horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)
+) = Surface(
+    onClick = onAddDeck,
+    color = theme.primary,
+    contentColor = theme.onPrimary,
+    shape = RoundedCornerShape((24 * scale).dp),
+    modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp).height((60 * scale).dp)
 ) {
-    Surface(onClick = onManageMaterials, color = theme.secondary, contentColor = theme.strongText, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.weight(1f).height((60 * scale).dp)) {
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            MaterialSymbol("folder", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
-            Spacer(Modifier.width((8 * scale).dp)); AppText("资料管理", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
-        }
-    }
-    Surface(onClick = onAddDeck, color = theme.primary, contentColor = theme.onPrimary, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.weight(1f).height((60 * scale).dp)) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             MaterialSymbol("note_stack_add", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
             Spacer(Modifier.width((8 * scale).dp)); AppText("添加卡片组", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
         }
-    }
 }

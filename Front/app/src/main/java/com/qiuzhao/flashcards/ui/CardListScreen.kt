@@ -318,7 +318,7 @@ internal fun CardListScreen(
         AlertDialog(
             onDismissRequest = { deletingCard = null },
             title = { Text("删除该卡？", fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal) },
-            text = { Text("删除后无法恢复。", fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal) },
+            text = { AppText("删除后无法恢复。", AppTextRole.Supporting) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDeletedCards = pendingDeletedCards + card.id
@@ -327,9 +327,9 @@ internal fun CardListScreen(
                         deleteFailed = true
                     }
                     deletingCard = null
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                }) { AppText("删除", AppTextRole.Label, color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { deletingCard = null }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { deletingCard = null }) { AppText("取消", AppTextRole.Label) } }
         )
     }
     if (editingDeckPresentation && displayDeck != null) {
@@ -454,7 +454,7 @@ private fun CardListSwipeAction(label: String, icon: String, color: Color, conte
         ) {
             MaterialSymbol(icon, label, tint = contentColor, size = fixedSp(24 * designScale), filled = true)
             Spacer(Modifier.height((4 * designScale).dp))
-            Text(label, color = contentColor, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), maxLines = 1)
+            AppText(label, AppTextRole.Label, color = contentColor, designScale = designScale, maxLines = 1)
         }
     }
 }
@@ -502,13 +502,11 @@ private fun CardListFace(card: FlashcardEntity, number: Int, answer: Boolean, ro
                         size = fixedSp(24 * designScale),
                         filled = true
                     )
-                    Text(
+                    AppText(
                         if (answer) "答案" else "问题",
+                        AppTextRole.SectionTitle,
                         color = faceContent,
-                        fontFamily = AppFonts.MiSansSemibold,
-                        fontWeight = FontWeight.Normal,
-                        fontSize = fixedSp(24 * designScale),
-                        lineHeight = fixedSp(28 * designScale)
+                        designScale = designScale
                     )
                 }
                 Surface(shape = RoundedCornerShape(999.dp), color = tagStyle.container) {
@@ -553,9 +551,9 @@ internal fun CardEditDialog(card: FlashcardEntity, onSave: (FlashcardEntity) -> 
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (front.isNotBlank() && back.isNotBlank()) onSave(card.copy(front = front.trim(), back = back.trim())) }) { Text("保存") }
+            TextButton(onClick = { if (front.isNotBlank() && back.isNotBlank()) onSave(card.copy(front = front.trim(), back = back.trim())) }) { AppText("保存", AppTextRole.Label) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { AppText("取消", AppTextRole.Label) } }
     )
 }
 
@@ -600,9 +598,9 @@ private fun DeckPresentationDialog(
         },
         confirmButton = {
             TextButton(onClick = { if (name.isNotBlank()) onSave(name.trim()) }) {
-                Text("保存", color = theme.primary, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal)
+                AppText("保存", AppTextRole.Label, color = theme.primary)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { AppText("取消", AppTextRole.Label) } }
     )
 }

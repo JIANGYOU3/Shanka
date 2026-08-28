@@ -297,10 +297,9 @@ private fun ChapterProgressCard(progress: DeckProgress, masteryRatio: Float, des
             verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "本章进度", color = theme.text, fontFamily = AppFonts.MiSansBold,
-                    fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * designScale),
-                    lineHeight = fixedSp(27 * designScale), style = figmaCardTextStyle()
+                AppText(
+                    "本章进度", AppTextRole.SectionTitle, color = theme.text,
+                    designScale = designScale
                 )
                 MixedLanguageText(
                     text = "${(masteryRatio * 100).roundToInt()}%已掌握", color = theme.strongText,

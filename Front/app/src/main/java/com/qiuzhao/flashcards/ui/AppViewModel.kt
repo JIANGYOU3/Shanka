@@ -64,6 +64,15 @@ internal data class ProjectDraftMaterial(
     val extension: String? = null,
     val content: String = ""
 )
+
+private fun ProjectDraftMaterial.renamedFile(rawTitle: String): ProjectDraftMaterial {
+    val normalized = rawTitle.trim().ifBlank { title }
+    val resolvedExtension = normalized.substringAfterLast('.', extension.orEmpty()).lowercase()
+    return copy(
+        title = normalized,
+        extension = resolvedExtension.ifBlank { extension.orEmpty() }.ifBlank { null }
+    )
+}
 data class LocalAccount(val nickname: String, val email: String)
 data class AccountBootstrap(val loaded: Boolean = false, val account: LocalAccount? = null)
 
@@ -192,6 +201,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Per-project material store so a project's 资料管理 page only shows its own materials. */
     private val _projectMaterials = MutableStateFlow<Map<String, List<ProjectDraftMaterial>>>(emptyMap())
     internal val projectMaterials: StateFlow<Map<String, List<ProjectDraftMaterial>>> = _projectMaterials
+    /** Files/text are staged on the import screen and committed together after recognition. */
+    private val _materialImportDrafts = MutableStateFlow<List<ProjectDraftMaterial>>(emptyList())
+    internal val materialImportDrafts: StateFlow<List<ProjectDraftMaterial>> = _materialImportDrafts
     val decks: StateFlow<List<DeckSummary>> = combine(frontendTestMode, repository.decks, _frontendTestDecks) { enabled, remote, test ->
         if (enabled) test else remote
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -274,7 +286,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun upsertProjectDraftText(materialId: String?, title: String, content: String) {
-        val normalizedTitle = title.trim().ifBlank { "文本资料" }
+        val normalizedTitle = title.trim().ifBlank { "文本资料（标题）" }
         val material = ProjectDraftMaterial(
             id = materialId ?: "project-text-${System.currentTimeMillis()}",
             type = ProjectDraftMaterialType.TEXT,
@@ -289,6 +301,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteProjectDraftMaterial(id: String) {
         _projectCreationMaterials.value = _projectCreationMaterials.value.filterNot { it.id == id }
+    }
+
+    internal fun renameProjectDraftFile(materialId: String, title: String) {
+        _projectCreationMaterials.value = _projectCreationMaterials.value.map { material ->
+            if (material.id != materialId) material else material.renamedFile(title)
+        }
     }
 
     internal fun projectMaterialList(projectId: String): List<ProjectDraftMaterial> = _projectMaterials.value[projectId].orEmpty()
@@ -308,6 +326,78 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 current + material
             }
         }
+    }
+
+    internal fun renameProjectFile(projectId: String, materialId: String, title: String) {
+        _projectMaterials.value = _projectMaterials.value.toMutableMap().also { map ->
+            map[projectId] = map[projectId].orEmpty().map { material ->
+                if (material.id != materialId) material else material.renamedFile(title)
+            }
+        }
+    }
+
+    internal fun beginMaterialImport() {
+        _materialImportDrafts.value = emptyList()
+    }
+
+    internal fun stageMaterialImportFiles(names: List<String>) {
+        val staged = names.map { name ->
+            val normalized = name.trim().ifBlank { "未命名文件" }
+            ProjectDraftMaterial(
+                id = "staged-file-${System.currentTimeMillis()}-${normalized.hashCode()}",
+                type = ProjectDraftMaterialType.FILE,
+                title = normalized,
+                extension = normalized.substringAfterLast('.', "").lowercase().ifBlank { "file" }
+            )
+        }
+        _materialImportDrafts.value = _materialImportDrafts.value + staged
+    }
+
+    internal fun stageMaterialImportText(title: String, content: String) {
+        val material = ProjectDraftMaterial(
+            id = "staged-text-${System.currentTimeMillis()}",
+            type = ProjectDraftMaterialType.TEXT,
+            title = title.trim().ifBlank { "文本资料" },
+            content = content.trim()
+        )
+        _materialImportDrafts.value = _materialImportDrafts.value + material
+    }
+
+    internal fun upsertMaterialImportText(materialId: String?, title: String, content: String) {
+        if (materialId == null) {
+            stageMaterialImportText(title, content)
+            return
+        }
+        _materialImportDrafts.value = _materialImportDrafts.value.map { material ->
+            if (material.id != materialId) material else material.copy(
+                title = title.trim().ifBlank { "文本资料" },
+                content = content.trim()
+            )
+        }
+    }
+
+    internal fun removeMaterialImportDraft(materialId: String) {
+        _materialImportDrafts.value = _materialImportDrafts.value.filterNot { it.id == materialId }
+    }
+
+    internal fun renameMaterialImportFile(materialId: String, title: String) {
+        _materialImportDrafts.value = _materialImportDrafts.value.map { material ->
+            if (material.id != materialId) material else material.renamedFile(title)
+        }
+    }
+
+    /** This is frontend-local until the material write API is established. */
+    internal fun commitMaterialImport(projectId: String?) {
+        val staged = _materialImportDrafts.value
+        if (staged.isEmpty()) return
+        if (projectId == null) {
+            _projectCreationMaterials.value = _projectCreationMaterials.value + staged
+        } else {
+            _projectMaterials.value = _projectMaterials.value.toMutableMap().also { map ->
+                map[projectId] = map[projectId].orEmpty() + staged
+            }
+        }
+        _materialImportDrafts.value = emptyList()
     }
 
     fun createFrontendTestProject(name: String, themeKey: String, onResult: (String?) -> Unit) = viewModelScope.launch {

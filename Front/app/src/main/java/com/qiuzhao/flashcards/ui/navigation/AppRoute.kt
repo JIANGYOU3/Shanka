@@ -18,17 +18,33 @@ sealed interface AppRoute : NavKey {
     @Serializable data object Data : AppRoute
     @Serializable data class ProjectDetail(val id: String) : AppRoute
     @Serializable data object ProjectCreate : AppRoute
+    /** Figma 835:5466: generate and add a card group inside a project. */
+    @Serializable data class DeckGeneration(val projectId: String) : AppRoute
     /** Reuses the project form with a pre-existing project as its editing target. */
     @Serializable data class ProjectEdit(val id: String) : AppRoute
     @Serializable data class ProjectTextEditor(
         val materialId: String? = null,
         val themeKey: String = "azure",
-        val projectId: String? = null
+        val projectId: String? = null,
+        val stageForMaterialImport: Boolean = false,
+        /** The shared Figma 813:4806 editor keeps its caller-specific heading. */
+        val editorTitle: String = "导入文本"
     ) : AppRoute
     @Serializable data object MaterialManagement : AppRoute
     /** A given project's own materials; colour follows the project theme. */
     @Serializable data class ProjectMaterialManagement(val projectId: String) : AppRoute
-    @Serializable data object MaterialImport : AppRoute
+    /**
+     * Import remains scoped to the project that opened material management.
+     * Project creation also reuses this exact flow, carrying the not-yet-saved
+     * project's theme family so it never falls back to the global blue brand.
+     */
+    @Serializable data class MaterialImport(
+        val projectId: String? = null,
+        val themeKey: String? = null,
+        val projectCreation: Boolean = false
+    ) : AppRoute
+    /** Figma 796:6935 / 796:6589: attach existing material to the project draft. */
+    @Serializable data class ProjectMaterialPicker(val themeKey: String) : AppRoute
     @Serializable data object TextImport : AppRoute
     @Serializable data class Deck(val id: String) : AppRoute
     @Serializable data class Study(val deckId: String, val reviewMode: Boolean) : AppRoute

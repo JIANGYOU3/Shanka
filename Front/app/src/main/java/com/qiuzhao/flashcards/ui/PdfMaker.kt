@@ -527,7 +527,7 @@ private fun SmartInfoCard(text: String, scale: Float) {
 private fun SmartSectionLabel(text: String, scale: Float) {
     AppText(
         text = text,
-        role = AppTextRole.Supporting,
+        role = AppTextRole.SectionTitle,
         modifier = Modifier.padding(start = (8 * scale).dp),
         color = AppColors.TextIconDark,
         designScale = scale
@@ -539,12 +539,10 @@ private fun SmartImportFileCard(file: SmartImportFile, scale: Float, onToggle: (
     SmartSwipeDeleteContainer(file.id, scale, "删除文件", onDelete) { cardModifier ->
         SmartSelectableCard(
             title = file.name,
-            subtitle = "26/8/11 导入",
-            badge = file.format,
+            subtitle = "${file.format.uppercase()} 26/8/11 导入",
             selected = file.selected,
             selectedIcon = "check_circle",
             unselectedIcon = "picture_as_pdf",
-            action = onToggle,
             scale = scale,
             modifier = cardModifier,
             onClick = onToggle
@@ -561,7 +559,8 @@ private fun SmartSwipeDeleteContainer(
     onDelete: () -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
-    val shape = RoundedCornerShape((AppShapeRadius * scale).dp)
+    val viewportShape = RoundedCornerShape((AppShapeRadius * scale).dp)
+    val deleteActionShape = RoundedCornerShape((32 * scale).dp)
     val actionWidth = (112 * scale).dp
     val revealWidthPx = with(LocalDensity.current) { ((112 - 16) * scale).dp.toPx() }
     var dragOffset by remember(key) { mutableFloatStateOf(0f) }
@@ -569,14 +568,17 @@ private fun SmartSwipeDeleteContainer(
     val dragState = rememberDraggableState { delta ->
         dragOffset = (dragOffset + delta).coerceIn(-revealWidthPx, 0f)
     }
-    Box(Modifier.fillMaxWidth().height((104 * scale).dp).clip(shape)) {
+    Box(Modifier.fillMaxWidth().height((104 * scale).dp).clip(viewportShape)) {
         // Keep the action mounted behind the card at rest. This matches the
         // deck/card-list implementation and prevents a one-frame pop-in as a
         // drag first crosses the reveal threshold.
         Surface(
             onClick = onDelete,
-            shape = shape,
-            color = AppColors.Warning,
+            shape = deleteActionShape,
+            // Figma 222:4713 uses the stronger warning tier for this
+            // full-height destructive chapter action, distinct from the
+            // ordinary material-card delete action.
+            color = AppColors.WarningStrong,
             contentColor = AppColors.TextIconLight,
             modifier = Modifier.align(Alignment.CenterEnd).width(actionWidth).fillMaxHeight()
         ) {
@@ -607,19 +609,19 @@ private fun SmartSwipeDeleteContainer(
 private fun SmartSelectableCard(
     title: String,
     subtitle: String,
-    badge: String,
     selected: Boolean,
     selectedIcon: String,
     unselectedIcon: String,
-    action: (() -> Unit)?,
     scale: Float,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    // Figma 167:9679 / 222:4713.  These two selectable components share the
-    // exact blue/green state pair; keeping it here prevents the file and
-    // chapter flows from drifting apart again.
-    val surface = if (selected) AppColors.Green.background else AppColors.Blue.background
+    // Figma 222:4713: this smart-making flow lives on the white base canvas,
+    // so its unselected card starts at brand Background. Green is reserved for
+    // the explicit selected state; icon tile and edit badge use Primary.
+    // Figma 222:4712: selection advances this base-canvas card to Green
+    // Surface, not Green Background. The latter is reserved for an inner tier.
+    val surface = if (selected) AppColors.Green.surface else AppColors.Blue.background
     val accent = if (selected) AppColors.Green.primary else AppColors.Blue.primary
     val primary = AppColors.TextIconDark
     val onAccent = if (selected) AppColors.Green.background else AppColors.Blue.background
@@ -639,10 +641,9 @@ private fun SmartSelectableCard(
                     MaterialSymbol(if (selected) selectedIcon else unselectedIcon, null, tint = onAccent, size = fixedSp(24 * scale), filled = true)
                 }
             }
-            Column(
-                Modifier.weight(1f).height((56 * scale).dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
+            // Figma 222:4713: title and page range form the complete content
+            // column. The former trailing badge/action is intentionally removed.
+            Column(Modifier.weight(1f).height((56 * scale).dp), verticalArrangement = Arrangement.SpaceBetween) {
                 AppText(
                     text = title,
                     role = AppTextRole.CardTitle,
@@ -659,16 +660,6 @@ private fun SmartSelectableCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            Surface(
-                onClick = { action?.invoke() },
-                shape = RoundedCornerShape((20 * scale).dp),
-                color = accent,
-                modifier = Modifier.height((56 * scale).dp)
-            ) {
-                Box(Modifier.padding(horizontal = (16 * scale).dp), contentAlignment = Alignment.Center) {
-                    AppText(badge, AppTextRole.Label, color = onAccent, designScale = scale, maxLines = 1)
-                }
             }
         }
     }
@@ -723,7 +714,7 @@ private fun PdfRecognitionRing(scale: Float) {
 @Composable
 private fun PdfReadErrorScreen(failure: PdfReadFailure?, onBack: () -> Unit, onRetry: () -> Unit) = PdfFlowLayout("PDF 智能制卡", onBack) {
     item { PdfStatusCard(failure?.title ?: "PDF 处理失败", failure?.detail ?: "请重新选择文件后再试。", icon = "error") }
-    item { Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(24.dp)) { Text("重新选择") } }
+    item { Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(24.dp)) { AppText("重新选择", AppTextRole.Label) } }
 }
 
 @Composable
@@ -765,11 +756,9 @@ private fun PdfChapterScreen(
                         SmartSelectableCard(
                             title = chapter.title,
                             subtitle = "${chapter.start}-${chapter.end} 页",
-                            badge = "编辑",
                             selected = chapter.selected,
                             selectedIcon = "check_circle",
                             unselectedIcon = "book_ribbon",
-                            action = { onEdit(index) },
                             scale = scale,
                             modifier = cardModifier,
                             onClick = { onToggle(index) }
@@ -815,5 +804,5 @@ private fun PdfChapterEditDialog(chapter: PdfChapter, onSave: (PdfChapter) -> Un
                 OutlinedTextField(end, { end = it.filter(Char::isDigit) }, label = { AppText("结束页", AppTextRole.Label) }, modifier = Modifier.weight(1f), textStyle = appInputTextStyle(AppTextRole.MetricXSmall), visualTransformation = rememberBilingualInputTransformation(AppTextRole.MetricXSmall))
             }
         }
-    }, confirmButton = { TextButton(onClick = { onSave(chapter.copy(title = title.ifBlank { chapter.title }, start = start.toIntOrNull() ?: chapter.start, end = end.toIntOrNull() ?: chapter.end)) }) { Text("保存") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+    }, confirmButton = { TextButton(onClick = { onSave(chapter.copy(title = title.ifBlank { chapter.title }, start = start.toIntOrNull() ?: chapter.start, end = end.toIntOrNull() ?: chapter.end)) }) { AppText("保存", AppTextRole.Label) } }, dismissButton = { TextButton(onClick = onDismiss) { AppText("取消", AppTextRole.Label) } })
 }

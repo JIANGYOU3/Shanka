@@ -241,10 +241,10 @@ internal fun LegacyProjectDeckList(decks: List<DeckSummary>, viewModel: AppViewM
                     })
                     deckPendingDeletion = null
                 }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    AppText("删除", AppTextRole.Label, color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { deckPendingDeletion = null }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { deckPendingDeletion = null }) { AppText("取消", AppTextRole.Label) } }
         )
     }
 }
@@ -261,7 +261,7 @@ private fun StudyAddDeckButton(designScale: Float, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp), verticalAlignment = Alignment.CenterVertically
         ) {
             MaterialSymbol("note_stack_add", "添加卡片组", tint = LocalContentColor.current, size = fixedSp(24 * designScale), filled = true)
-            Text("添加卡片组", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), letterSpacing = fixedSp(.6f * designScale))
+            AppText("添加卡片组", AppTextRole.Label, designScale = designScale)
         }
     }
 }
@@ -301,7 +301,7 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
             ) {
                 MaterialSymbol("delete", "删除卡组", tint = AppColors.TextIconLight, size = fixedSp(24 * designScale), filled = true)
                 Spacer(Modifier.height((4 * designScale).dp))
-                Text("删除卡组", color = AppColors.TextIconLight, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale))
+                AppText("删除卡组", AppTextRole.Label, color = AppColors.TextIconLight, designScale = designScale)
             }
         }
     Card(

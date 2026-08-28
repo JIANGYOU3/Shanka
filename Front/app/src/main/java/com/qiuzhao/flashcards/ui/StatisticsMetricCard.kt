@@ -110,7 +110,7 @@ internal fun StatisticsMetricCard(
                 }
                 AppText(
                     text = appearance.label,
-                    role = AppTextRole.CardTitle,
+                    role = AppTextRole.SectionTitle,
                     modifier = Modifier.height((27 * designScale).dp),
                     color = appearance.labelColor,
                     designScale = designScale,

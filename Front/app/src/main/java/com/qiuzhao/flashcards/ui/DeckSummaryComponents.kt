@@ -112,7 +112,7 @@ internal fun LearningDataProgressCard(
                     FigmaLearningLargeMetric(reviewedCards.toString(), theme.onPrimary, designScale)
                     Spacer(Modifier.width((4 * designScale).dp))
                     FigmaLearningSmallMetric("/ $safeTotal", theme.onPrimary, designScale)
-                    FigmaLearningCardTitle(" 已复习", theme.onPrimary, designScale)
+                    AppText(" 已复习", AppTextRole.CardSubtitle, color = theme.onPrimary, designScale = designScale)
                 }
                 FigmaLearningLargeMetric("$safePercent%", theme.onPrimary, designScale)
             }
@@ -161,14 +161,10 @@ private fun LearningDataTab(label: String, selected: Boolean, onClick: () -> Uni
     modifier = Modifier.width((64 * designScale).dp).height((45 * designScale).dp)
 ) {
     Box(contentAlignment = Alignment.Center) {
-        Text(
+        AppText(
             label,
-            fontFamily = AppFonts.MiSansBold,
-            fontWeight = FontWeight.Normal,
-            fontSize = fixedSp(16 * designScale),
-            lineHeight = fixedSp(21 * designScale),
-            letterSpacing = fixedSp(.6f * designScale),
-            style = figmaCardTextStyle(),
+            AppTextRole.Label,
+            designScale = designScale,
             maxLines = 1,
             softWrap = false
         )
@@ -177,14 +173,11 @@ private fun LearningDataTab(label: String, selected: Boolean, onClick: () -> Uni
 
 @Composable
 private fun FigmaLearningCardTitle(text: String, color: Color, designScale: Float) {
-    Text(
+    AppText(
         text,
+        AppTextRole.SectionTitle,
         color = color,
-        fontFamily = AppFonts.MiSansBold,
-        fontWeight = FontWeight.Normal,
-        fontSize = fixedSp(20 * designScale),
-        lineHeight = fixedSp(27 * designScale),
-        style = figmaCardTextStyle(),
+        designScale = designScale,
         maxLines = 1,
         softWrap = false
     )
@@ -324,15 +317,12 @@ private fun FigmaReviewTitle(text: String, designScale: Float) = Box(
     modifier = Modifier.height((27 * designScale).dp),
     contentAlignment = Alignment.CenterStart
 ) {
-    Text(
+    AppText(
         text,
+        AppTextRole.SectionTitle,
         modifier = Modifier.requiredHeight((34 * designScale).dp),
         color = AppColors.TextIconDark,
-        fontFamily = AppFonts.MiSansBold,
-        fontWeight = FontWeight.Normal,
-        fontSize = fixedSp(20 * designScale),
-        lineHeight = fixedSp(27 * designScale),
-        style = figmaCardTextStyle(),
+        designScale = designScale,
         maxLines = 1,
         softWrap = false
     )

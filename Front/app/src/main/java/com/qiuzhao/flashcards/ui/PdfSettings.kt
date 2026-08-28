@@ -301,7 +301,7 @@ private fun PdfSettingsSectionCard(title: String, icon: String, scale: Float, co
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
             MaterialSymbol(icon, null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true)
-            AppText(title, AppTextRole.CardTitle, color = AppColors.Blue.ink, designScale = scale, maxLines = 1)
+            AppText(title, AppTextRole.SectionTitle, color = AppColors.Blue.ink, designScale = scale, maxLines = 1)
         }
         content()
     }

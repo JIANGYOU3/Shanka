@@ -256,7 +256,7 @@ private fun PdfPreviewFace(card: CardDraft, type: PdfPreviewType, answer: Boolea
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp), verticalAlignment = Alignment.CenterVertically) {
                     MaterialSymbol(if (answer) "wb_incandescent" else "book_5", null, tint = if (answer) MaterialTheme.colorScheme.primary else AppColors.Blue.primary, size = fixedSp(24 * designScale), filled = true)
-                    AppText(if (answer) "答案" else "问题", AppTextRole.CardTitle, color = PageForegroundColor(), designScale = designScale)
+                    AppText(if (answer) "答案" else "问题", AppTextRole.SectionTitle, color = PageForegroundColor(), designScale = designScale)
                 }
                 Surface(shape = RoundedCornerShape(999.dp), color = type.background) {
                     AppText(type.label, AppTextRole.Label, modifier = Modifier.padding(horizontal = (16 * designScale).dp, vertical = (8 * designScale).dp), color = type.content, designScale = designScale, maxLines = 1)
@@ -279,16 +279,16 @@ internal fun PdfGenerationBlockedDialog(block: PdfGenerationBlock, onDismiss: ()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(block.title, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal) },
-        text = { Text(block.detail, fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal) },
+        text = { AppText(block.detail, AppTextRole.Supporting) },
         confirmButton = {
             if (block.canOpenSettings) {
-                TextButton(onClick = onOpenSettings) { Text("去设置") }
+                TextButton(onClick = onOpenSettings) { AppText("去设置", AppTextRole.Label) }
             } else {
-                TextButton(onClick = onDismiss) { Text("知道了") }
+                TextButton(onClick = onDismiss) { AppText("知道了", AppTextRole.Label) }
             }
         },
         dismissButton = {
-            if (block.canOpenSettings) TextButton(onClick = onDismiss) { Text("取消") }
+            if (block.canOpenSettings) TextButton(onClick = onDismiss) { AppText("取消", AppTextRole.Label) }
         }
     )
 }

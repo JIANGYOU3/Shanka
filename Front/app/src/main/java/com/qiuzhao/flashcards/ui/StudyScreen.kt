@@ -195,6 +195,7 @@ internal fun StudyScreen(viewModel: AppViewModel, nav: ScreenNavigator, deckId: 
             forgottenCount = forgottenCount,
             modifier = Modifier.fillMaxSize(),
             onBack = nav::popBackStack,
+            onEdit = viewModel::updateCard,
             onPrevious = { currentIndex = (safeIndex - 1).coerceAtLeast(0) },
             onNext = { currentIndex = (safeIndex + 1).coerceAtMost(remainingCards.lastIndex) },
             onRate = { rating ->
@@ -225,9 +226,9 @@ private fun EmptyStudy(modifier: Modifier, reviewMode: Boolean, nav: ScreenNavig
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MaterialSymbol("star", null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary, size = 44.sp)
-            Text(if (reviewMode) "没有到期卡片" else "这个卡组还是空的", style = MaterialTheme.typography.headlineSmall, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal)
-            Text(if (reviewMode) "休息一下，或者自由刷题巩固印象。" else "先导入几张问答卡吧。", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = nav::popBackStack) { Text("返回") }
+            AppText(if (reviewMode) "没有到期卡片" else "这个卡组还是空的", AppTextRole.PageTitle)
+            AppText(if (reviewMode) "休息一下，或者自由刷题巩固印象。" else "先导入几张问答卡吧。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = nav::popBackStack) { AppText("返回", AppTextRole.Label) }
         }
     }
 }
@@ -237,9 +238,9 @@ private fun CompleteStudy(modifier: Modifier, nav: ScreenNavigator) {
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             MaterialSymbol("star", null, modifier = Modifier.size(52.dp), tint = MaterialTheme.colorScheme.primary, size = 52.sp)
-            Text("本轮完成", style = MaterialTheme.typography.headlineSmall, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal)
-            Text("做得好，下一次复习会按你的记忆情况自动安排。", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = nav::popBackStack) { Text("回到卡组") }
+            AppText("本轮完成", AppTextRole.PageTitle)
+            AppText("做得好，下一次复习会按你的记忆情况自动安排。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = nav::popBackStack) { AppText("回到卡组", AppTextRole.Label) }
         }
     }
 }
@@ -256,17 +257,19 @@ private fun ReviewStudy(
     forgottenCount: Int,
     modifier: Modifier,
     onBack: () -> Unit,
+    onEdit: (FlashcardEntity) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onRate: (Rating) -> Unit
 ) {
     var flipped by remember(card.id) { mutableStateOf(false) }
+    var editingCard by remember(card.id) { mutableStateOf<FlashcardEntity?>(null) }
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ScreenTopInformationBar(
             title = "间隔复习", subtitle = "$position/$total", onBack = onBack,
             backContainer = theme.cardPanel, titleColor = theme.text,
-            onTrailingAction = { }, trailingActionSymbol = "edit", trailingActionDescription = "编辑",
+            onTrailingAction = { editingCard = card }, trailingActionSymbol = "edit", trailingActionDescription = "编辑",
             trailingActionContainer = theme.cardPanel,
             modifier = Modifier.zIndex(1f)
         )
@@ -304,6 +307,16 @@ private fun ReviewStudy(
             fontSize = fixedSp(18 * designScale), lineHeight = fixedSp(24 * designScale), textAlign = TextAlign.Center
         )
     }
+    editingCard?.let { editableCard ->
+        CardEditDialog(
+            card = editableCard,
+            onSave = {
+                onEdit(it)
+                editingCard = null
+            },
+            onDismiss = { editingCard = null }
+        )
+    }
 }
 
 @Composable
@@ -334,16 +347,15 @@ private fun ReviewAnswerControls(theme: DeckTheme, canGoPrevious: Boolean, canGo
         ReviewNavigationButton("arrow_back", enabled = canGoPrevious, Modifier.width((96 * scale).dp).fillMaxHeight(), scale, theme, onPrevious)
         Surface(
             onClick = onHard,
-            // User-defined amber memory-mask pill (no existing semantic covers it).
+            // Figma 44:2464 uses the semantic amber surface without an outline.
             color = AppColors.Orange.surface,
             contentColor = AppColors.Orange.ink,
-            border = androidx.compose.foundation.BorderStroke((2 * scale).dp, AppColors.Orange.primary),
             shape = RoundedCornerShape((32 * scale).dp),
             modifier = Modifier.width((146 * scale).dp).fillMaxHeight()
         ) {
             Row(Modifier.padding(horizontal = (24 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
                 MaterialSymbol("comedy_mask", null, tint = AppColors.Orange.ink, size = fixedSp(24 * scale), filled = true)
-                Text("印象模糊", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(16 * scale), letterSpacing = fixedSp(.6f * scale), maxLines = 1)
+                Text("印象模糊", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(21 * scale), letterSpacing = fixedSp(.6f * scale), maxLines = 1)
             }
         }
         ReviewNavigationButton("arrow_forward", enabled = canGoNext, Modifier.width((96 * scale).dp).fillMaxHeight(), scale, theme, onNext)
@@ -378,7 +390,7 @@ private fun ReviewCountBadge(symbol: String, count: Int, color: Color, contentCo
         Row(horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxSize(),) {
             Spacer(Modifier.weight(1f))
             MaterialSymbol(symbol, null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
-            Text("$count", fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(16 * scale), letterSpacing = fixedSp(.6f * scale))
+            Text("$count", fontFamily = AppFonts.GoogleSansFlexExtraBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(20 * scale), letterSpacing = fixedSp(.4f * scale))
             Spacer(Modifier.weight(1f))
         }
     }
@@ -388,15 +400,33 @@ private fun ReviewCountBadge(symbol: String, count: Int, color: Color, contentCo
 private fun ReviewSwipeHint(modifier: Modifier, scale: Float) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy((4 * scale).dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        MaterialSymbol("swipe_left", null, tint = PageForegroundColor(), size = fixedSp(24 * scale), filled = true)
-        Text("左滑是记得，", color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * scale), lineHeight = fixedSp(28 * scale))
-        MaterialSymbol("swipe_right", null, tint = PageForegroundColor(), size = fixedSp(24 * scale), filled = true)
-        Text("右滑是不记得", color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * scale), lineHeight = fixedSp(28 * scale))
+        ReviewSwipeHintGroup("swipe_left", "左滑是记得，", scale)
+        ReviewSwipeHintGroup("swipe_right", "右滑是不记得", scale)
     }
 }
+
+@Composable
+private fun ReviewSwipeHintGroup(symbol: String, text: String, scale: Float) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MaterialSymbol(symbol, null, tint = PageForegroundColor(), size = fixedSp(24 * scale), filled = true)
+        Text(text, color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = fixedSp(18 * scale), lineHeight = fixedSp(24 * scale))
+    }
+}
+
+/**
+ * Figma 41:1853, 755:4354 and 44:2464 use the card-type semantic blue even
+ * when the surrounding learning screen inherits a non-blue project theme.
+ */
+private fun reviewCardTagStyle() = CardListTagStyle(
+    label = "基础记忆",
+    container = AppColors.Blue.primary,
+    content = AppColors.Blue.ink
+)
 
 @Composable
 private fun FigmaReviewCard(
@@ -443,11 +473,11 @@ private fun FigmaReviewCard(
     ) {
         ReviewCardFace(
             title = "问题", content = card.front, symbol = "book_5", visible = frontAlpha,
-            tag = cardListTagStyle(card.position), rotation = rotation, shape = faceShape, designScale = designScale, backFace = false, theme = theme
+            tag = reviewCardTagStyle(), rotation = rotation, shape = faceShape, designScale = designScale, backFace = false, theme = theme
         )
         ReviewCardFace(
             title = "答案", content = card.back, symbol = "wb_incandescent", visible = backAlpha,
-            tag = cardListTagStyle(card.position), rotation = rotation, shape = faceShape, designScale = designScale, backFace = true, theme = theme
+            tag = reviewCardTagStyle(), rotation = rotation, shape = faceShape, designScale = designScale, backFace = true, theme = theme
         )
     }
 }
@@ -507,7 +537,7 @@ private fun ReviewCardFace(
             ) {
                 MaterialSymbol(symbol, null, tint = faceContent, size = fixedSp(44 * designScale), filled = true)
                 Spacer(Modifier.height((16 * designScale).dp))
-                Text(title, color = faceContent, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(24 * designScale), lineHeight = fixedSp(32 * designScale), textAlign = TextAlign.Center)
+                AppText(title, AppTextRole.PageTitle, color = faceContent, designScale = designScale, textAlign = TextAlign.Center)
                 Spacer(Modifier.height((8 * designScale).dp))
                 MixedLanguageText(
                     text = content,
@@ -520,7 +550,9 @@ private fun ReviewCardFace(
                     overflow = TextOverflow.Clip
                 )
             }
-            Spacer(Modifier.height((12 * designScale).dp))
+            // Figma 41:1853 / 44:2464 reserve a symmetric 37dp lower spacer
+            // under the centred prompt/answer group.
+            Spacer(Modifier.height((37 * designScale).dp))
         }
     }
 }
@@ -578,7 +610,7 @@ private fun FreeStudy(cards: List<FlashcardEntity>, theme: DeckTheme, onBack: ()
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         MaterialSymbol("edit", null, tint = theme.strongText, size = fixedSp(24 * designScale), filled = true)
                         Spacer(Modifier.width((8 * designScale).dp))
-                        Text("编辑该卡", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(16 * designScale), letterSpacing = fixedSp(.6f * designScale))
+                        AppText("编辑该卡", AppTextRole.Label, designScale = designScale)
                     }
                 }
                 Surface(
@@ -601,7 +633,7 @@ private fun FreeStudy(cards: List<FlashcardEntity>, theme: DeckTheme, onBack: ()
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         MaterialSymbol("shuffle", null, tint = LocalContentColor.current, size = fixedSp(24 * designScale), filled = true)
                         Spacer(Modifier.width((8 * designScale).dp))
-                        Text("打乱顺序", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(16 * designScale), letterSpacing = fixedSp(.6f * designScale))
+                        AppText("打乱顺序", AppTextRole.Label, designScale = designScale)
                     }
                 }
             }

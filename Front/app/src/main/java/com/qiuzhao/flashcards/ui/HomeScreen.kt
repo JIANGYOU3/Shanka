@@ -184,9 +184,9 @@ internal fun HomeScreen(decks: List<DeckSummary>, projects: List<ProjectSummary>
                         // Node 19:620 has a 12dp title-to-card-group gap; only the
                         // two cards *inside* the group retain the 16dp spacing.
                         Column(verticalArrangement = Arrangement.spacedBy((12 * compactScale).dp)) {
-                            Text(
-                                "用户名，快来学习", modifier = Modifier.padding(horizontal = (8 * compactScale).dp), color = PageForegroundColor(), fontFamily = AppFonts.MiSansBold,
-                                fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * compactScale), lineHeight = fixedSp(28 * compactScale)
+                            AppText(
+                                "用户名，快来学习", AppTextRole.SectionTitle,
+                                modifier = Modifier.padding(horizontal = (8 * compactScale).dp), color = PageForegroundColor(), designScale = compactScale
                             )
                             Column(verticalArrangement = Arrangement.spacedBy((16 * compactScale).dp)) {
                                 ContinueLearningCard(
@@ -241,7 +241,7 @@ private fun DailyGoalCard(compactScale: Float) {
                 ) {
                     MaterialSymbol("local_fire_department", null, tint = AppColors.TextIconLight, size = fixedSp(28 * compactScale), filled = true)
                     Spacer(Modifier.width((8 * compactScale).dp))
-                    Text("今日目标", color = AppColors.TextIconLight, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(20 * compactScale), lineHeight = fixedSp(28 * compactScale), letterSpacing = fixedSp(-.5f * compactScale))
+                    AppText("今日目标", AppTextRole.SectionTitle, color = AppColors.TextIconLight, designScale = compactScale)
                 }
                 Surface(
                     shape = RoundedCornerShape(999.dp),
@@ -360,17 +360,11 @@ private fun QuickLearningCard(
                 modifier = Modifier.fillMaxWidth().height((52 * compactScale).dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
+                    AppText(
                         label,
+                        AppTextRole.Label,
                         color = textColor,
-                        // Figma 287:8015: both Chinese action labels use MiSans VF 630.
-                        // Use the card-specific 630 face explicitly so this cannot
-                        // regress to Android's semantic Bold mapping.
-                        fontFamily = AppFonts.MiSansBold,
-                        fontWeight = FontWeight.Normal,
-                        fontSize = fixedSp(16 * compactScale),
-                        lineHeight = fixedSp(20 * compactScale),
-                        style = figmaCardTextStyle()
+                        designScale = compactScale
                     )
                 }
             }

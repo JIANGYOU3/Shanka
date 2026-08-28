@@ -1,7 +1,6 @@
 package com.qiuzhao.flashcards.ui
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -10,7 +9,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.unit.sp
 import com.qiuzhao.flashcards.R
 
 /** The only font files used by product copy. Do not create a fallback family. */
@@ -116,7 +114,7 @@ internal object AppTypographyTokens {
         // Figma 427:4182: first-launch login headline has an explicit 32/32 override.
         AppTextRole.AuthHeroTitle to FigmaTextSpec(32f, 32f, 0f, 520),
         AppTextRole.SectionTitle to FigmaTextSpec(20f, 27f, 0f, 630),
-        AppTextRole.CardTitle to FigmaTextSpec(20f, 27f, 0f, 630),
+        AppTextRole.CardTitle to FigmaTextSpec(18f, 24f, 0f, 630),
         AppTextRole.CardSubtitle to FigmaTextSpec(16f, 21f, 0f, 520),
         AppTextRole.Body to FigmaTextSpec(20f, 27f, 0f, 380),
         AppTextRole.Supporting to FigmaTextSpec(18f, 24f, 0f, 380),
@@ -130,7 +128,7 @@ internal object AppTypographyTokens {
         AppTextRole.PageTitle to FigmaTextSpec(24f, 30f, 0f, 700),
         AppTextRole.AuthHeroTitle to FigmaTextSpec(32f, 32f, 0f, 700),
         AppTextRole.SectionTitle to FigmaTextSpec(20f, 20f, 0f, 700),
-        AppTextRole.CardTitle to FigmaTextSpec(20f, 20f, 0f, 700),
+        AppTextRole.CardTitle to FigmaTextSpec(18f, 18f, 0f, 700),
         AppTextRole.CardSubtitle to FigmaTextSpec(16f, 16f, 0f, 600),
         // Figma 379:2014 latest variables: the former 24/30 English body token
         // is now 20/27, matching the compact body control without synthetic scaling.
@@ -273,17 +271,7 @@ internal val LightColors = lightColorScheme(
     onError = AppColors.TextIconLight
 )
 
-private val AppTypography = Typography(
-    displayLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.GoogleSansFlexBold, fontSize = 48.sp, lineHeight = 48.sp),
-    headlineSmall = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontSize = 24.sp, lineHeight = 32.sp),
-    titleLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontSize = 20.sp, lineHeight = 27.sp),
-    titleMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansSemibold, fontSize = 16.sp, lineHeight = 21.sp),
-    bodyLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansMedium, fontSize = 20.sp, lineHeight = 27.sp),
-    bodyMedium = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansMedium, fontSize = 18.sp, lineHeight = 24.sp),
-    labelLarge = androidx.compose.ui.text.TextStyle(fontFamily = AppFonts.MiSansBold, fontSize = 16.sp, lineHeight = 21.sp, letterSpacing = .6.sp)
-)
-
 @Composable
 fun AutumnFlashcardsTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = LightColors, typography = AppTypography, content = content)
+    MaterialTheme(colorScheme = LightColors, content = content)
 }

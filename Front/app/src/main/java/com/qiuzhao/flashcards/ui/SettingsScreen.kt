@@ -335,8 +335,8 @@ private fun AiServiceDialog(currentKey: String, status: String, onSave: (String)
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(key) }) { Text("验证并保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("完成") } }
+        confirmButton = { TextButton(onClick = { onSave(key) }) { AppText("验证并保存", AppTextRole.Label) } },
+        dismissButton = { TextButton(onClick = onDismiss) { AppText("完成", AppTextRole.Label) } }
     )
 }
 

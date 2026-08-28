@@ -214,11 +214,17 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                 onDeleteDeck = { viewModel.deleteDeck(it) }
             )
         }
+        entry<AppRoute.DeckGeneration> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else DeckGenerationScreen(project, navigator, viewModel)
+        }
         entry<AppRoute.MaterialManagement> { MaterialManagementScreen(project = null, viewModel, navigator) }
         entry<AppRoute.ProjectMaterialManagement> { route ->
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else MaterialManagementScreen(project, viewModel, navigator)
         }
+        entry<AppRoute.MaterialImport> { route -> MaterialImportScreen(route, viewModel, navigator) }
+        entry<AppRoute.ProjectMaterialPicker> { route -> ProjectMaterialPickerScreen(route, viewModel, navigator) }
         entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
         entry<AppRoute.Deck> { route ->
             val deck = decks.firstOrNull { it.id == route.id }
@@ -540,4 +546,4 @@ private fun StudySearchField(
     }
 }
 
-@Composable private fun LoadingScreen() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("正在加载卡组…") }
+@Composable private fun LoadingScreen() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AppText("正在加载卡组…", AppTextRole.Body) }

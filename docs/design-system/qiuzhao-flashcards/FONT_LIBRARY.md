@@ -1,6 +1,6 @@
 # 闪卡 App 字体与图标设计系统
 
-唯一设计来源：Figma `378:1764`、`378:1775`、`378:1805`、`379:2014`。实现入口为 `Front/app/src/main/java/com/qiuzhao/flashcards/ui/AppTheme.kt` 与 `Components.kt`；业务页面不得自行组装字体族或字重。
+唯一设计来源：Figma `378:1764`、`378:1775`、`378:1805`、`379:2014`（另含 `427:4182` 登录主标题）。实现入口为 `Front/app/src/main/java/com/qiuzhao/flashcards/ui/AppTheme.kt` 与 `Components.kt`；业务页面不得自行组装字体族或字重。
 
 ## 字体文件与轴
 
@@ -16,8 +16,9 @@
 | 角色 | 中文（MiSans） | 英文/数字（Google Sans Flex） |
 | --- | --- | --- |
 | PageTitle | Semibold 520, 24/32, 0 | Bold 700, 24/30, 0 |
+| AuthHeroTitle | Semibold 520, 32/32, 0 | Bold 700, 32/32, 0 |
 | SectionTitle | Bold 630, 20/27, 0 | Bold 700, 20/20, 0 |
-| CardTitle | Bold 630, 20/27, 0 | Bold 700, 20/20, 0 |
+| CardTitle | Bold 630, 18/24, 0 | Bold 700, 18/18, 0 |
 | CardSubtitle | Semibold 520, 16/21, 0 | Semibold 600, 16/16, 0 |
 | Body | Medium 380, 20/27, 0 | Regular 400, 20/27, 0 |
 | Supporting | Medium 380, 18/24, 0 | Medium 500, 18/24, 0 |
@@ -27,7 +28,7 @@
 | MetricMedium | Bold 630, 40/40, -0.6 | Bold 700, 40/40, -0.6 |
 | MetricLarge | Bold 630, 48/48, 0 | Bold 700, 48/48, 0 |
 
-字号/行高/字距单位均为 dp（字距在 Compose 中以等值 sp 传入）。混排行高取中英文两套规范中较大的值，避免裁切。Figma 展示名 `MetricMeduim` 在代码中统一为 `MetricMedium`，数值不变。
+字号/行高/字距单位均为 dp（字距在 Compose 中以等值 sp 传入）。混排行高取中英文两套规范中较大的值，避免裁切。Figma 展示名 `MetricMeduim` 在代码中统一为 `MetricMedium`，数值不变。`AuthHeroTitle` 是登录/注册主标题专用语义（Figma `427:4182`），当前登录页主标题“欢迎使用，请登录”已使用该角色。
 
 ## 导航栏专用文字
 

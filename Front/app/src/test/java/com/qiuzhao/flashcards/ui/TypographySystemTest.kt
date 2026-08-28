@@ -25,6 +25,10 @@ class TypographySystemTest {
     @Test
     fun `every role retains Figma language weight and maximum line height`() {
         assertEquals(700, AppTypographyTokens.spec(AppTextRole.PageTitle, AppTextLanguage.Latin).weight)
+        assertEquals(FigmaTextSpec(18f, 24f, 0f, 630), AppTypographyTokens.spec(AppTextRole.CardTitle, AppTextLanguage.Chinese))
+        assertEquals(FigmaTextSpec(18f, 18f, 0f, 700), AppTypographyTokens.spec(AppTextRole.CardTitle, AppTextLanguage.Latin))
+        assertEquals(FigmaTextSpec(32f, 32f, 0f, 520), AppTypographyTokens.spec(AppTextRole.AuthHeroTitle, AppTextLanguage.Chinese))
+        assertEquals(FigmaTextSpec(32f, 32f, 0f, 700), AppTypographyTokens.spec(AppTextRole.AuthHeroTitle, AppTextLanguage.Latin))
         assertEquals(630, AppTypographyTokens.spec(AppTextRole.Label, AppTextLanguage.Chinese).weight)
         assertEquals(800, AppTypographyTokens.spec(AppTextRole.Label, AppTextLanguage.Latin).weight)
         assertEquals(700, AppTypographyTokens.spec(AppTextRole.MetricXSmall, AppTextLanguage.Latin).weight)

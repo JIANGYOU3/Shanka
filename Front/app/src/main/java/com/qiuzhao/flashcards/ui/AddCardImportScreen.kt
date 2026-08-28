@@ -307,8 +307,7 @@ internal fun ImportScreen(viewModel: AppViewModel, nav: ScreenNavigator, existin
                     chineseFont = AppFonts.MiSansSemibold,
                     latinFont = AppFonts.GoogleSansFlexSemibold,
                     fontSize = 16.sp,
-                    lineHeight = 24.sp,
-                    style = MaterialTheme.typography.titleMedium
+                    lineHeight = 24.sp
                 )
             }
             items(drafts.indices.toList()) { itemIndex ->
