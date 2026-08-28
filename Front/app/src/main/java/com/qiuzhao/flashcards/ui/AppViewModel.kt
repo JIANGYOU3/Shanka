@@ -548,7 +548,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (enabled) _frontendTestCards.map { it[deckId].orEmpty() } else repository.cards(deckId)
     }
 
-    fun importDeck(name: String, drafts: List<CardDraft>, onDone: (String) -> Unit) = viewModelScope.launch {
+    fun importDeck(name: String, drafts: List<CardDraft>, onDone: (String) -> Unit) =
+        importDeck(name, drafts, onDone, "azure")
+
+    /** Figma 849:6467 generated deck inherits the project family via [themeKey]. */
+    fun importDeck(name: String, drafts: List<CardDraft>, onDone: (String) -> Unit, themeKey: String) =
+        viewModelScope.launch {
         if (name.isBlank() || drafts.isEmpty()) return@launch
         if (frontendTestMode.value) {
             val validDrafts = drafts.filter { it.front.isNotBlank() && it.back.isNotBlank() }
@@ -558,7 +563,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 FlashcardEntity("$id-card-$index", id, draft.front, draft.back, position = index, source = "FRONTEND_TEST")
             })
             _frontendTestDecks.value = _frontendTestDecks.value + DeckSummary(
-                id = id, name = name.trim(), source = "FRONTEND_TEST", themeKey = "azure",
+                id = id, name = name.trim(), source = "FRONTEND_TEST", themeKey = themeKey,
                 cardCount = validDrafts.size, dueCount = validDrafts.size
             )
             onDone(id)

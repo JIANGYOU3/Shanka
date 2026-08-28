@@ -269,8 +269,6 @@ private fun ReviewStudy(
         ScreenTopInformationBar(
             title = "间隔复习", subtitle = "$position/$total", onBack = onBack,
             backContainer = theme.cardPanel, titleColor = theme.text,
-            onTrailingAction = { editingCard = card }, trailingActionSymbol = "edit", trailingActionDescription = "编辑",
-            trailingActionContainer = theme.cardPanel,
             modifier = Modifier.zIndex(1f)
         )
         LinearProgressIndicator(

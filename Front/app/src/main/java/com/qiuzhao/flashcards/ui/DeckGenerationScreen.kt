@@ -1,6 +1,5 @@
 package com.qiuzhao.flashcards.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -67,7 +65,6 @@ internal fun DeckGenerationScreen(
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
-    val context = LocalContext.current
     val projectMats by viewModel.projectMaterials.collectAsState()
     val materials = projectMats[project.id].orEmpty()
     val fileItems = materials.filter { it.type == ProjectDraftMaterialType.FILE }
@@ -84,9 +81,7 @@ internal fun DeckGenerationScreen(
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
             title = "添加卡片组", subtitle = null, onBack = nav::goBack,
-            backContainer = theme.cardPanel, titleColor = theme.text,
-            onTrailingAction = {}, trailingActionSymbol = "edit", trailingActionDescription = "编辑",
-            trailingActionContainer = theme.cardPanel
+            backContainer = theme.cardPanel, titleColor = theme.text
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize().statusBarsPadding()
@@ -138,7 +133,7 @@ internal fun DeckGenerationScreen(
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
         Surface(
-            onClick = { Toast.makeText(context, "生成样卡（接入后续步骤）", Toast.LENGTH_SHORT).show() },
+            onClick = { nav.navigate(AppRoute.SmartCardChapter(project.id)) },
             color = theme.primary, contentColor = theme.onPrimary,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
@@ -146,9 +141,7 @@ internal fun DeckGenerationScreen(
                 .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
         ) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                MaterialSymbol("play_circle", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
-                Spacer(Modifier.width((8 * scale).dp))
-                AppText("生成样卡", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
+                AppText("下一步", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
             }
         }
     }
@@ -416,21 +409,13 @@ private fun DeckGenerationMaterialSection(
             MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24 * scale), filled = true)
             AppText(title, AppTextRole.SectionTitle, color = theme.text, designScale = scale, maxLines = 1)
         }
-        Surface(
-            color = AppColors.Card,
-            shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(Modifier.padding((24 * scale).dp), contentAlignment = Alignment.CenterStart) {
-                AppText(
-                    if (title == "添加文件资料") "选择该项目已添加的文件资料\n右滑卡片可编辑文件名称/删除文件"
-                    else "选择该项目已添加的文件资料\n右滑卡片可编辑内容/删除文件",
-                    AppTextRole.Supporting,
-                    color = theme.text,
-                    designScale = scale
-                )
-            }
-        }
+        HintBox(
+            text = if (title == "添加文件资料") "选择该项目已添加的文件资料\n右滑卡片可编辑文件名称/删除文件"
+            else "选择该项目已添加的文件资料\n右滑卡片可编辑内容/删除文件",
+            parentIsWhite = false,
+            theme = theme,
+            designScale = scale
+        )
         if (materials.isEmpty()) {
             AppText(
                 "暂无资料",

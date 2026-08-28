@@ -263,9 +263,7 @@ private fun RecognitionDialog(theme: DeckTheme, phase: Int) {
                 modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                CircularProgressIndicator(
-                    color = theme.primary, trackColor = Color.White, strokeWidth = 6.dp, modifier = Modifier.size(80.dp)
-                )
+                GenerationProgressRing(color = theme.primary, trackColor = theme.secondary, designScale = 1f)
                 AppText("正在识别文件内容", AppTextRole.PageTitle, color = theme.text, textAlign = TextAlign.Center)
                 AppText(status, AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .5f), textAlign = TextAlign.Center)
             }

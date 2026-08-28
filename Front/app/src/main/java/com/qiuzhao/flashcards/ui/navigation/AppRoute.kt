@@ -20,6 +20,12 @@ sealed interface AppRoute : NavKey {
     @Serializable data object ProjectCreate : AppRoute
     /** Figma 835:5466: generate and add a card group inside a project. */
     @Serializable data class DeckGeneration(val projectId: String) : AppRoute
+    /** Figma 836:5895 / 839:6220: pick the chapters parsed out of the files. */
+    @Serializable data class SmartCardChapter(val projectId: String) : AppRoute
+    /** Figma 835:5784: preview the generated sample cards before committing. */
+    @Serializable data class SmartCardPreview(val projectId: String) : AppRoute
+    /** Figma 849:6541: in-progress AI card generation screen. */
+    @Serializable data class SmartCardGenerating(val projectId: String) : AppRoute
     /** Reuses the project form with a pre-existing project as its editing target. */
     @Serializable data class ProjectEdit(val id: String) : AppRoute
     @Serializable data class ProjectTextEditor(

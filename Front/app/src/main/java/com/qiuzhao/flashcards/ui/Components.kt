@@ -427,6 +427,59 @@ internal fun RoundIconButton(symbol: String, description: String, color: Color, 
     }
 }
 
+/**
+ * Figma 856:6605 / 849:6541 generation progress ring. Uses the official
+ * Material 3 [CircularProgressIndicator] with a rounded cap and a visible
+ * track (the Material 3 expressive look); the shared component is fixed at
+ * 80 x 80dp. The fully expressive drawStopIndicator/trackStrokeWidth arrive
+ * only in material3 1.4.0-alpha, so this stays on the stable ring API.
+ */
+@Composable
+internal fun GenerationProgressRing(
+    color: Color,
+    trackColor: Color? = null,
+    designScale: Float = 1f,
+    strokeWidth: Float = 8f,
+    modifier: Modifier = Modifier
+) {
+    CircularProgressIndicator(
+        color = color,
+        modifier = modifier.size((80 * designScale).dp),
+        strokeWidth = (strokeWidth * designScale).dp,
+        trackColor = trackColor ?: color.copy(alpha = .2f),
+        strokeCap = StrokeCap.Round
+    )
+}
+
+/**
+ * Figma 373:1691 shared hint/notice box. Radius 24dp; the box lifts to the
+ * family Surface when its container is white, otherwise it returns to white.
+ * Supporting copy, centred, in the 80% neutral ink.
+ */
+@Composable
+internal fun HintBox(
+    text: String,
+    parentIsWhite: Boolean,
+    theme: DeckTheme,
+    designScale: Float,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = if (parentIsWhite) theme.cardPanel else AppColors.Card,
+        shape = RoundedCornerShape((AppNestedShapeRadius * designScale).dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        AppText(
+            text,
+            AppTextRole.Supporting,
+            modifier = Modifier.fillMaxWidth().padding((24 * designScale).dp),
+            color = AppColors.TextIconDark,
+            designScale = designScale,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
 @Composable
 internal fun MaterialSymbol(
     name: String,

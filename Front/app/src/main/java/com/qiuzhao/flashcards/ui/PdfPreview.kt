@@ -188,7 +188,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 40) * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
                     items(samples.indices.toList()) { index ->
@@ -205,7 +205,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
             BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (40 * designScale).dp)
+                    .padding(horizontal = (16 * designScale).dp, vertical = (16 * designScale).dp)
                     .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {

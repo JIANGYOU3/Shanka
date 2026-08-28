@@ -339,7 +339,7 @@ internal fun DeckDetailHeader(title: String, designScale: Float, onBack: () -> U
         title = title,
         subtitle = subtitle,
         onBack = onBack,
-        backContainer = theme?.surface,
+        backContainer = theme?.cardPanel,
         titleColor = theme?.text,
         modifier = modifier
     )

@@ -218,6 +218,18 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else DeckGenerationScreen(project, navigator, viewModel)
         }
+        entry<AppRoute.SmartCardChapter> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else SmartCardChapterScreen(project, navigator, viewModel)
+        }
+        entry<AppRoute.SmartCardPreview> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else SmartCardPreviewScreen(project, navigator, viewModel)
+        }
+        entry<AppRoute.SmartCardGenerating> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else SmartCardGeneratingScreen(project, navigator, viewModel)
+        }
         entry<AppRoute.MaterialManagement> { MaterialManagementScreen(project = null, viewModel, navigator) }
         entry<AppRoute.ProjectMaterialManagement> { route ->
             val project = projects.firstOrNull { it.id == route.projectId }

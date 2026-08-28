@@ -203,16 +203,24 @@ internal fun CardListScreen(
         Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier.fillMaxSize()
-                    // Figma 118:2389: cards begin 194dp from the design canvas top.
-                    .padding(start = (16 * designScale).dp, top = (194 * designScale).dp, end = (16 * designScale).dp)
+                    // Figma 373:1691: the hint box and the cards scroll together.
+                    .padding(start = (16 * designScale).dp, top = (136 * designScale).dp, end = (16 * designScale).dp)
                     .height((693 * designScale).dp)
                     .clip(RoundedCornerShape((AppScrollableContentClipRadius * designScale).dp))
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 40) * designScale).dp),
+                    contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
+                    item {
+                        HintBox(
+                            text = "点击卡片可以查看答案。\n卡片左滑可进行编辑与删除。",
+                            parentIsWhite = true,
+                            theme = theme,
+                            designScale = designScale
+                        )
+                    }
                     items(visibleCards, key = { it.id }) { card ->
                         CardListItem(
                             card = card,
@@ -225,31 +233,20 @@ internal fun CardListScreen(
                     }
                 }
             }
-            Text(
-                "点击卡片可以查看答案。\n卡片左滑可进行编辑与删除。",
-                modifier = Modifier.fillMaxWidth()
-                    .padding(start = (26 * designScale).dp, top = (136 * designScale).dp, end = (26 * designScale).dp),
-                color = theme.text,
-                fontFamily = AppFonts.MiSansMedium,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp(16 * designScale),
-                lineHeight = fixedSp(20 * designScale),
-                textAlign = TextAlign.Center
-            )
             DeckDetailHeader(
                 // Figma 118:2389 intentionally leaves the centre of this edit
                 // list header empty: this is a back-only secondary information bar.
                 title = if (mode == CardListMode.EDIT) "" else "卡片列表",
                 designScale = designScale,
                 onBack = nav::popBackStack,
-                theme = if (mode == CardListMode.EDIT) theme else null,
+                theme = theme,
                 subtitle = if (mode == CardListMode.GENERATED) "${visibleCards.size} cards" else null,
                 modifier = Modifier.zIndex(1f)
             )
             BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (40 * designScale).dp)
+                    .padding(horizontal = (16 * designScale).dp, vertical = (16 * designScale).dp)
                     .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy(((if (mode == CardListMode.EDIT) 16 else 12) * designScale).dp)
             ) {
@@ -282,6 +279,7 @@ internal fun CardListScreen(
                         primary = false,
                         modifier = Modifier.weight(1f),
                         designScale = designScale,
+                        theme = theme,
                         onClick = nav::popBackStack
                     )
                     CardListActionButton(
@@ -290,6 +288,7 @@ internal fun CardListScreen(
                         primary = true,
                         modifier = Modifier.weight(1f),
                         designScale = designScale,
+                        theme = theme,
                         onClick = { nav.replaceInclusive(AppRoute.CardList(deckId), AppRoute.Deck(deckId)) }
                     )
                 }
