@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,14 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
-import kotlinx.coroutines.delay
 
 /** Figma 775:3842 / 783:4135.  Material is committed only after recognition ends. */
 @Composable
@@ -58,25 +55,20 @@ internal fun MaterialImportScreen(
         DeckThemes.firstOrNull { it.key == route.themeKey }
             ?: DeckThemes.first { it.key == "azure" }
     }
-    val context = LocalContext.current
     val materials by viewModel.materialImportDrafts.collectAsState()
-    var recognitionPhase by rememberSaveable { mutableIntStateOf(0) }
+    val pdfUploading by viewModel.pdfUploading.collectAsState()
     var isRecognizing by rememberSaveable { mutableStateOf(false) }
     var editingFile by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) viewModel.stageMaterialImportFiles(uris.map { it.displayName(context) })
+        if (uris.isNotEmpty()) viewModel.stageMaterialImportFiles(uris)
     }
 
     LaunchedEffect(isRecognizing) {
         if (!isRecognizing) return@LaunchedEffect
-        recognitionPhase = 0
-        delay(720)
-        recognitionPhase = 1
-        delay(720)
-        recognitionPhase = 2
-        delay(720)
-        viewModel.commitMaterialImport(route.projectId)
-        navigator.goBack()
+        viewModel.commitMaterialImport(route.projectId) { success, _ ->
+            isRecognizing = false
+            if (success) navigator.goBack()
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
@@ -92,14 +84,16 @@ internal fun MaterialImportScreen(
             item {
                 ImportAddPanel(
                     theme = theme,
-                    onChooseFile = { filePicker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "text/*")) },
+                    onChooseFile = { filePicker.launch(arrayOf("application/pdf")) },
                     onEnterText = {
+                        val draftId = viewModel.stageMaterialImportText()
                         navigator.navigate(
                             AppRoute.ProjectTextEditor(
+                                materialId = draftId,
                                 themeKey = theme.key,
                                 projectId = route.projectId,
                                 stageForMaterialImport = true,
-                                editorTitle = "导入文本"
+                                editorTitle = "导入文本",
                             )
                         )
                     }
@@ -117,6 +111,7 @@ internal fun MaterialImportScreen(
                 ImportPreviewGroup(
                     theme = theme, title = "文本资料", icon = "description",
                     materials = materials.filter { it.type == ProjectDraftMaterialType.TEXT },
+                    emptyHint = "暂无添加",
                     onEditFile = { editingFile = it },
                     onEditText = { material ->
                         navigator.navigate(
@@ -141,6 +136,7 @@ internal fun MaterialImportScreen(
         Surface(
             color = theme.primary, contentColor = theme.onPrimary, shape = RoundedCornerShape(24.dp),
             onClick = { if (materials.isNotEmpty()) isRecognizing = true },
+            enabled = !pdfUploading,
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().zIndex(1f)
                 .padding(horizontal = 16.dp, vertical = 16.dp).height(60.dp)
         ) {
@@ -161,7 +157,7 @@ internal fun MaterialImportScreen(
             onDismiss = { editingFile = null }
         )
     }
-    if (isRecognizing) RecognitionDialog(theme, recognitionPhase)
+    if (isRecognizing) RecognitionDialog(theme)
 }
 
 @Composable
@@ -182,8 +178,8 @@ private fun ImportAddPanel(
             AppText("添加学习资料", AppTextRole.SectionTitle, color = theme.text)
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ImportChoice("picture_as_pdf", "选择文件", "PDF/ .txt/ .md格式", theme, onChooseFile)
-            ImportChoice("file_copy", "输入文本", "粘贴文本或手动输入", theme, onEnterText)
+            ImportChoice("picture_as_pdf", "选择 PDF", "支持多份 PDF 文件，异步解析", theme, onChooseFile)
+            ImportChoice("file_copy", "输入文本", "粘贴文本资料，30000 字以内", theme, onEnterText)
         }
     }
 }
@@ -220,6 +216,7 @@ private fun ImportPreviewGroup(
     title: String,
     icon: String,
     materials: List<ProjectDraftMaterial>,
+    emptyHint: String = "暂无添加",
     onEditFile: (ProjectDraftMaterial) -> Unit,
     onEditText: (ProjectDraftMaterial) -> Unit,
     onDelete: (String) -> Unit
@@ -233,7 +230,7 @@ private fun ImportPreviewGroup(
         if (materials.isEmpty()) {
             Surface(color = Color.White, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
                 Box(Modifier.padding(24.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AppText("暂无添加", AppTextRole.Supporting, color = theme.text.copy(alpha = .5f))
+                    AppText(emptyHint, AppTextRole.Supporting, color = theme.text.copy(alpha = .5f))
                 }
             }
         } else {
@@ -251,12 +248,7 @@ private fun ImportPreviewGroup(
 }
 
 @Composable
-private fun RecognitionDialog(theme: DeckTheme, phase: Int) {
-    val status = when (phase) {
-        0 -> "正在识别文件"
-        1 -> "正在整理内容"
-        else -> "正在检查结果"
-    }
+private fun RecognitionDialog(theme: DeckTheme) {
     Dialog(onDismissRequest = {}) {
         Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape(32.dp), modifier = Modifier.width(331.dp)) {
             Column(
@@ -264,8 +256,8 @@ private fun RecognitionDialog(theme: DeckTheme, phase: Int) {
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 GenerationProgressRing(color = theme.primary, trackColor = theme.secondary, designScale = 1f)
-                AppText("正在识别文件内容", AppTextRole.PageTitle, color = theme.text, textAlign = TextAlign.Center)
-                AppText(status, AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .5f), textAlign = TextAlign.Center)
+                AppText("正在提交 PDF 文件", AppTextRole.PageTitle, color = theme.text, textAlign = TextAlign.Center)
+                AppText("正在发送到服务端", AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .5f), textAlign = TextAlign.Center)
             }
         }
     }

@@ -1,14 +1,24 @@
 package com.qiuzhao.flashcards.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
+import com.qiuzhao.flashcards.data.remote.ProjectSummary
+import com.qiuzhao.flashcards.deviceacceptance.RequiresOwnActivityLaunch
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 
 class ProjectComponentsTest {
-    @get:Rule val rule = createComposeRule()
+    private val rule = createComposeRule()
+
+    // Canary before the compose rule's activity launch; see RequiresOwnActivityLaunch.
+    @get:Rule val chain = RuleChain.outerRule(RequiresOwnActivityLaunch()).around(rule)
 
     @Test fun bottomNavigationExposesSelectedDestinationToAssistiveTechnology() {
         rule.setContent {
@@ -32,7 +42,11 @@ class ProjectComponentsTest {
     @Test fun projectSwitcherExposesSelectedSectionToAssistiveTechnology() {
         rule.setContent {
             AutumnFlashcardsTheme {
-                ProjectSectionSwitcher(ProjectDetailSection.DECKS, onSelect = {})
+                ProjectSectionSwitcher(
+                    selected = ProjectDetailSection.DECKS,
+                    onSelect = {},
+                    theme = deckTheme(ProjectSummary(id = "test", name = "test")),
+                )
             }
         }
 
@@ -56,5 +70,45 @@ class ProjectComponentsTest {
 
         rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         rule.onNodeWithContentDescription("编辑").assertIsDisplayed()
+    }
+
+    @Test fun primaryHeaderAvatarIsIdentityDisplayWithoutNavigationAction() {
+        rule.setContent {
+            AutumnFlashcardsTheme {
+                ScreenTopInformationBar(
+                    title = null,
+                    subtitle = null,
+                    onBack = null,
+                    onSettings = {},
+                    account = LocalAccount("酱油四", "979492620@qq.com"),
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("酱油四的头像")
+            .assertIsDisplayed()
+            .assertHasNoClickAction()
+    }
+
+    @Test fun primaryHeaderAvatarInvokesNavigationHandlerWhenProvided() {
+        var opened = false
+        rule.setContent {
+            AutumnFlashcardsTheme {
+                ScreenTopInformationBar(
+                    title = null,
+                    subtitle = null,
+                    onBack = null,
+                    onSettings = {},
+                    account = LocalAccount("酱油四", "979492620@qq.com"),
+                    onAvatar = { opened = true },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("酱油四的头像")
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .performClick()
+        assertTrue(opened)
     }
 }

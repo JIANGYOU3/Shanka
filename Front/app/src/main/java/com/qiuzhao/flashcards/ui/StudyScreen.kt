@@ -140,7 +140,6 @@ import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
-import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.R
@@ -156,24 +155,47 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun StudyScreen(viewModel: AppViewModel, nav: ScreenNavigator, deckId: String, reviewMode: Boolean) {
+internal fun StudyScreen(
+    viewModel: AppViewModel,
+    nav: ScreenNavigator,
+    deckId: String,
+    reviewMode: Boolean,
+    todayMode: Boolean = false,
+) {
     val cards by viewModel.studyCards.collectAsState()
     val decks by viewModel.decks.collectAsState()
     val projects by viewModel.projects.collectAsState()
+    val todayPlan by viewModel.todayPlan.collectAsState()
+    val reviewSubmitting by viewModel.reviewSubmitting.collectAsState()
     // The flip/free-practice theme follows the owning project (per the user's
     // colour semantics), falling back to the deck's stored family.
-    val theme = decks.firstOrNull { it.id == deckId }?.let { deck -> deckTheme(deck, projects) } ?: DeckThemes.first()
+    val themeDeckId = if (todayMode) cards.firstOrNull()?.deckId else deckId
+    val theme = decks.firstOrNull { it.id == themeDeckId }?.let { deck -> deckTheme(deck, projects) } ?: DeckThemes.first()
     // Keep a local queue for this session. A card disappears from it immediately
     // after it is rated, so the previous/next controls can never reopen a card
     // that has already been swiped away.
-    var remainingCardIds by remember(deckId, reviewMode) { mutableStateOf<List<String>?>(null) }
-    var currentIndex by remember(deckId, reviewMode) { mutableIntStateOf(0) }
-    var rememberedCount by remember(deckId, reviewMode) { mutableIntStateOf(0) }
-    var forgottenCount by remember(deckId, reviewMode) { mutableIntStateOf(0) }
-    LaunchedEffect(deckId, reviewMode) { viewModel.startStudy(deckId, reviewMode) }
+    val studyKey = if (todayMode) "today" else deckId
+    var remainingCardIds by remember(studyKey, reviewMode) { mutableStateOf<List<String>?>(null) }
+    var currentIndex by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
+    var rememberedCount by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
+    var forgottenCount by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
+    var loadingStudy by remember(studyKey, reviewMode) { mutableStateOf(false) }
+    LaunchedEffect(studyKey, reviewMode, todayMode) {
+        remainingCardIds = null
+        currentIndex = 0
+        rememberedCount = 0
+        forgottenCount = 0
+        loadingStudy = true
+        try {
+            val load = if (todayMode) viewModel.startTodayStudy() else viewModel.startStudy(deckId, reviewMode)
+            load.join()
+        } finally {
+            loadingStudy = false
+        }
+    }
 
     LaunchedEffect(cards) {
-        if (remainingCardIds == null && cards.isNotEmpty()) {
+        if (!loadingStudy && remainingCardIds == null && cards.isNotEmpty()) {
             remainingCardIds = cards.map { it.id }
         }
     }
@@ -193,17 +215,23 @@ internal fun StudyScreen(viewModel: AppViewModel, nav: ScreenNavigator, deckId: 
             canGoNext = safeIndex < remainingCards.lastIndex,
             rememberedCount = rememberedCount,
             forgottenCount = forgottenCount,
+            submitting = reviewSubmitting,
             modifier = Modifier.fillMaxSize(),
             onBack = nav::popBackStack,
             onEdit = viewModel::updateCard,
             onPrevious = { currentIndex = (safeIndex - 1).coerceAtLeast(0) },
             onNext = { currentIndex = (safeIndex + 1).coerceAtMost(remainingCards.lastIndex) },
             onRate = { rating ->
-                viewModel.rate(card.id, rating)
-                if (rating == Rating.GOOD) rememberedCount++ else forgottenCount++
-                val updatedIds = initialCardIds.orEmpty().filterNot { it == card.id }
-                remainingCardIds = updatedIds
-                currentIndex = safeIndex.coerceAtMost((updatedIds.size - 1).coerceAtLeast(0))
+                // The card leaves the queue only after the server committed the event; a failure
+                // keeps the card on screen and the retry replays the same event identifiers.
+                viewModel.rate(card.id, rating) {
+                    // HARD still means the learner recalled the answer (just with effort); only
+                    // AGAIN represents a miss in the compact two-counter footer.
+                    if (rating == Rating.AGAIN) forgottenCount++ else rememberedCount++
+                    val updatedIds = initialCardIds.orEmpty().filterNot { it == card.id }
+                    remainingCardIds = updatedIds
+                    currentIndex = safeIndex.coerceAtMost((updatedIds.size - 1).coerceAtLeast(0))
+                }
             }
         )
         return
@@ -212,35 +240,59 @@ internal fun StudyScreen(viewModel: AppViewModel, nav: ScreenNavigator, deckId: 
         FreeStudy(cards = cards, theme = theme, onBack = nav::popBackStack, onUpdateCard = viewModel::updateCard)
         return
     }
-    Scaffold(topBar = { AppBar(if (reviewMode) "间隔复习" else "自由刷题", nav::popBackStack) }) { padding ->
+    Scaffold(topBar = { AppBar(if (reviewMode) "记忆巩固" else "自由刷题", nav::popBackStack) }) { padding ->
         when {
-            cards.isEmpty() -> EmptyStudy(Modifier.padding(padding), reviewMode, nav)
-            reviewMode && remainingCardIds?.isEmpty() == true -> CompleteStudy(Modifier.padding(padding), nav)
+            reviewMode && remainingCardIds?.isEmpty() == true -> CompleteStudy(
+                modifier = Modifier.padding(padding),
+                nav = nav,
+                hasBacklog = todayMode && todayPlan.backlogCount > 0,
+                onContinueBacklog = {
+                    remainingCardIds = null
+                    currentIndex = 0
+                    rememberedCount = 0
+                    forgottenCount = 0
+                    loadingStudy = true
+                    viewModel.startTodayBacklogStudy { succeeded ->
+                        loadingStudy = false
+                        if (!succeeded) remainingCardIds = emptyList()
+                    }
+                },
+            )
+            cards.isEmpty() -> EmptyStudy(Modifier.padding(padding), reviewMode, nav, todayMode)
             else -> Unit
         }
     }
 }
 
 @Composable
-private fun EmptyStudy(modifier: Modifier, reviewMode: Boolean, nav: ScreenNavigator) {
+private fun EmptyStudy(modifier: Modifier, reviewMode: Boolean, nav: ScreenNavigator, todayMode: Boolean = false) {
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MaterialSymbol("star", null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary, size = 44.sp)
-            AppText(if (reviewMode) "没有到期卡片" else "这个卡组还是空的", AppTextRole.PageTitle)
-            AppText(if (reviewMode) "休息一下，或者自由刷题巩固印象。" else "先导入几张问答卡吧。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = nav::popBackStack) { AppText("返回", AppTextRole.Label) }
+            AppText(if (todayMode) "今天没有可学习的卡片" else if (reviewMode) "没有到期卡片" else "这个卡组还是空的", AppTextRole.PageTitle)
+            AppText(if (todayMode) "先设置学习计划，或导入资料并生成卡组。" else if (reviewMode) "休息一下，或者自由刷题巩固印象。" else "先导入几张问答卡吧。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = { if (todayMode) nav.navigate(AppRoute.StudyPlan) else nav.popBackStack() }) {
+                AppText(if (todayMode) "设置学习计划" else "返回", AppTextRole.Label)
+            }
         }
     }
 }
 
 @Composable
-private fun CompleteStudy(modifier: Modifier, nav: ScreenNavigator) {
+private fun CompleteStudy(
+    modifier: Modifier,
+    nav: ScreenNavigator,
+    hasBacklog: Boolean = false,
+    onContinueBacklog: () -> Unit = {},
+) {
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             MaterialSymbol("star", null, modifier = Modifier.size(52.dp), tint = MaterialTheme.colorScheme.primary, size = 52.sp)
             AppText("本轮完成", AppTextRole.PageTitle)
-            AppText("做得好，下一次复习会按你的记忆情况自动安排。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = nav::popBackStack) { AppText("回到卡组", AppTextRole.Label) }
+            AppText("做得好，下一次巩固会按你的记忆情况自动安排。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = if (hasBacklog) onContinueBacklog else nav::popBackStack) {
+                AppText(if (hasBacklog) "继续巩固积压" else "回到卡组", AppTextRole.Label)
+            }
         }
     }
 }
@@ -255,6 +307,7 @@ private fun ReviewStudy(
     canGoNext: Boolean,
     rememberedCount: Int,
     forgottenCount: Int,
+    submitting: Boolean,
     modifier: Modifier,
     onBack: () -> Unit,
     onEdit: (FlashcardEntity) -> Unit,
@@ -267,7 +320,7 @@ private fun ReviewStudy(
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ScreenTopInformationBar(
-            title = "间隔复习", subtitle = "$position/$total", onBack = onBack,
+            title = "记忆巩固", subtitle = "$position/$total", onBack = onBack,
             backContainer = theme.cardPanel, titleColor = theme.text,
             modifier = Modifier.zIndex(1f)
         )
@@ -289,16 +342,26 @@ private fun ReviewStudy(
                     flipped = flipped,
                     onFlip = { flipped = !flipped },
                     onRate = onRate,
+                    canRate = !submitting,
                     modifier = Modifier.fillMaxSize(),
                     designScale = designScale,
                     theme = theme
                 )
             }
             Spacer(Modifier.height((16 * designScale).dp))
-            if (flipped) ReviewAnswerControls(theme, canGoPrevious, canGoNext, onPrevious, onNext) { onRate(Rating.HARD) }
+            if (flipped) ReviewAnswerControls(
+                enabled = !submitting,
+                onHard = { onRate(Rating.HARD) },
+                onGood = { onRate(Rating.GOOD) },
+            )
             else ReviewQuestionControls(theme, canGoPrevious, canGoNext, rememberedCount, forgottenCount, onPrevious, onNext)
         }
-        if (flipped) ReviewSwipeHint(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = (756 * designScale).dp), designScale) else Text(
+        if (flipped) ReviewSwipeHint(
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = (756 * designScale).dp),
+            scale = designScale,
+            enabled = !submitting,
+            onRate = onRate,
+        ) else Text(
             "点击卡片查看答案",
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = (769 * designScale).dp),
             color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal,
@@ -339,24 +402,51 @@ private fun ReviewQuestionControls(
 }
 
 @Composable
-private fun ReviewAnswerControls(theme: DeckTheme, canGoPrevious: Boolean, canGoNext: Boolean, onPrevious: () -> Unit, onNext: () -> Unit, onHard: () -> Unit) {
+private fun ReviewAnswerControls(enabled: Boolean, onHard: () -> Unit, onGood: () -> Unit) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     Row(Modifier.fillMaxWidth().height((72 * scale).dp), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-        ReviewNavigationButton("arrow_back", enabled = canGoPrevious, Modifier.width((96 * scale).dp).fillMaxHeight(), scale, theme, onPrevious)
-        Surface(
-            onClick = onHard,
-            // Figma 44:2464 uses the semantic amber surface without an outline.
+        ReviewRatingButton(
+            label = "勉强想起",
             color = AppColors.Orange.surface,
             contentColor = AppColors.Orange.ink,
-            shape = RoundedCornerShape((32 * scale).dp),
-            modifier = Modifier.width((146 * scale).dp).fillMaxHeight()
-        ) {
-            Row(Modifier.padding(horizontal = (24 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-                MaterialSymbol("comedy_mask", null, tint = AppColors.Orange.ink, size = fixedSp(24 * scale), filled = true)
-                Text("印象模糊", fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(21 * scale), letterSpacing = fixedSp(.6f * scale), maxLines = 1)
-            }
+            enabled = enabled,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            scale = scale,
+            onClick = onHard,
+        )
+        ReviewRatingButton(
+            label = "正常想起",
+            color = AppColors.Green.background,
+            contentColor = AppColors.Green.primaryStrong,
+            enabled = enabled,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            scale = scale,
+            onClick = onGood,
+        )
+    }
+}
+
+@Composable
+private fun ReviewRatingButton(
+    label: String,
+    color: Color,
+    contentColor: Color,
+    enabled: Boolean,
+    modifier: Modifier,
+    scale: Float,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        color = color,
+        contentColor = contentColor,
+        shape = RoundedCornerShape((32 * scale).dp),
+        modifier = modifier,
+    ) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * scale), lineHeight = fixedSp(21 * scale), letterSpacing = fixedSp(.6f * scale), maxLines = 1)
         }
-        ReviewNavigationButton("arrow_forward", enabled = canGoNext, Modifier.width((96 * scale).dp).fillMaxHeight(), scale, theme, onNext)
     }
 }
 
@@ -395,19 +485,25 @@ private fun ReviewCountBadge(symbol: String, count: Int, color: Color, contentCo
 }
 
 @Composable
-private fun ReviewSwipeHint(modifier: Modifier, scale: Float) {
+private fun ReviewSwipeHint(
+    modifier: Modifier,
+    scale: Float,
+    enabled: Boolean,
+    onRate: (Rating) -> Unit,
+) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ReviewSwipeHintGroup("swipe_left", "左滑是记得，", scale)
-        ReviewSwipeHintGroup("swipe_right", "右滑是不记得", scale)
+        ReviewSwipeHintGroup("swipe_left", "轻松想起", scale, enabled) { onRate(Rating.EASY) }
+        ReviewSwipeHintGroup("swipe_right", "没想起来", scale, enabled) { onRate(Rating.AGAIN) }
     }
 }
 
 @Composable
-private fun ReviewSwipeHintGroup(symbol: String, text: String, scale: Float) {
+private fun ReviewSwipeHintGroup(symbol: String, text: String, scale: Float, enabled: Boolean, onClick: () -> Unit) {
     Row(
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -432,6 +528,7 @@ private fun FigmaReviewCard(
     flipped: Boolean,
     onFlip: () -> Unit,
     onRate: (Rating) -> Unit,
+    canRate: Boolean,
     modifier: Modifier,
     designScale: Float,
     theme: DeckTheme
@@ -447,6 +544,11 @@ private fun FigmaReviewCard(
     val frontAlpha = if (rotation <= 90f) 1f else 0f
     val backAlpha = if (rotation > 90f) 1f else 0f
     val faceShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
+    // A swipe that triggered a rating leaves the card shifted; snap it back while the
+    // submission is in flight so a failure shows the card centred and ready to retry.
+    LaunchedEffect(canRate) {
+        if (!canRate) offsetX = 0f
+    }
     Box(
         modifier = modifier
             .offset { IntOffset(offsetX.roundToInt(), 0) }
@@ -458,12 +560,12 @@ private fun FigmaReviewCard(
             .draggable(
                 state = draggable,
                 orientation = Orientation.Horizontal,
-                enabled = flipped,
+                enabled = flipped && canRate,
                 onDragStopped = {
                     when {
-                        // Figma 44:2464: left = remembered; right = forgot.
+                        // Left swipe = EASY; right swipe = AGAIN.
                         offsetX > 140f -> onRate(Rating.AGAIN)
-                        offsetX < -140f -> onRate(Rating.GOOD)
+                        offsetX < -140f -> onRate(Rating.EASY)
                         else -> scope.launch { offsetX = 0f }
                     }
                 }

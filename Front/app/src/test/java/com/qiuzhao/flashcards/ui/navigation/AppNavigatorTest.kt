@@ -54,12 +54,6 @@ class AppNavigatorTest {
         val state = state()
         val navigator = AppNavigator(state)
 
-        navigator.navigate(AppRoute.FirstLogin)
-        navigator.navigate(AppRoute.Register)
-        navigator.goBack()
-        assertEquals(AppRoute.FirstLogin, state.currentRoute)
-
-        navigator.goBack()
         navigator.navigate(AppRoute.Login)
         navigator.navigate(AppRoute.Register)
         navigator.goBack()

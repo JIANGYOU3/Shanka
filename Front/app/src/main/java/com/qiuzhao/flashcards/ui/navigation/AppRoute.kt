@@ -52,16 +52,18 @@ sealed interface AppRoute : NavKey {
     /** Figma 796:6935 / 796:6589: attach existing material to the project draft. */
     @Serializable data class ProjectMaterialPicker(val themeKey: String) : AppRoute
     @Serializable data object TextImport : AppRoute
+    /** The one additive page for configuring the current project's daily plan. */
+    @Serializable data object StudyPlan : AppRoute
     @Serializable data class Deck(val id: String) : AppRoute
     @Serializable data class Study(val deckId: String, val reviewMode: Boolean) : AppRoute
+    /** Reuses the existing study screen for the server-computed cross-deck today queue. */
+    @Serializable data object StudyToday : AppRoute
     @Serializable data object Import : AppRoute
     @Serializable data class AddCard(val deckId: String) : AppRoute
     @Serializable data class CardList(val deckId: String) : AppRoute
     @Serializable data class EditCardList(val deckId: String) : AppRoute
     @Serializable data class ImportToDeck(val deckId: String) : AppRoute
-    @Serializable data object PdfMaker : AppRoute
-    /** First app entry has no visible back affordance. */
-    @Serializable data object FirstLogin : AppRoute
+    /** Avatar-triggered login dialog; the only sign-in entry in the release shell. */
     @Serializable data object Login : AppRoute
     @Serializable data object Register : AppRoute
     @Serializable data object Settings : AppRoute

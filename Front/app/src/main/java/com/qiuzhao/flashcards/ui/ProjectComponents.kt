@@ -42,6 +42,10 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** A stable model keeps the bottom bar independent from the current route graph. */
 internal data class AppBottomNavigationItem(
@@ -54,6 +58,17 @@ internal data class AppBottomNavigationItem(
 internal enum class ProjectDetailSection { STATISTICS, DECKS }
 
 private const val FigmaSelectionDurationMillis = 500
+
+/**
+ * Material-card import date, e.g. "26/8/11" (Figma 167:9679 shows the same
+ * yy/M/d shape). Rendered in the device time zone; null drafts show a dash
+ * instead of a fabricated date.
+ */
+internal val importDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yy/M/d", Locale.US)
+
+internal fun formatImportDate(importedAt: Instant?): String =
+    importedAt?.let { importDateFormatter.format(it.atZone(ZoneId.systemDefault())) } ?: "—"
+
 
 /**
  * Figma 568:2326. The item model lets the existing Library route retain its
@@ -158,7 +173,7 @@ private fun AppBottomNavigationItemContent(
 internal fun ProjectSectionSwitcher(
     selected: ProjectDetailSection,
     onSelect: (ProjectDetailSection) -> Unit,
-    theme: DeckTheme,
+    theme: DeckTheme = DeckThemes.first(),
     modifier: Modifier = Modifier
 ) {
     Surface(

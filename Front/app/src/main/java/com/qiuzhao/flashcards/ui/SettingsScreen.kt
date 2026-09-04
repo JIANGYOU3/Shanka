@@ -140,7 +140,6 @@ import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
-import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.R
@@ -155,7 +154,6 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
-    val frontendTestMode by viewModel.frontendTestMode.collectAsState()
     val remoteApiStatus by viewModel.apiKeyStatus.collectAsState()
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     var showAiKeyDialog by remember { mutableStateOf(false) }
@@ -169,10 +167,6 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
         "INSUFFICIENT_BALANCE" -> "余额不足"
         else -> "未设置"
     }
-    val openUnbuilt: (String) -> Unit = { title ->
-        nav.navigate(AppRoute.SettingsUnbuilt(title))
-    }
-
     Surface(modifier = Modifier.fillMaxSize(), color = AppColors.Blue.background) {
         Box(Modifier.fillMaxSize()) {
             // Figma 66:4804: this is one deliberately tight menu, with 4dp inside
@@ -193,39 +187,11 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
                 ) {
                     item {
                         SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("头像与昵称", "badge", AppColors.Green.primary, AppColors.Green.ink, designScale) {
-                                nav.navigate(AppRoute.SettingsIdentity)
-                            }
-                            SettingsMenuRow("学习档案", "article_person", AppColors.Green.primary, AppColors.Green.ink, designScale) {
-                                openUnbuilt("学习档案")
-                            }
-                        }
-                    }
-                    item {
-                        SettingsMenuGroup(designScale) {
                             SettingsMenuRow("API设置", "experiment", AppColors.Purple.primarySecondary, AppColors.Purple.ink, designScale) {
                                 showAiKeyDialog = true
                             }
-                            SettingsMenuRow("（后续ai相关的设置）", "article_person", AppColors.Purple.primarySecondary, AppColors.Purple.ink, designScale) {
-                                openUnbuilt("AI 设置")
-                            }
-                            SettingsFrontendTestModeRow(
-                                checked = frontendTestMode,
-                                designScale = designScale,
-                                onCheckedChange = viewModel::setFrontendTestMode
-                            )
-                        }
-                    }
-                    item {
-                        SettingsMenuGroup(designScale) {
-                            SettingsMenuRow("数据隐私与安全条款", "admin_panel_settings", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
-                                openUnbuilt("数据隐私与安全条款")
-                            }
-                            SettingsMenuRow("用户协议", "person_raised_hand", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
-                                openUnbuilt("用户协议")
-                            }
-                            SettingsMenuRow("关于应用", "info", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
-                                openUnbuilt("关于应用")
+                            SettingsMenuRow("退出登录", "logout", AppColors.Orange.primarySecondary, AppColors.Orange.ink, designScale) {
+                                viewModel.logout()
                             }
                         }
                     }
@@ -259,60 +225,6 @@ internal fun SettingsScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
         )
     }
 }
-
-@Composable
-internal fun SettingsIdentityScreen(nav: ScreenNavigator) {
-    val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Surface(Modifier.fillMaxSize(), color = AppColors.Blue.background) {
-        Box(Modifier.fillMaxSize()) {
-            Box(
-                Modifier.fillMaxSize()
-                    .padding(start = (16 * scale).dp, top = (148 * scale).dp, end = (16 * scale).dp)
-                    .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp))
-            ) {
-                SettingsMenuGroup(scale) {
-                    SettingsIdentityRow("头像", "account_circle", avatar = true, scale = scale)
-                    SettingsIdentityRow("昵称", "id_card", value = "酱油四", scale = scale)
-                }
-            }
-            SettingsPageHeader(
-                title = "头像与昵称",
-                designScale = scale,
-                onBack = nav::popBackStack,
-                modifier = Modifier
-                    .padding(start = (16 * scale).dp, top = (64 * scale).dp, end = (16 * scale).dp)
-                    .zIndex(1f)
-            )
-        }
-    }
-}
-
-@Composable
-internal fun SettingsUnbuiltScreen(title: String, nav: ScreenNavigator) {
-    val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Surface(Modifier.fillMaxSize(), color = AppColors.Blue.background) {
-        Box(Modifier.fillMaxSize()) {
-            Text(
-                "未构建",
-                modifier = Modifier.align(Alignment.Center),
-                color = AppColors.TextIconDark.copy(alpha = .55f),
-                fontFamily = AppFonts.MiSansMedium,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp(16 * scale),
-                lineHeight = fixedSp(20 * scale)
-            )
-            SettingsPageHeader(
-                title = title,
-                designScale = scale,
-                onBack = nav::popBackStack,
-                modifier = Modifier
-                    .padding(start = (16 * scale).dp, top = (64 * scale).dp, end = (16 * scale).dp)
-                    .zIndex(1f)
-            )
-        }
-    }
-}
-
 @Composable
 private fun AiServiceDialog(currentKey: String, status: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var key by remember(currentKey) { mutableStateOf(currentKey) }
@@ -426,121 +338,3 @@ private fun SettingsMenuRow(
         }
     }
 }
-
-/** Figma 315:1557 — an isolated local-data switch for UI and interaction testing. */
-@Composable
-private fun SettingsFrontendTestModeRow(
-    checked: Boolean,
-    designScale: Float,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Surface(
-        color = AppColors.Card,
-        shape = RoundedCornerShape((24 * designScale).dp),
-        modifier = Modifier.fillMaxWidth().height((76 * designScale).dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding((12 * designScale).dp),
-            horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = AppColors.Purple.primarySecondary,
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.size((52 * designScale).dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol("dropper_eye", null, tint = AppColors.Purple.ink, size = fixedSp(24 * designScale), filled = true)
-                }
-            }
-            Text(
-                text = "前端测试模式",
-                modifier = Modifier.weight(1f),
-                color = AppColors.TextIconDark,
-                fontFamily = AppFonts.MiSansSemibold,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp(20 * designScale),
-                lineHeight = fixedSp(24 * designScale),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = figmaCardTextStyle()
-            )
-            Box(
-                modifier = Modifier.width((80 * designScale).dp).fillMaxHeight(),
-                contentAlignment = Alignment.Center
-            ) {
-                Switch(
-                    checked = checked,
-                    onCheckedChange = onCheckedChange,
-                    modifier = Modifier.semantics { contentDescription = "前端测试模式" },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = AppColors.Card,
-                        checkedTrackColor = AppColors.Purple.primary,
-                        uncheckedThumbColor = AppColors.TextIconDark.copy(alpha = .55f),
-                        uncheckedTrackColor = AppColors.Purple.surface,
-                        uncheckedBorderColor = AppColors.TextIconDark.copy(alpha = .55f)
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsIdentityRow(
-    title: String,
-    symbol: String,
-    avatar: Boolean = false,
-    value: String? = null,
-    scale: Float
-) {
-    Surface(
-        color = AppColors.Card,
-        shape = RoundedCornerShape((AppShapeRadius * scale).dp),
-        modifier = Modifier.fillMaxWidth().height((76 * scale).dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding((12 * scale).dp),
-            horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = AppColors.Green.primary,
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier.size((52 * scale).dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol(symbol, null, tint = AppColors.Green.ink, size = fixedSp(24 * scale), filled = true)
-                }
-            }
-            Text(
-                title,
-                modifier = Modifier.weight(1f),
-                color = AppColors.TextIconDark,
-                fontFamily = AppFonts.MiSansSemibold,
-                fontWeight = FontWeight.Normal,
-                fontSize = fixedSp((if (avatar) 18 else 20) * scale),
-                lineHeight = fixedSp(24 * scale),
-                maxLines = 1
-            )
-            if (avatar) {
-                Image(
-                    painter = painterResource(R.drawable.avatar_settings_figma),
-                    contentDescription = "头像",
-                    modifier = Modifier.size((48 * scale).dp).clip(RoundedCornerShape(999.dp))
-                )
-            } else if (value != null) {
-                Text(
-                    value,
-                    color = AppColors.TextIconDark,
-                    fontFamily = AppFonts.MiSansSemibold,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = fixedSp(20 * scale),
-                    lineHeight = fixedSp(24 * scale),
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
-

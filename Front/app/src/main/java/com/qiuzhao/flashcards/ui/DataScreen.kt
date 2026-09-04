@@ -140,7 +140,6 @@ import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
-import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.R
@@ -155,7 +154,7 @@ import kotlinx.coroutines.delay
 
 
 @Composable
-internal fun DataScreen(dueCount: Int, dashboard: Dashboard?, weeklyActivity: WeeklyActivityData, nav: ScreenNavigator) {
+internal fun DataScreen(dueCount: Int, dashboard: DashboardUiState?, weeklyActivity: WeeklyActivityData, nav: ScreenNavigator) {
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     val sideInset = 16 * designScale
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground).statusBarsPadding()) {
@@ -170,7 +169,7 @@ internal fun DataScreen(dueCount: Int, dashboard: Dashboard?, weeklyActivity: We
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
                         item { WeeklyActivityCard(designScale, weeklyActivity) }
                         item { DataStreakCards(designScale, dashboard) }
-                        item { DataLearningCards(designScale, dashboard) }
+                        item { DataLearningCards(designScale, dashboard, dueCount) }
                         item { MasteryCard(designScale, dashboard) }
                     }
                 }
@@ -208,7 +207,7 @@ private fun WeeklyActivityCard(designScale: Float, weeklyActivity: WeeklyActivit
                         designScale = designScale
                     )
                     MixedLanguageText(
-                        text = "已复习${weeklyActivity.total} cards",
+                        text = "已巩固${weeklyActivity.total} cards",
                         color = AppColors.TextIconDark.copy(alpha = .5f),
                         chineseFont = AppFonts.MiSansSemibold,
                         latinFont = AppFonts.GoogleSansFlexSemibold,
@@ -302,7 +301,7 @@ private fun WeeklyActivityBar(label: String, filledHeight: Float, designScale: F
 }
 
 @Composable
-private fun MasteryCard(designScale: Float, dashboard: Dashboard?) {
+private fun MasteryCard(designScale: Float, dashboard: DashboardUiState?) {
     Card(
         shape = RoundedCornerShape(AppShapeRadius.dp),
         colors = CardDefaults.cardColors(containerColor = AppColors.Blue.background),
@@ -316,17 +315,17 @@ private fun MasteryCard(designScale: Float, dashboard: Dashboard?) {
             WeeklyGoalRing(designScale, dashboard)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
                 AppText("这数据不赖，继续努力", AppTextRole.SectionTitle, color = AppColors.TextIconDark, designScale = designScale)
-                DataMetricRow("psychology_alt", "回忆正确率", dashboard.percent("recall_accuracy", "review_accuracy"), designScale)
-                DataMetricRow("bolt", "首次答对率", dashboard.percent("first_answer_accuracy", "first_pass_rate", "first_correct_rate"), designScale)
-                DataMetricRow("mountain_flag", "记忆保持率", dashboard.percent("retention_rate", "memory_retention_rate"), designScale)
+                DataMetricRow("psychology_alt", "回忆正确率", dashboard.percent(dashboard?.recallAccuracy), designScale)
+                DataMetricRow("bolt", "首次答对率", dashboard.percent(dashboard?.firstAttemptAccuracy), designScale)
+                DataMetricRow("mountain_flag", "记忆保持率", dashboard.percent(dashboard?.retentionRate), designScale)
             }
         }
     }
 }
 
 @Composable
-private fun WeeklyGoalRing(designScale: Float, dashboard: Dashboard?) {
-    val progress = dashboard?.let { if (it.weeklyGoal != null && it.weeklyGoal > 0) (it.completed.toFloat() / it.weeklyGoal).coerceIn(0f, 1f) else 0f } ?: 0f
+private fun WeeklyGoalRing(designScale: Float, dashboard: DashboardUiState?) {
+    val progress = dashboard?.let { if (it.weeklyGoal > 0) (it.completed.toFloat() / it.weeklyGoal).coerceIn(0f, 1f) else 0f } ?: 0f
     val ringTrack = AppColors.Blue.primarySecondary
     Box(Modifier.size((192 * designScale).dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
@@ -340,7 +339,7 @@ private fun WeeklyGoalRing(designScale: Float, dashboard: Dashboard?) {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("${(progress * 100).roundToInt()}%", color = AppColors.TextIconDark, fontFamily = AppFonts.GoogleSansFlexBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(40 * designScale), lineHeight = fixedSp(40 * designScale), letterSpacing = fixedSp(-.6f * designScale))
-            Text("本周复习目标", color = AppColors.Blue.ink, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(21 * designScale))
+            Text("本周巩固目标", color = AppColors.Blue.ink, fontFamily = AppFonts.MiSansSemibold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(21 * designScale))
         }
     }
 }
@@ -366,28 +365,23 @@ private fun DataMetricRow(symbol: String, label: String, value: String, designSc
     }
 }
 
-private fun Dashboard?.number(vararg keys: String): Double? = this?.let { dashboard ->
-    keys.firstOrNull { dashboard.raw.has(it) && !dashboard.raw.isNull(it) }?.let { dashboard.raw.optDouble(it) }
-}
-
-private fun Dashboard?.percent(vararg keys: String): String = number(*keys)?.let { "${(it * 100).roundToInt()}%" } ?: "—"
+private fun DashboardUiState?.percent(value: Float?): String = value?.let { "${(it * 100).roundToInt()}%" } ?: "—"
 
 @Composable
-private fun DataStreakCards(designScale: Float, dashboard: Dashboard?) {
-    val raw = dashboard?.raw
-    val longestStreak = raw?.optInt("max_streak", raw.optInt("longest_streak", 12)) ?: 12
-    val openCount = raw?.optInt("open_count", raw.optInt("app_open_count", 4)) ?: 4
+private fun DataStreakCards(designScale: Float, dashboard: DashboardUiState?) {
+    val longestStreak = dashboard?.streakDays
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
         StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            value = longestStreak.toString(),
+            value = longestStreak?.toString() ?: "—",
             kind = StatisticsMetricKind.LongestStreak,
             surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )
         StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            value = openCount.toString(),
+            // V2.5 has no app-open metric. Preserve the visual slot without inventing a value.
+            value = "—",
             kind = StatisticsMetricKind.OpenCount,
             surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
@@ -396,28 +390,23 @@ private fun DataStreakCards(designScale: Float, dashboard: Dashboard?) {
 }
 
 @Composable
-private fun DataLearningCards(designScale: Float, dashboard: Dashboard?) {
-    val masteredCount = dashboard?.raw?.let { raw -> raw.optInt("mastered_card_count", raw.optInt("mastered_cards", 2)) } ?: 2
+private fun DataLearningCards(designScale: Float, dashboard: DashboardUiState?, dueCount: Int) {
+    val masteredCount = dashboard?.masteredCards
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
         StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            value = "12min",
-            kind = StatisticsMetricKind.LearningTime,
+            value = dueCount.toString(),
+            kind = StatisticsMetricKind.DueCards,
             surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )
         StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            value = formatMasteredCount(masteredCount),
+            // Real counts are always integers; a `0.042k`-style abbreviation misreads 42 as 42k.
+            value = honestCount(masteredCount),
             kind = StatisticsMetricKind.MasteredCards,
             surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )
     }
-}
-
-/** Figma 19:621 presents small mastered counts as a three-decimal k value. */
-private fun formatMasteredCount(count: Int): String {
-    val safeCount = count.coerceAtLeast(0)
-    return if (safeCount < 1_000) "%.3fk".format(java.util.Locale.US, safeCount / 1_000.0) else "${safeCount / 1_000}k"
 }

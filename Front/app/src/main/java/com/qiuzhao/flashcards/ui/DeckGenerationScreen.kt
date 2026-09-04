@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -77,6 +78,18 @@ internal fun DeckGenerationScreen(
     var requirement by remember { mutableStateOf("") }
     var selectedFileIds by remember { mutableStateOf(setOf<String>()) }
     var selectedTextIds by remember { mutableStateOf(setOf<String>()) }
+    // Same contract as the material-management page: the bound PDF has no standalone delete,
+    // so its swipe-delete requests the project deletion flow with the advisory impact line.
+    var showProjectDeletion by remember { mutableStateOf(false) }
+    var projectDeletionInFlight by remember { mutableStateOf(false) }
+    var deletionPreflight by remember { mutableStateOf<com.qiuzhao.flashcards.domain.v25.V25DeletionPreflight?>(null) }
+    LaunchedEffect(showProjectDeletion) {
+        deletionPreflight = null
+        if (!showProjectDeletion) return@LaunchedEffect
+        viewModel.refreshProjectDeletionPreflight(project.id, retainDecks = true, allowCancel = false) { result ->
+            deletionPreflight = result
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
@@ -118,7 +131,12 @@ internal fun DeckGenerationScreen(
                     title = "添加文件资料", icon = "files", materials = fileItems, theme = theme, scale = scale,
                     selectedIds = selectedFileIds,
                     onToggle = { id -> selectedFileIds = if (id in selectedFileIds) selectedFileIds - id else selectedFileIds + id },
-                    onEditText = {}, onDelete = { id -> viewModel.deleteProjectMaterial(project.id, id) }
+                    onEditText = {},
+                    onDelete = { id ->
+                        val material = fileItems.firstOrNull { it.id == id }
+                        if (material?.projectId == null) viewModel.deleteProjectDraftMaterial(id)
+                        else showProjectDeletion = true
+                    }
                 )
             }
             item {
@@ -127,13 +145,34 @@ internal fun DeckGenerationScreen(
                     selectedIds = selectedTextIds,
                     onToggle = { id -> selectedTextIds = if (id in selectedTextIds) selectedTextIds - id else selectedTextIds + id },
                     onEditText = { material -> nav.navigate(AppRoute.ProjectTextEditor(material.id, theme.key, project.id, editorTitle = "编辑文本资料")) },
-                    onDelete = { id -> viewModel.deleteProjectMaterial(project.id, id) }
+                    onDelete = { id ->
+                        val material = textItems.firstOrNull { it.id == id }
+                        if (material?.projectId == null) viewModel.deleteProjectDraftMaterial(id)
+                        else showProjectDeletion = true
+                    }
                 )
             }
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
         Surface(
-            onClick = { nav.navigate(AppRoute.SmartCardChapter(project.id)) },
+            onClick = {
+                viewModel.prepareProjectGeneration(
+                    projectId = project.id,
+                    deckName = name,
+                    config = PdfGenerationConfig(
+                        quantity = when (coverage) {
+                            "精简" -> "COMPACT"
+                            "充分" -> "EXTENSIVE"
+                            else -> "BALANCED"
+                        },
+                        basic = basicBoundary / 100f,
+                        understanding = (analysisBoundary - basicBoundary) / 100f,
+                        application = (100f - analysisBoundary) / 100f,
+                        requirement = requirement,
+                    ),
+                    onReady = { ready -> if (ready) nav.navigate(AppRoute.SmartCardChapter(project.id)) },
+                )
+            },
             color = theme.primary, contentColor = theme.onPrimary,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
@@ -143,6 +182,27 @@ internal fun DeckGenerationScreen(
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 AppText("下一步", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
             }
+        }
+        if (showProjectDeletion) {
+            val impact = deletionPreflight?.impact
+            ProjectDeletionDialog(
+                projectName = project.name,
+                theme = theme,
+                deleting = projectDeletionInFlight,
+                impactText = impact?.let {
+                    "影响范围：${it.deckCount} 个牌组、${it.cardCount} 张卡片、${it.taskCount} 条制卡任务记录"
+                },
+                onConfirm = { retainDecks ->
+                    if (projectDeletionInFlight) return@ProjectDeletionDialog
+                    projectDeletionInFlight = true
+                    viewModel.deleteProject(project.id, retainDecks) { succeeded ->
+                        projectDeletionInFlight = false
+                        showProjectDeletion = false
+                        if (succeeded) nav.returnToTopLevel()
+                    }
+                },
+                onDismiss = { if (!projectDeletionInFlight) showProjectDeletion = false }
+            )
         }
     }
 }

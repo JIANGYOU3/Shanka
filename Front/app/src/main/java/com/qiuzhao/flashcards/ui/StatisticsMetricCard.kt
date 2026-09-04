@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 
 /** The eight Figma 685 statistic-card instances share one layout and typography contract. */
 internal enum class StatisticsMetricKind {
+    /** The former learning-time slot now carries the server-derived due count. */
+    DueCards,
     LearningTime,
     LongestStreak,
     OpenCount,
@@ -123,6 +125,13 @@ internal fun StatisticsMetricCard(
 }
 
 private fun statisticsMetricAppearance(kind: StatisticsMetricKind): StatisticsMetricAppearance = when (kind) {
+    StatisticsMetricKind.DueCards -> StatisticsMetricAppearance(
+        // Keep the existing metric slot's icon and palette: this is a text/data binding change,
+        // not a new visual treatment.
+        symbol = "acute", label = "待巩固", labelColor = Color(0xFF484100),
+        whiteIconBackground = Color(0xFFB7AC4A), tintedIconBackground = Color(0xFFB7AC4A),
+        tintedBackground = AppColors.Orange.surface
+    )
     StatisticsMetricKind.LearningTime -> StatisticsMetricAppearance(
         symbol = "acute", label = "学习时长", labelColor = Color(0xFF484100),
         whiteIconBackground = Color(0xFFB7AC4A), tintedIconBackground = Color(0xFFB7AC4A),

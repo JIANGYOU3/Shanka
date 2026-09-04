@@ -140,7 +140,6 @@ import com.qiuzhao.flashcards.data.CardDraft
 import com.qiuzhao.flashcards.data.remote.DeckProgress
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
-import com.qiuzhao.flashcards.data.remote.Dashboard
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.R
@@ -178,15 +177,18 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                     contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
-                    item { DeckLearningDataCard(reviewedToday = progress.dueCount, dailyGoal = 50, theme = theme, designScale = designScale) }
-                    item { DeckQuestionTypesCard(progress.cardCount, 0, 0, theme, designScale) }
+                    // Today's reviewed count and a deck-level daily goal are not exposed by the
+                    // server; the card keeps its Figma layout and shows honest dashes.
+                    item { DeckLearningDataCard(reviewedToday = null, dailyGoal = null, theme = theme, designScale = designScale) }
+                    // The server exposes no per-deck question-type distribution; keep the slots.
+                    item { DeckQuestionTypesCard(null, null, null, theme, designScale) }
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-                            StatisticsMetricCard("${progress.dueCount}min", StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
-                            StatisticsMetricCard("${progress.masteredCards / 1000}.${(progress.masteredCards % 1000).toString().padStart(3, '0')}k", StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
+                            StatisticsMetricCard("—", StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
+                            StatisticsMetricCard(honestCount(progress.masteredCards), StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
                         }
                     }
-                    item { DeckWeeklyReviewCard(designScale) }
+                    item { DeckWeeklyReviewCard(deck, designScale) }
                 }
             }
             DeckDetailHeader(
@@ -202,7 +204,7 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                 horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {
                 CardListActionButton("编辑", "edit", false, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.EditCardList(deck.id)) }
-                CardListActionButton("开始复习", "play_circle", true, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.Study(deck.id, true)) }
+                CardListActionButton("开始学习", "play_circle", true, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.Study(deck.id, true)) }
             }
         }
     }
@@ -215,12 +217,14 @@ internal fun DetailPrimaryButton(
     icon: String,
     primary: Boolean,
     designScale: Float,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val container = if (primary) AppColors.Blue.primary else AppColors.Blue.primarySecondary
     val content = if (primary) AppColors.TextIconLight else AppColors.Blue.ink
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().height((60 * designScale).dp),
         shape = RoundedCornerShape((24 * designScale).dp),
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = container, contentColor = content),
@@ -272,7 +276,7 @@ private fun deckOverview(deck: DeckSummary): String = when (deck.chapter) {
     8 -> "学习从运行轨迹持续改进 Agent，并为线上演进建立安全边界。"
     9 -> "关注多模态与实时 Agent 的低延迟交互、状态同步和操作风险。"
     10 -> "了解多 Agent 协作的分工、交接与共享上下文策略。"
-    else -> "这个卡组正在持续整理中；你可以添加问题，随时开始复习。"
+    else -> "这个卡组正在持续整理中；你可以添加问题，随时开始学习。"
 }
 
 @Composable
@@ -332,7 +336,7 @@ private fun ChapterProgressCard(progress: DeckProgress, masteryRatio: Float, des
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 ChapterMetric("共", "${progress.cardCount}张", designScale, theme = theme)
                 ChapterMetric("已掌握", "${progress.masteredCards}张", designScale, TextAlign.Center, theme)
-                ChapterMetric("待复习", "${progress.dueCount}张", designScale, TextAlign.End, theme)
+                ChapterMetric("待巩固", "${progress.dueCount}张", designScale, TextAlign.End, theme)
             }
             Row(
                 modifier = Modifier.fillMaxWidth().height((77 * designScale).dp),
@@ -364,7 +368,7 @@ private fun ChapterProgressCard(progress: DeckProgress, masteryRatio: Float, des
                 )
             }
             MixedLanguageText(
-                text = "累计复习${progress.reviewCount}次", color = theme.mutedText,
+                text = "累计巩固${progress.reviewCount}次", color = theme.mutedText,
                 chineseFont = AppFonts.MiSansSemibold, latinFont = AppFonts.GoogleSansFlexSemibold,
                 fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(21 * designScale),
                 style = figmaCardTextStyle()

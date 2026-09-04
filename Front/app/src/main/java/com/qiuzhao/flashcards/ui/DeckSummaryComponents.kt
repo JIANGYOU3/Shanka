@@ -25,21 +25,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.qiuzhao.flashcards.data.remote.DeckSummary
 
 /** Figma 655:4143. The owning project's primary colour is the card colour. */
 @Composable
 internal fun DeckLearningDataCard(
-    reviewedToday: Int,
-    dailyGoal: Int,
+    reviewedToday: Int?,
+    dailyGoal: Int?,
     theme: DeckTheme,
     designScale: Float,
     modifier: Modifier = Modifier
 ) {
-    val safeGoal = dailyGoal.coerceAtLeast(1)
-    val percent = (reviewedToday.coerceIn(0, safeGoal) * 100 / safeGoal)
+    val percent = if (reviewedToday != null && dailyGoal != null && dailyGoal > 0) {
+        (reviewedToday.coerceIn(0, dailyGoal) * 100 / dailyGoal)
+    } else {
+        null
+    }
     LearningDataProgressCard(
         reviewedCards = reviewedToday,
-        totalCards = safeGoal,
+        totalCards = dailyGoal,
         progressPercent = percent,
         todaySelected = true,
         onTodaySelected = {},
@@ -57,20 +61,22 @@ internal fun DeckLearningDataCard(
  * Figma: 24 + 61 + 24 + 48 + 24 + 20 + 24 = 225. Text is measured with a
  * larger Android line box inside those visual frames, so its real ascenders
  * and descenders can never be clipped by the Figma-height rows.
+ *
+ * A null value means the metric has no server source; the layout is preserved
+ * and the slot shows `—` instead of inventing a number or a fake goal.
  */
 @Composable
 internal fun LearningDataProgressCard(
-    reviewedCards: Int,
-    totalCards: Int,
-    progressPercent: Int,
+    reviewedCards: Int?,
+    totalCards: Int?,
+    progressPercent: Int?,
     todaySelected: Boolean,
     onTodaySelected: (Boolean) -> Unit,
     theme: DeckTheme,
     designScale: Float,
     modifier: Modifier = Modifier
 ) {
-    val safeTotal = totalCards.coerceAtLeast(1)
-    val safePercent = progressPercent.coerceIn(0, 100)
+    val safePercent = progressPercent?.coerceIn(0, 100)
     Surface(
         color = theme.primary,
         contentColor = theme.onPrimary,
@@ -109,18 +115,20 @@ internal fun LearningDataProgressCard(
                 verticalAlignment = Alignment.Bottom
             ) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    FigmaLearningLargeMetric(reviewedCards.toString(), theme.onPrimary, designScale)
-                    Spacer(Modifier.width((4 * designScale).dp))
-                    FigmaLearningSmallMetric("/ $safeTotal", theme.onPrimary, designScale)
-                    AppText(" 已复习", AppTextRole.CardSubtitle, color = theme.onPrimary, designScale = designScale)
+                    FigmaLearningLargeMetric(reviewedCards?.toString() ?: "—", theme.onPrimary, designScale)
+                    totalCards?.let { total ->
+                        Spacer(Modifier.width((4 * designScale).dp))
+                        FigmaLearningSmallMetric("/ $total", theme.onPrimary, designScale)
+                    }
+                    AppText(" 张卡片已学习", AppTextRole.CardSubtitle, color = theme.onPrimary, designScale = designScale)
                 }
-                FigmaLearningLargeMetric("$safePercent%", theme.onPrimary, designScale)
+                FigmaLearningLargeMetric(safePercent?.let { "$it%" } ?: "—", theme.onPrimary, designScale)
             }
             Row(
                 Modifier.fillMaxWidth().height((20 * designScale).dp),
                 horizontalArrangement = Arrangement.spacedBy((5 * designScale).dp)
             ) {
-                val completedWeight = safePercent / 100f
+                val completedWeight = (safePercent ?: 0) / 100f
                 Box(
                     Modifier.weight(completedWeight.coerceAtLeast(0.001f)).fillMaxHeight()
                         .clip(RoundedCornerShape(999.dp)).background(theme.surface)
@@ -219,12 +227,15 @@ private fun FigmaLearningLargeMetric(text: String, color: Color, designScale: Fl
     )
 }
 
-/** Figma 297:8547. Question types retain semantic accents inside a project-tinted shell. */
+/**
+ * Figma 297:8547. Question types retain semantic accents inside a project-tinted shell.
+ * The server exposes no per-deck question-type distribution; unknown counts show `—`.
+ */
 @Composable
 internal fun DeckQuestionTypesCard(
-    foundationCards: Int,
-    understandingCards: Int,
-    applicationCards: Int,
+    foundationCards: Int?,
+    understandingCards: Int?,
+    applicationCards: Int?,
     theme: DeckTheme,
     designScale: Float,
     modifier: Modifier = Modifier
@@ -239,10 +250,14 @@ internal fun DeckQuestionTypesCard(
 }
 
 @Composable
-private fun DeckQuestionType(count: Int, label: String, container: Color, content: Color, designScale: Float, modifier: Modifier) {
+private fun DeckQuestionType(count: Int?, label: String, container: Color, content: Color, designScale: Float, modifier: Modifier) {
     Surface(color = container, contentColor = content, shape = RoundedCornerShape((24 * designScale).dp), modifier = modifier.fillMaxHeight()) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            MixedLanguageText("$count cards", color = content, chineseFont = AppFonts.MiSansBold, latinFont = AppFonts.GoogleSansFlexBold, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle(), includeFontPadding = false)
+            MixedLanguageText(
+                count?.let { "$it cards" } ?: "—",
+                color = content, chineseFont = AppFonts.MiSansBold, latinFont = AppFonts.GoogleSansFlexBold,
+                fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle(), includeFontPadding = false
+            )
             Text(label, color = content, fontFamily = AppFonts.MiSansBold, fontWeight = FontWeight.Normal, fontSize = fixedSp(16 * designScale), lineHeight = fixedSp(21 * designScale), style = figmaCardTextStyle())
         }
     }
@@ -252,11 +267,13 @@ private fun DeckQuestionType(count: Int, label: String, container: Color, conten
  * One item in Figma's 120dp review-status column. Height is explicit because
  * the visual bucket height and the displayed percentage are independent in
  * the supplied designs; deriving one from the other visibly distorts the card.
+ * A null percentage (with an empty bar) keeps the column layout honest when
+ * the server exposes no review-state distribution.
  */
 internal data class ReviewProgressEntry(
     val label: String,
     val color: Color,
-    val percentage: Int,
+    val percentage: Int?,
     val fillHeight: Int
 )
 
@@ -283,7 +300,7 @@ internal fun ReviewProgressCard(
             ) {
                 MaterialSymbol("local_fire_department", null, tint = AppColors.TextIconDark, size = fixedSp(28 * designScale), filled = true)
                 Spacer(Modifier.width((8 * designScale).dp))
-                FigmaReviewTitle("复习进度", designScale)
+                FigmaReviewTitle("学习进度", designScale)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 entries.forEach { entry -> ReviewProgressLegend(entry, designScale) }
@@ -298,19 +315,31 @@ internal fun ReviewProgressCard(
     }
 }
 
-/** Figma 297:8521. Values remain explicit until the review API supplies buckets. */
+/**
+ * Figma 297:8521. The review-state bucket distribution has no server source yet;
+ * every column keeps its Figma slot and shows the honest dash instead of fake
+ * percentages, so the card never claims a memory distribution the server didn't provide.
+ */
 @Composable
-internal fun DeckWeeklyReviewCard(designScale: Float, modifier: Modifier = Modifier) = ReviewProgressCard(
-    entries = listOf(
-        ReviewProgressEntry("熟识", AppColors.ReviewKnown, 2, 12),
-        ReviewProgressEntry("认识", AppColors.ReviewRecognised, 10, 27),
-        ReviewProgressEntry("模糊", AppColors.ReviewUncertain, 70, 87),
-        ReviewProgressEntry("陌生", AppColors.ReviewUnfamiliar, 10, 19),
-        ReviewProgressEntry("没学", AppColors.ReviewUnseen, 30, 97)
-    ),
-    designScale = designScale,
-    modifier = modifier
-)
+internal fun DeckWeeklyReviewCard(deck: DeckSummary, designScale: Float, modifier: Modifier = Modifier) {
+    val total = deck.cardCount
+    fun entry(label: String, color: Color, count: Int): ReviewProgressEntry {
+        val percentage = if (total > 0) (count * 100f / total).toInt() else null
+        val height = if (total > 0) (count * 116f / total).toInt() else 0
+        return ReviewProgressEntry(label, color, percentage, height)
+    }
+    ReviewProgressCard(
+        entries = listOf(
+            entry("未开始", AppColors.ReviewUnseen, deck.notStartedCount),
+            entry("初学中", AppColors.ReviewRecognised, deck.learningCount),
+            entry("需重学", AppColors.ReviewUncertain, deck.relearningCount),
+            entry("巩固中", AppColors.ReviewUnfamiliar, deck.consolidatingCount),
+            entry("已掌握", AppColors.ReviewKnown, deck.masteredLifecycleCount),
+        ),
+        designScale = designScale,
+        modifier = modifier,
+    )
+}
 
 @Composable
 private fun FigmaReviewTitle(text: String, designScale: Float) = Box(
@@ -380,7 +409,7 @@ private fun ReviewProgressColumn(entry: ReviewProgressEntry, designScale: Float,
         // A 16dp Figma label frame is smaller than Android's true glyph box.
         // Keep the visual frame but measure the child at its safe 24dp height.
         Text(
-            "${entry.percentage}%",
+            entry.percentage?.let { "$it%" } ?: "—",
             modifier = Modifier.requiredHeight((24 * designScale).dp),
             color = AppColors.TextIconDark.copy(alpha = .8f),
             fontFamily = AppFonts.GoogleSansFlexExtraBold,

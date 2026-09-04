@@ -1,3 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only cleartext permission: local-device acceptance points the debug build at a
+  plain-http backend (emulator 10.0.2.2, adb reverse 127.0.0.1, or a Wi-Fi host address via
+  -PshankaDebugApiBaseUrl=http://10.x.x.x:8000). Release never merges this manifest, so the
+  production app keeps blocking cleartext unconditionally.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:usesCleartextTraffic="true" />
 </manifest>

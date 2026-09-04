@@ -34,6 +34,12 @@ class AppNavigator(private val state: AppNavigationStore) {
         }
     }
 
+    /** Removes transient detail/edit entries after an aggregate was deleted. */
+    fun returnToTopLevel() {
+        val stack = state.stackFor(state.selectedTopLevel)
+        while (stack.size > 1) stack.removeLastOrNull()
+    }
+
     /** Transitional semantic name retained for existing screen callbacks. */
     fun popBackStack() = goBack()
 }
