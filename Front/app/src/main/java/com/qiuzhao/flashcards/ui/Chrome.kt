@@ -97,6 +97,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -295,21 +297,28 @@ fun FlashcardsApp(viewModel: AppViewModel) {
         (typedEntryProvider(key as AppRoute) as NavEntry<NavKey>)
     }
 
+    // 毛玻璃 backdrop blur 的采样源：所有路由内容都在这棵子树里绘制。
+    val bottomBarHazeState = remember { HazeState() }
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
-        NavDisplay(
-            entries = navigationState.decoratedEntries(entryProvider),
-            onBack = {
-                if (navigator.isAtExitRoot) {
-                    activity?.finish()
-                } else {
-                    navigator.goBack()
-                }
-            },
-            transitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
-            popTransitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
-            predictivePopTransitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
-            modifier = Modifier.imePadding()
-        )
+        Box(
+            Modifier.fillMaxSize().background(AppColors.BaseBackground)
+                .hazeSource(bottomBarHazeState)
+        ) {
+            NavDisplay(
+                entries = navigationState.decoratedEntries(entryProvider),
+                onBack = {
+                    if (navigator.isAtExitRoot) {
+                        activity?.finish()
+                    } else {
+                        navigator.goBack()
+                    }
+                },
+                transitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
+                popTransitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
+                predictivePopTransitionSpec = { fadeIn(AppMotion.enter()) togetherWith fadeOut(AppMotion.exit()) },
+                modifier = Modifier.imePadding()
+            )
+        }
         // Root chrome remains mounted for a selected tab and is hidden on child routes.
         AnimatedVisibility(
             visible = navigationState.currentRoute == navigationState.selectedTopLevel,
@@ -328,6 +337,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                 )
                 BottomNavBar(
                     selected = selectedRootTab,
+                    hazeState = bottomBarHazeState,
                     onHome = { navigator.navigate(AppRoute.Home) },
                     onProject = { navigator.navigate(AppRoute.Project) },
                     onData = { navigator.navigate(AppRoute.Data) },
@@ -524,7 +534,14 @@ private fun TopInformationBarContent(
 private enum class RootTab { HOME, PROJECT, DATA }
 
 @Composable
-private fun BottomNavBar(selected: RootTab, onHome: () -> Unit, onProject: () -> Unit, onData: () -> Unit, modifier: Modifier = Modifier) {
+private fun BottomNavBar(
+    selected: RootTab,
+    hazeState: HazeState,
+    onHome: () -> Unit,
+    onProject: () -> Unit,
+    onData: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val selectedIndex = when (selected) {
         RootTab.HOME -> 0
         RootTab.PROJECT -> 1
@@ -537,6 +554,7 @@ private fun BottomNavBar(selected: RootTab, onHome: () -> Unit, onProject: () ->
             AppBottomNavigationItem("项目", "playing_cards", onProject),
             AppBottomNavigationItem("数据", "query_stats", onData)
         ),
+        hazeState = hazeState,
         modifier = modifier
     )
 }

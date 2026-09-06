@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -74,34 +78,42 @@ internal fun formatImportDate(importedAt: Instant?): String =
 /**
  * Figma 987:5203. The floating light root navigation: a translucent near-white
  * pill with a 12dp inset track of three 94×60 items and an animated #B0D7FF
- * selection indicator. Figma's `backdropFilter: blur(12px)` softens content
- * scrolling beneath; without a real backdrop-blur pass, the glass is
- * approximated by a stronger near-white fill (0xB3) so underlying text reads
- * as blurred-to-milk rather than plainly visible through the pill.
+ * selection indicator. The glass is a real backdrop blur (haze, RenderEffect
+ * on API 31+): Figma fill rgba(250,253,255,0.5) over blur(24px); on older
+ * devices the blur degrades to the pre-1.0 stronger near-white scrim (0xB3)
+ * so text beneath still reads as frosted rather than plainly visible.
  */
 @Composable
 internal fun AppBottomNavigation(
     selectedIndex: Int,
     items: List<AppBottomNavigationItem>,
+    hazeState: HazeState,
     modifier: Modifier = Modifier
 ) {
     require(items.size == 3) { "The Figma bottom navigation has exactly three destinations." }
     require(selectedIndex in items.indices) { "Selected bottom-navigation item must exist." }
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
+    val barShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Surface(
-        // Figma fill rgba(250,253,255,0.5) + blur(12px); the raised 0xB3 alpha
-        // stands in for the blur. Its 0 4 16 rgba(218,218,218,0.5) shadow rides
-        // on the container modifier below.
-        color = Color(0xB3FAFDFF),
-        shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
+        // Figma fill rgba(250,253,255,0.5) + backgroundBlur 24px; the haze
+        // modifier supplies the blur and its 0 4 16 rgba(218,218,218,0.5)
+        // shadow rides on the container modifier below.
+        color = Color(0x80FAFDFF),
+        shape = barShape,
         modifier = modifier.fillMaxWidth().navigationBarsPadding()
             .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp)
             .shadow(
                 elevation = (8 * designScale).dp,
-                shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
+                shape = barShape,
                 ambientColor = NavigationShadowColor,
                 spotColor = NavigationShadowColor
             )
+            .clip(barShape)
+            .hazeEffect(hazeState) {
+                blurRadius = (24f * designScale).dp
+                tints = listOf(HazeTint(Color(0x80FAFDFF)))
+                fallbackTint = HazeTint(Color(0xB3FAFDFF))
+            }
             .height((84 * designScale).dp)
     ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding((12 * designScale).dp)) {
