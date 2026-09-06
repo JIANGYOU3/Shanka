@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -396,6 +397,15 @@ class AppViewModel(
 
     init {
         checkSession()
+        // The drained pass rewrites the Room projections; re-reading them here (cache-fresh,
+        // no extra network) is what lets the home page's 今日计划 move right after a rating.
+        viewModelScope.launch {
+            v25Repository.reviewSync.drainedPasses.drop(1).collect {
+                refreshDecks()
+                refreshTodayPlan()
+                refreshDashboard()
+            }
+        }
         viewModelScope.launch {
             auth.state
                 .map { it as? AuthState.LoggedIn }

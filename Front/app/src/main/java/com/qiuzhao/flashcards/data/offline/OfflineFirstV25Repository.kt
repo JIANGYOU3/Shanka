@@ -232,7 +232,10 @@ class OfflineFirstV25Repository(
         val metadata = cache.metadata(user, V25CacheStore.KEY_TODAY_PLAN)
         val fresh = metadata != null && clock.millis() - metadata.fetchedAt < TTL_FAST
 
-        if (cached != null) {
+        // Same contract as [cachedRead]: the cached lane requires BOTH data and metadata.
+        // A completed plan write invalidates the metadata row, so the read after a save
+        // must observe the server's recomputed remainder, not the pre-save projection.
+        if (cached != null && metadata != null) {
             if (currentPolicy == RefreshPolicy.FORCE) {
                 val forced = remote.todayPlan()
                 if (forced is V25Result.Success) cache.replaceTodayPlan(user, forced.value, clock.millis())

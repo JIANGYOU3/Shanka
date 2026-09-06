@@ -79,7 +79,7 @@ class AppColorSystemTest {
         assertEquals(AppColors.Purple.background, basePagePalette.background)
         assertEquals(AppColors.Purple.surface, basePagePalette.panel)
         assertEquals(AppColors.Purple.surface, basePagePalette.badge)
-        assertEquals(AppColors.Purple.primarySecondary, basePagePalette.progressTrack)
+        assertEquals(AppColors.Purple.background, basePagePalette.progressTrack)
         assertEquals(AppColors.Purple.surface, themePagePalette.background)
         assertEquals(AppColors.Purple.background, themePagePalette.panel)
         assertEquals(AppColors.Purple.primarySecondary, themePagePalette.progressTrack)
