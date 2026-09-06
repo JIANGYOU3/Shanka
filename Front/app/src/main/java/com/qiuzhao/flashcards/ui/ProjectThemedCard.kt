@@ -42,7 +42,8 @@ internal fun ProjectThemedCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
+    onAction: (() -> Unit)? = null,
+    showPriority: Boolean = true
 ) {
     val palette = projectThemedCardPalette(theme, variant)
     Surface(
@@ -63,7 +64,8 @@ internal fun ProjectThemedCard(
                 theme = theme,
                 badgeColor = palette.badge,
                 icon = icon,
-                designScale = designScale
+                designScale = designScale,
+                showPriority = showPriority
             )
             FigmaDeckProgressPanel(
                 progress = progress,
@@ -106,7 +108,8 @@ internal fun ProjectThemedCardHeader(
     theme: DeckTheme,
     badgeColor: Color,
     icon: String,
-    designScale: Float
+    designScale: Float,
+    showPriority: Boolean = true
 ) = Row(
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp),
@@ -123,7 +126,9 @@ internal fun ProjectThemedCardHeader(
             // variant. A per-theme 16dp fallback made the blue/green icons
             // visibly too square in both the project list and Home card.
             shape = RoundedCornerShape((24 * designScale).dp),
-            modifier = Modifier.size((56 * designScale).dp)
+            // Latest revision (950:4943): the 62dp icon box fills the header
+            // row whose height is set by the 62dp count badge beside it.
+            modifier = Modifier.size((62 * designScale).dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 MaterialSymbol(icon, null, tint = theme.onPrimary, size = fixedSp(24 * designScale), filled = true)
@@ -142,17 +147,19 @@ internal fun ProjectThemedCardHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy((4 * designScale).dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MaterialSymbol("brightness_alert", null, tint = AppColors.WarningStrong, size = fixedSp(18 * designScale), filled = true)
-                AppText(
-                    "高优先级",
-                    AppTextRole.CardSubtitle,
-                    color = AppColors.WarningStrong,
-                    designScale = designScale
-                )
+            if (showPriority) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((4 * designScale).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MaterialSymbol("brightness_alert", null, tint = AppColors.WarningStrong, size = fixedSp(18 * designScale), filled = true)
+                    AppText(
+                        "高优先级",
+                        AppTextRole.CardSubtitle,
+                        color = AppColors.WarningStrong,
+                        designScale = designScale
+                    )
+                }
             }
         }
     }
@@ -191,7 +198,7 @@ internal fun FigmaDeckProgressPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AppText("进度", AppTextRole.CardSubtitle, color = theme.strongText, designScale = designScale)
-                Text("$percent%", color = theme.progress, fontFamily = AppFonts.GoogleSansFlexBold, fontSize = fixedSp(20 * designScale), lineHeight = fixedSp(20 * designScale), style = figmaCardTextStyle())
+                Text("$percent%", color = theme.progress, fontFamily = AppFonts.GoogleSansFlexBold, fontSize = fixedSp(18 * designScale), lineHeight = fixedSp(18 * designScale), style = figmaCardTextStyle())
             }
             Row(
                 modifier = Modifier.fillMaxWidth().height((20 * designScale).dp),

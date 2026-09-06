@@ -271,7 +271,7 @@ private fun EmptyStudy(modifier: Modifier, reviewMode: Boolean, nav: ScreenNavig
             MaterialSymbol("star", null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary, size = 44.sp)
             AppText(if (todayMode) "今天没有可学习的卡片" else if (reviewMode) "没有到期卡片" else "这个卡组还是空的", AppTextRole.PageTitle)
             AppText(if (todayMode) "先设置学习计划，或导入资料并生成卡组。" else if (reviewMode) "休息一下，或者自由刷题巩固印象。" else "先导入几张问答卡吧。", AppTextRole.Body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = { if (todayMode) nav.navigate(AppRoute.StudyPlan) else nav.popBackStack() }) {
+            Button(onClick = { if (todayMode) nav.navigate(AppRoute.StudyGoal) else nav.popBackStack() }) {
                 AppText(if (todayMode) "设置学习计划" else "返回", AppTextRole.Label)
             }
         }

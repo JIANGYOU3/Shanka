@@ -7,6 +7,9 @@ import com.qiuzhao.flashcards.domain.v25.V25Repository
 import com.qiuzhao.flashcards.domain.v25.V25Result
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -50,6 +53,15 @@ class ReviewSyncCoordinator(
 ) {
 
     private val mutex = Mutex()
+
+    private val _drainedPasses = MutableStateFlow(0)
+
+    /**
+     * Increments once per drained pass after its merged refresh rewrote the Room projections.
+     * Presenters re-read the (now fresh) projections on this signal instead of racing the
+     * fire-and-forget network writes themselves.
+     */
+    val drainedPasses: StateFlow<Int> = _drainedPasses.asStateFlow()
 
     @Volatile
     private var pausedForAuth = false
@@ -142,17 +154,22 @@ class ReviewSyncCoordinator(
     private suspend fun mergedRefresh(userId: String) {
         // Lane keys are user-scoped like every other flight in the data tier.
         val prefix = "$userId:"
-        lanes.launchBackground("$prefix${V25CacheStore.KEY_DECKS}") {
-            val fresh = remote.listDecks()
-            if (fresh is V25Result.Success) cache.replaceDecks(userId, fresh.value, clock.millis())
-        }
-        lanes.launchBackground("$prefix${V25CacheStore.KEY_TODAY_PLAN}") {
-            val fresh = remote.todayPlan()
-            if (fresh is V25Result.Success) cache.replaceTodayPlan(userId, fresh.value, clock.millis())
-        }
-        lanes.launchBackground("$prefix${V25CacheStore.KEY_DASHBOARD}") {
-            val fresh = remote.statsDashboard()
-            if (fresh is V25Result.Success) cache.replaceDashboard(userId, fresh.value, clock.millis())
-        }
+        val jobs = listOf(
+            lanes.launchBackground("$prefix${V25CacheStore.KEY_DECKS}") {
+                val fresh = remote.listDecks()
+                if (fresh is V25Result.Success) cache.replaceDecks(userId, fresh.value, clock.millis())
+            },
+            lanes.launchBackground("$prefix${V25CacheStore.KEY_TODAY_PLAN}") {
+                val fresh = remote.todayPlan()
+                if (fresh is V25Result.Success) cache.replaceTodayPlan(userId, fresh.value, clock.millis())
+            },
+            lanes.launchBackground("$prefix${V25CacheStore.KEY_DASHBOARD}") {
+                val fresh = remote.statsDashboard()
+                if (fresh is V25Result.Success) cache.replaceDashboard(userId, fresh.value, clock.millis())
+            },
+        )
+        // Signal only after every projection rewrite has landed in Room.
+        jobs.forEach { it.join() }
+        _drainedPasses.value += 1
     }
 }

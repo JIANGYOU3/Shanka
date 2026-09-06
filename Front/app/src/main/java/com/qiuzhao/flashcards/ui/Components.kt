@@ -160,7 +160,7 @@ import kotlinx.coroutines.delay
 /** 类型安全导航快捷别名（拆分后由本文件共享，14 个屏幕签名引用）。 */
 internal typealias ScreenNavigator = AppNavigator
 
-private val LightHeaderControlBackground = AppColors.Blue.surface
+private val LightHeaderControlBackground = AppColors.Blue.background
 private val LightHeaderControlIcon = AppColors.Blue.ink
 private val LightSecondaryHeaderActionBackground = AppColors.Blue.primarySecondary
 private val PageTitleColor = AppColors.TextIconDark
@@ -364,13 +364,19 @@ private fun bilingualAnnotatedString(
  * Figma 720:2251: a visual, non-interactive bottom mask for pages with a
  * fixed bottom action or the root navigation. It deliberately stays out of
  * pages without a bottom control so their content reaches the system area
- * without an artificial white fade.
+ * without an artificial white fade. The root Home page crops the same master
+ * component to its 112dp instance height (Figma 722:5389).
  */
 @Composable
-internal fun BottomContentFade(designScale: Float, modifier: Modifier = Modifier, color: Color = Color.White) {
+internal fun BottomContentFade(
+    designScale: Float,
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+    heightDp: Int = 163
+) {
     Box(
         modifier.fillMaxWidth()
-            .height((163 * designScale).dp)
+            .height((heightDp * designScale).dp)
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,

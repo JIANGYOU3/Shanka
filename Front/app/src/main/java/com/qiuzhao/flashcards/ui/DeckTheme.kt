@@ -267,7 +267,9 @@ internal fun projectThemedCardPalette(
         background = theme.background,
         panel = theme.cardPanel,
         badge = theme.cardPanel,
-        progressTrack = theme.secondary
+        // Figma 950:4943: the unfinished segment carries the family's
+        // Background token — the same colour as the card itself.
+        progressTrack = theme.background
     )
     ProjectThemedCardVariant.THEME_BACKGROUND -> ProjectThemedCardPalette(
         background = theme.cardPanel,
