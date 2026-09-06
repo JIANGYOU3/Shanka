@@ -253,6 +253,34 @@ class OfflineFoundationTest {
 
     // --- 2. fixed identities across retries ---------------------------------------------------------------
 
+    /**
+     * A completed plan write (updateStudyPlan.alsoOnSuccess) drops the today-plan metadata row.
+     * The next read must then observe the server's recomputed remainder — serving the pre-save
+     * Room projection would leave the home page's 今日计划 frozen on stale counts.
+     */
+    @Test
+    fun `an invalidated today plan is refetched instead of served stale`() = runBlocking {
+        val db = openDatabase()
+        val repo = buildStack(db, scope())
+        val cache = V25CacheStore(db)
+        val user = user1.userId
+        val today = LocalDate.now(clock)
+
+        assertTrue(repo.todayPlan() is com.qiuzhao.flashcards.domain.v25.V25Result.Success)
+
+        // Replay the save-side effects: mutate the cached projection, then drop its metadata.
+        val stale = cache.readTodayPlan(user, today)!!
+        cache.replaceTodayPlan(user, stale.copy(planRemaining = 99), clock.nowMs + 1_000)
+        clock.advance(2_000)
+        cache.invalidate(user, V25CacheStore.KEY_TODAY_PLAN)
+
+        val next = repo.todayPlan()
+        assertTrue(next is com.qiuzhao.flashcards.domain.v25.V25Result.Success)
+        assertEquals(3, (next as com.qiuzhao.flashcards.domain.v25.V25Result.Success).value.planRemaining)
+        assertEquals(3, cache.readTodayPlan(user, today)!!.planRemaining)
+        db.close()
+    }
+
     @Test
     fun `retries replay the original client_event_id and idempotency key verbatim`() = runBlocking {
         val db = openDatabase()

@@ -1,6 +1,5 @@
 package com.qiuzhao.flashcards.data.remote.http
 
-import android.os.Build
 import com.qiuzhao.flashcards.BuildConfig
 import com.qiuzhao.flashcards.data.session.SessionStore
 import com.qiuzhao.flashcards.data.session.loadQuietly
@@ -73,26 +72,13 @@ class NetworkStack(
     }
 }
 
-/** Build variants are authoritative; debug emulator loopback stays a debug-only override. */
+/**
+ * Build variants are authoritative: the debug build's API_BASE_URL already
+ * resolves to the emulator loopback by default, or to the -PshankaDebugApiBaseUrl
+ * override used with `adb reverse`; the release build fixes production there.
+ */
 object EndpointAuthority {
-    /**
-     * The emulator fingerprint check reads android.os.Build, which only exists on a device:
-     * on the JVM every probe degrades to false so the release/default URL is returned instead
-     * of crashing a unit test that constructs the stack.
-     */
-    fun baseUrl(): String =
-        if (BuildConfig.DEBUG && isAndroidEmulator()) "http://10.0.2.2:8000" else BuildConfig.API_BASE_URL
-
-    fun isAndroidEmulator(): Boolean = runCatching {
-        Build.FINGERPRINT.startsWith("generic") ||
-            Build.FINGERPRINT.startsWith("unknown") ||
-            Build.MODEL.contains("google_sdk", ignoreCase = true) ||
-            Build.MODEL.contains("Emulator", ignoreCase = true) ||
-            Build.MODEL.contains("Android SDK built for", ignoreCase = true) ||
-            Build.MANUFACTURER.contains("Genymotion", ignoreCase = true) ||
-            (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
-            "google_sdk" == Build.PRODUCT
-    }.getOrDefault(false)
+    fun baseUrl(): String = BuildConfig.API_BASE_URL
 }
 
 /**

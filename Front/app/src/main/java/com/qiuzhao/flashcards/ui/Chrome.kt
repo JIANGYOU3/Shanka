@@ -181,8 +181,8 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     }
 
     val typedEntryProvider = entryProvider {
-        entry<AppRoute.Home> { HomeScreen(decks, projects, dueCount, account?.nickname, todayPlan, dashboard?.streakDays, navigator) }
-        entry<AppRoute.StudyPlan> { StudyPlanScreen(viewModel, navigator) }
+        entry<AppRoute.Home> { HomeScreen(decks, projects, account?.nickname, todayPlan, dashboard?.streakDays, navigator) }
+        entry<AppRoute.StudyGoal> { StudyGoalScreen(viewModel, navigator) }
         entry<AppRoute.Project> { ProjectScreen(projects, decks, projectSearchQuery, viewModel, navigator) }
         entry<AppRoute.ProjectCreate> { ProjectCreateScreen(viewModel, navigator) }
         entry<AppRoute.ProjectEdit> { route ->

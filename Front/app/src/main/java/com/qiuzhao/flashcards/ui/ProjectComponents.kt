@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -71,8 +72,12 @@ internal fun formatImportDate(importedAt: Instant?): String =
 
 
 /**
- * Figma 568:2326. The item model lets the existing Library route retain its
- * old label temporarily; Task 3 will provide the final 主页 / 项目 / 数据 model.
+ * Figma 987:5203. The floating light root navigation: a translucent near-white
+ * pill with a 12dp inset track of three 94×60 items and an animated #B0D7FF
+ * selection indicator. Figma's `backdropFilter: blur(12px)` softens content
+ * scrolling beneath; without a real backdrop-blur pass, the glass is
+ * approximated by a stronger near-white fill (0xB3) so underlying text reads
+ * as blurred-to-milk rather than plainly visible through the pill.
  */
 @Composable
 internal fun AppBottomNavigation(
@@ -84,18 +89,26 @@ internal fun AppBottomNavigation(
     require(selectedIndex in items.indices) { "Selected bottom-navigation item must exist." }
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     Surface(
-        color = AppColors.NavigationBar,
+        // Figma fill rgba(250,253,255,0.5) + blur(12px); the raised 0xB3 alpha
+        // stands in for the blur. Its 0 4 16 rgba(218,218,218,0.5) shadow rides
+        // on the container modifier below.
+        color = Color(0xB3FAFDFF),
         shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
-        shadowElevation = 14.dp,
         modifier = modifier.fillMaxWidth().navigationBarsPadding()
             .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp)
-            .height((85 * designScale).dp)
+            .shadow(
+                elevation = (8 * designScale).dp,
+                shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
+                ambientColor = NavigationShadowColor,
+                spotColor = NavigationShadowColor
+            )
+            .height((84 * designScale).dp)
     ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding((12 * designScale).dp)) {
             val itemGap = (32 * designScale).dp
             val itemWidth = (maxWidth - itemGap * 2) / 3
             val density = LocalDensity.current
-            // Figma motion does not export a keyframe payload for 568:2326.
+            // Figma motion does not export a keyframe payload for the tab switch.
             // This duration is the user's explicit Smart Animate setting: 500ms, 轻巧.
             // Translation is a render-layer property, so switching root tabs does
             // not trigger a navigation-bar remeasure on each animation frame.
@@ -105,7 +118,7 @@ internal fun AppBottomNavigation(
                 label = "bottom navigation selection indicator"
             )
             Surface(
-                color = AppColors.Blue.surface,
+                color = AppColors.Blue.primarySecondary,
                 shape = RoundedCornerShape((24 * designScale).dp),
                 modifier = Modifier.width(itemWidth).fillMaxHeight()
                     .graphicsLayer { translationX = indicatorTranslationPx }
@@ -125,6 +138,9 @@ internal fun AppBottomNavigation(
     }
 }
 
+/** Figma 987:5203's soft grey elevation tint, never pure black. */
+private val NavigationShadowColor = Color(0x80DADADA)
+
 @Composable
 private fun AppBottomNavigationItemContent(
     item: AppBottomNavigationItem,
@@ -133,7 +149,7 @@ private fun AppBottomNavigationItemContent(
     modifier: Modifier
 ) {
     val contentColor by animateColorAsState(
-        targetValue = if (selected) AppColors.NavigationBar else AppColors.TextIconLight,
+        targetValue = if (selected) AppColors.Blue.ink else AppColors.TextIconDark,
         animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
         label = "${item.label} navigation color"
     )
@@ -153,7 +169,7 @@ private fun AppBottomNavigationItemContent(
                 item.symbol,
                 null,
                 tint = contentColor,
-                size = fixedSp(25.263f * designScale),
+                size = fixedSp(24f * designScale),
                 filled = selected
             )
             Spacer(Modifier.height((4 * designScale).dp))
