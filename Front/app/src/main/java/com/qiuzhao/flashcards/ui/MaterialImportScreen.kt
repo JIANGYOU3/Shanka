@@ -75,6 +75,10 @@ internal fun MaterialImportScreen(
         }
         replaceTarget = null
     }
+    // 设定替换目标后立即拉起系统文件选择器；取消时回调同样会清空目标。
+    LaunchedEffect(replaceTarget) {
+        if (replaceTarget != null) replacePicker.launch(arrayOf("application/pdf"))
+    }
     // Auto-recognition observer: every list change re-arms the pipeline, which
     // picks up just-staged and failed drafts (idempotent for the rest).
     LaunchedEffect(materials, route.projectId) {

@@ -1,5 +1,7 @@
 package com.qiuzhao.flashcards.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -86,6 +88,19 @@ internal fun DeckGenerationScreen(
     var requirement by remember { mutableStateOf("") }
     var selectedFileIds by remember { mutableStateOf(setOf<String>()) }
     var selectedTextIds by remember { mutableStateOf(setOf<String>()) }
+    // 失败资料的「点击重试」= 换文件 replace 重传（V25-D-30），与导入资料页一致。
+    var replaceTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
+    val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = replaceTarget
+        if (uri != null && target?.materialId != null) {
+            viewModel.replaceProjectMaterial(project.id, target.materialId, uri) { _, _ -> }
+        }
+        replaceTarget = null
+    }
+    // 设定替换目标后立即拉起系统文件选择器；取消时回调同样会清空目标。
+    LaunchedEffect(replaceTarget) {
+        if (replaceTarget != null) replacePicker.launch(arrayOf("application/pdf"))
+    }
 
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
@@ -127,6 +142,7 @@ internal fun DeckGenerationScreen(
                     title = "添加文件资料", icon = "files", materials = fileItems, theme = theme, scale = scale,
                     uploading = uploadingFiles,
                     onRetryUpload = { viewModel.retryProjectUploads(project.id) },
+                    onRetryMaterial = { material -> if (material.materialId != null) replaceTarget = material },
                     selectedIds = selectedFileIds,
                     onToggle = { id -> selectedFileIds = if (id in selectedFileIds) selectedFileIds - id else selectedFileIds + id }
                 )
@@ -136,6 +152,7 @@ internal fun DeckGenerationScreen(
                     title = "添加文本资料", icon = "description", materials = textItems, theme = theme, scale = scale,
                     uploading = uploadingTexts,
                     onRetryUpload = { viewModel.retryProjectUploads(project.id) },
+                    onRetryMaterial = { material -> if (material.materialId != null) replaceTarget = material },
                     selectedIds = selectedTextIds,
                     onToggle = { id -> selectedTextIds = if (id in selectedTextIds) selectedTextIds - id else selectedTextIds + id }
                 )
@@ -428,6 +445,7 @@ private fun DeckGenerationMaterialSection(
     scale: Float,
     uploading: List<MaterialUploadState> = emptyList(),
     onRetryUpload: () -> Unit = {},
+    onRetryMaterial: (ProjectDraftMaterial) -> Unit = {},
     selectedIds: Set<String>,
     onToggle: (String) -> Unit
 ) = Surface(
@@ -458,15 +476,18 @@ private fun DeckGenerationMaterialSection(
         materials.forEach { material ->
             // 解析中/失败资料不可选（交接文档 4.5）；选中态用绿色系（Figma 796:6785）。
             val selectable = materialCardState(material) == ProjectMaterialCardState.DONE
+            // Figma 807:4451 / 835:5466：资料卡统一为「状态图标块 + 标题胶囊」紧凑卡，
+            // 解析中转圈、失败红卡 + 卡下原因行（点击换文件重传）、就绪可点选。
             if (material.type == ProjectDraftMaterialType.FILE) {
-                ProjectDraftFileCard(
-                    material = material, theme = theme, scale = scale,
-                    onEdit = {}, selected = material.id in selectedIds,
+                ProjectCompactMaterialCard(
+                    material = material, theme = theme, scale = scale, doneIcon = "picture_as_pdf",
+                    onEdit = {}, onDelete = {},
+                    selected = material.id in selectedIds,
                     onSelect = if (selectable) {
                         { onToggle(material.id) }
                     } else null,
                     selectableOnly = true,
-                    onDelete = {}
+                    onRetry = { onRetryMaterial(material) }
                 )
             } else {
                 ProjectDraftTextCard(
@@ -478,7 +499,8 @@ private fun DeckGenerationMaterialSection(
                     } else null,
                     kind = ProjectMaterialTextCardKind.SELECTABLE,
                     parentSurface = ProjectMaterialCardParentSurface.THEME_BACKGROUND,
-                    selectableOnly = true
+                    selectableOnly = true,
+                    onRetry = { onRetryMaterial(material) }
                 )
             }
         }

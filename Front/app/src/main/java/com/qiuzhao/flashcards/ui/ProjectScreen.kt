@@ -198,6 +198,10 @@ internal fun ProjectCreateScreen(
         }
         replaceTarget = null
     }
+    // 设定替换目标后立即拉起系统文件选择器；取消时回调同样会清空目标。
+    LaunchedEffect(replaceTarget) {
+        if (replaceTarget != null) replacePicker.launch(arrayOf("application/pdf"))
+    }
 
     // Figma 588:1922 uses a white page canvas.  The project family begins at
     // the 36dp section cards, which keeps each nested radius visually legible.
@@ -572,8 +576,10 @@ internal fun materialCardState(material: ProjectDraftMaterial): ProjectMaterialC
  * Figma 1100:5634/5644 compact material card: an 80dp cardPanel body holding the
  * 56dp state tile and the full-width title pill. RECOGNIZING swaps the tile for
  * the official MD3 progress ring; DONE shows the caller's glyph on family
- * primary; FAILED falls back to the secondary tile with the warning glyph and
- * hands taps to [onRetry].
+ * primary; FAILED falls back to the warning tile with the error glyph and
+ * hands taps to [onRetry]. The picker variant ([selectableOnly], Figma
+ * 835:5466/807:4451) drops the swipe reveal: tapping a DONE card fires
+ * [onSelect] and a picked card lifts to the green family.
  */
 @Composable
 internal fun ProjectCompactMaterialCard(
@@ -583,43 +589,65 @@ internal fun ProjectCompactMaterialCard(
     doneIcon: String,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    selected: Boolean = false,
+    onSelect: (() -> Unit)? = null,
+    selectableOnly: Boolean = false
 ) {
     val state = materialCardState(material)
-    ProjectSwipeCompactContainer(scale = scale, onEdit = onEdit, onDelete = onDelete) {
-        val body: @Composable () -> Unit = {
+    val card: @Composable () -> Unit = {
+        val failed = state == ProjectMaterialCardState.FAILED
+        val pickedDone = state == ProjectMaterialCardState.DONE && selected
+        Surface(
+            onClick = when {
+                failed -> onRetry
+                state == ProjectMaterialCardState.DONE && onSelect != null -> onSelect
+                else -> ({})
+            },
+            enabled = failed || (state == ProjectMaterialCardState.DONE && onSelect != null),
+            // Figma 807:4451 失败态：整卡 #E87F77；Figma 835:5466 选中态：绿色系。
+            color = when {
+                failed -> AppColors.WarningSecondary
+                pickedDone -> AppColors.Green.surface
+                else -> theme.cardPanel
+            },
+            shape = RoundedCornerShape((32 * scale).dp),
+            modifier = Modifier.fillMaxWidth().height((80 * scale).dp).clip(RoundedCornerShape((32 * scale).dp))
+        ) {
             Row(
                 Modifier.fillMaxSize().padding((12 * scale).dp),
                 horizontalArrangement = Arrangement.spacedBy((10 * scale).dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    // Figma 1100:5634 失败态：整卡 #E87F77，图标块/标题胶囊 #BD3F3F。
-                    color = when (state) {
-                        ProjectMaterialCardState.DONE -> theme.primary
-                        ProjectMaterialCardState.FAILED -> Color(0xFFBD3F3F)
-                        ProjectMaterialCardState.RECOGNIZING -> theme.secondary
+                    color = when {
+                        failed -> AppColors.Warning
+                        pickedDone -> AppColors.Green.primary
+                        state == ProjectMaterialCardState.RECOGNIZING -> theme.secondary
+                        else -> theme.primary
                     },
                     shape = RoundedCornerShape((24 * scale).dp),
                     modifier = Modifier.size((56 * scale).dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        when (state) {
-                            ProjectMaterialCardState.RECOGNIZING -> CircularProgressIndicator(
+                        when {
+                            state == ProjectMaterialCardState.RECOGNIZING -> CircularProgressIndicator(
                                 color = theme.primary,
                                 trackColor = Color.Transparent,
                                 strokeCap = StrokeCap.Round,
                                 strokeWidth = (3 * scale).dp,
                                 modifier = Modifier.size((28 * scale).dp)
                             )
-                            ProjectMaterialCardState.FAILED -> MaterialSymbol("error", null, tint = Color(0xE6FFFFFF), size = fixedSp(24 * scale), filled = true)
-                            ProjectMaterialCardState.DONE -> MaterialSymbol(doneIcon, null, tint = theme.onPrimary, size = fixedSp(24 * scale), filled = true)
+                            failed -> MaterialSymbol("error", null, tint = AppColors.TextIconLight, size = fixedSp(24 * scale), filled = true)
+                            pickedDone -> MaterialSymbol("check_circle", null, tint = AppColors.Green.background, size = fixedSp(24 * scale), filled = true)
+                            else -> MaterialSymbol(doneIcon, null, tint = theme.onPrimary, size = fixedSp(24 * scale), filled = true)
                         }
                     }
                 }
                 Surface(
-                    color = when (state) {
-                        ProjectMaterialCardState.FAILED -> Color(0xFFBD3F3F)
+                    color = when {
+                        failed -> AppColors.Warning
+                        pickedDone -> AppColors.Green.primarySecondary
                         else -> theme.secondary
                     },
                     shape = RoundedCornerShape((32 * scale).dp),
@@ -630,7 +658,7 @@ internal fun ProjectCompactMaterialCard(
                             material.title.ifBlank { "未命名资料" },
                             AppTextRole.CardTitle,
                             modifier = Modifier.padding(horizontal = (24 * scale).dp),
-                            color = if (state == ProjectMaterialCardState.FAILED) Color(0xE6FFFFFF) else theme.text,
+                            color = if (failed) AppColors.TextIconLight else theme.text,
                             designScale = scale,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -639,25 +667,25 @@ internal fun ProjectCompactMaterialCard(
                 }
             }
         }
-        if (state == ProjectMaterialCardState.FAILED) {
-            Surface(
-                onClick = onRetry,
-                color = Color(0xFFE87F77),
-                shape = RoundedCornerShape((32 * scale).dp),
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape((32 * scale).dp)))
-            { body() }
-        } else {
-            Surface(
-                color = theme.cardPanel,
-                shape = RoundedCornerShape((32 * scale).dp),
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape((32 * scale).dp))
-            ) { body() }
-        }
     }
-    // Figma 807:4441: the caption sits under the failed card, inside the same swipe viewport.
-    if (state == ProjectMaterialCardState.FAILED) {
-        Spacer(Modifier.height((8 * scale).dp))
-        MaterialFailureHint(failureReasonText(material.errorCode), scale)
+    if (selectableOnly) {
+        Column {
+            card()
+            // Figma 807:4441: the caption sits under the failed card.
+            if (state == ProjectMaterialCardState.FAILED) {
+                Spacer(Modifier.height((8 * scale).dp))
+                MaterialFailureHint(failureReasonText(material.errorCode), scale)
+            }
+        }
+    } else {
+        ProjectSwipeCompactContainer(scale = scale, onEdit = onEdit, onDelete = onDelete) {
+            card()
+        }
+        // Figma 807:4441: the caption sits under the failed card, inside the same swipe viewport.
+        if (state == ProjectMaterialCardState.FAILED) {
+            Spacer(Modifier.height((8 * scale).dp))
+            MaterialFailureHint(failureReasonText(material.errorCode), scale)
+        }
     }
 }
 
@@ -828,15 +856,28 @@ internal fun ProjectDraftTextCard(
     kind: ProjectMaterialTextCardKind = ProjectMaterialTextCardKind.MANAGEMENT,
     parentSurface: ProjectMaterialCardParentSurface = ProjectMaterialCardParentSurface.THEME_BACKGROUND,
     /** Figma 835:5466: the generation screen picks materials in place — no swipe reveal. */
-    selectableOnly: Boolean = false
+    selectableOnly: Boolean = false,
+    /** FAILED cards hand taps to the caller's replace/retry action (Figma 807:4451). */
+    onRetry: () -> Unit = {}
 ) {
     val card: @Composable () -> Unit = {
         val isSelectable = kind == ProjectMaterialTextCardKind.SELECTABLE
         val palette = projectMaterialCardPalette(theme, parentSurface, selected)
+        // Figma 807:4451: 解析中/失败 replace the ready glyph — 解析中 lifts the tile
+        // to the family Primary-Secondary progress treatment, 失败 turns the whole
+        // card Warning-Secondary with the Warning tile and collapses to header-only.
+        val state = materialCardState(material)
+        val failed = state == ProjectMaterialCardState.FAILED
+        val recognizing = state == ProjectMaterialCardState.RECOGNIZING
         Surface(
-            color = palette.card,
+            onClick = when {
+                failed -> onRetry
+                onSelect != null -> onSelect
+                else -> ({})
+            },
+            enabled = failed || onSelect != null,
+            color = if (failed) AppColors.WarningSecondary else palette.card,
             shape = RoundedCornerShape((32 * scale).dp),
-            onClick = onSelect ?: {},
             modifier = Modifier.fillMaxSize().clip(RoundedCornerShape((32 * scale).dp))
         ) {
             Column(Modifier.fillMaxSize().padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
@@ -846,16 +887,32 @@ internal fun ProjectDraftTextCard(
                     // steps down to the Card-Title level.
                     Row(Modifier.fillMaxWidth().height((56 * scale).dp), horizontalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
                         Surface(
-                            color = if (selected) AppColors.Green.primary else theme.primary,
+                            color = when {
+                                failed -> AppColors.Warning
+                                recognizing -> theme.secondary
+                                selected -> AppColors.Green.primary
+                                else -> theme.primary
+                            },
                             shape = RoundedCornerShape((24 * scale).dp),
                             modifier = Modifier.width((56 * scale).dp).fillMaxHeight()
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                MaterialSymbol(if (selected) "check_circle" else "file_copy", null, tint = if (selected) AppColors.Green.background else theme.background, size = fixedSp(24 * scale), filled = true)
+                                when {
+                                    recognizing -> CircularProgressIndicator(
+                                        color = theme.primary,
+                                        trackColor = Color.Transparent,
+                                        strokeCap = StrokeCap.Round,
+                                        strokeWidth = (3 * scale).dp,
+                                        modifier = Modifier.size((28 * scale).dp)
+                                    )
+                                    failed -> MaterialSymbol("error", null, tint = AppColors.TextIconLight, size = fixedSp(24 * scale), filled = true)
+                                    selected -> MaterialSymbol("check_circle", null, tint = AppColors.Green.background, size = fixedSp(24 * scale), filled = true)
+                                    else -> MaterialSymbol("file_copy", null, tint = theme.background, size = fixedSp(24 * scale), filled = true)
+                                }
                             }
                         }
                         Surface(
-                            color = palette.title,
+                            color = if (failed) AppColors.Warning else palette.title,
                             shape = RoundedCornerShape((32 * scale).dp),
                             modifier = Modifier.weight(1f).fillMaxHeight()
                         ) {
@@ -864,7 +921,7 @@ internal fun ProjectDraftTextCard(
                                     material.title,
                                     AppTextRole.CardTitle,
                                     modifier = Modifier.padding(horizontal = (24 * scale).dp),
-                                    color = theme.text,
+                                    color = if (failed) AppColors.TextIconLight else theme.text,
                                     designScale = scale,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -890,14 +947,21 @@ internal fun ProjectDraftTextCard(
                         }
                     }
                 }
-                Surface(color = palette.body, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    AppText(material.content.ifBlank { "此处最多显示两行可以吗。此处最多显示两行。超出省略号" }, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = Color.Black.copy(alpha = .5f), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // Figma 807:4451: the parsing/failed variants are header-only cards.
+                if (!(isSelectable && state != ProjectMaterialCardState.DONE)) {
+                    Surface(color = palette.body, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        AppText(material.content.ifBlank { "此处最多显示两行可以吗。此处最多显示两行。超出省略号" }, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = Color.Black.copy(alpha = .5f), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
     }
     if (selectableOnly) {
         card()
+        if (materialCardState(material) == ProjectMaterialCardState.FAILED) {
+            Spacer(Modifier.height((8 * scale).dp))
+            MaterialFailureHint(failureReasonText(material.errorCode), scale)
+        }
     } else {
         ProjectSwipeContainer(
             // Figma 648:2818 = 238dp management preview; Figma 796:6786 = 211dp
@@ -920,6 +984,10 @@ internal fun ProjectDraftTextCard(
             scale = scale
         ) {
             card()
+        }
+        if (materialCardState(material) == ProjectMaterialCardState.FAILED) {
+            Spacer(Modifier.height((8 * scale).dp))
+            MaterialFailureHint(failureReasonText(material.errorCode), scale)
         }
     }
 }

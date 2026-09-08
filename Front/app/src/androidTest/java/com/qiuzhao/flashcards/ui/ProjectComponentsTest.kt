@@ -199,4 +199,39 @@ class ProjectComponentsTest {
         assertTrue(materialCardState(draft("FAILED")) == ProjectMaterialCardState.FAILED)
         assertTrue(materialCardState(draft("PARSED")) == ProjectMaterialCardState.DONE)
     }
+
+    @Test fun compactMaterialCardRendersPickerSelectionAndFailureStates() {
+        var toggled = false
+        var retried = false
+        val picked = ProjectDraftMaterial(
+            id = "m1", type = ProjectDraftMaterialType.FILE, title = "就绪资料", serverStatus = "PARSED",
+        )
+        val failed = ProjectDraftMaterial(
+            id = "m2", type = ProjectDraftMaterialType.FILE, title = "失败资料",
+            serverStatus = "FAILED", errorCode = "PDF_TOC_MISSING", materialId = "mat-2",
+        )
+        val violet = deckTheme(ProjectSummary(id = "t", name = "t", themeKey = "violet"))
+        rule.setContent {
+            AutumnFlashcardsTheme {
+                Column {
+                    ProjectCompactMaterialCard(
+                        material = picked, theme = violet, scale = 1f, doneIcon = "picture_as_pdf",
+                        onEdit = {}, onDelete = {},
+                        selected = true, onSelect = { toggled = true }, selectableOnly = true,
+                    )
+                    ProjectCompactMaterialCard(
+                        material = failed, theme = violet, scale = 1f, doneIcon = "picture_as_pdf",
+                        onEdit = {}, onDelete = {},
+                        selectableOnly = true, onRetry = { retried = true },
+                    )
+                }
+            }
+        }
+
+        rule.onNodeWithText("就绪资料").assertIsDisplayed().performClick()
+        assertTrue(toggled)
+        rule.onNodeWithText("解析失败，原因如下：PDF 缺少目录结构，无法生成\n点击重试").assertIsDisplayed()
+        rule.onNodeWithText("失败资料").assertIsDisplayed().performClick()
+        assertTrue(retried)
+    }
 }
