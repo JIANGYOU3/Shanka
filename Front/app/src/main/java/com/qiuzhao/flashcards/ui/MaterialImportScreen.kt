@@ -228,11 +228,7 @@ private fun ImportPreviewGroup(
             AppText(if (materials.isEmpty()) title else "刚添加的$title", AppTextRole.SectionTitle, color = theme.text)
         }
         if (materials.isEmpty()) {
-            Surface(color = Color.White, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.padding(24.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AppText(emptyHint, AppTextRole.Supporting, color = theme.text.copy(alpha = .5f))
-                }
-            }
+            CardHint(emptyHint, designScale = 1f)
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 materials.forEach { material ->

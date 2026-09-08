@@ -75,11 +75,13 @@ sealed interface TodayPlanState {
  *   never served as today's queue — offline cross-day reads surface as a judged
  *   [TodayPlanState.StaleNoData], not fabricated data.
  * - A network failure never writes the cache, so the last successful snapshot survives.
- * - Every write except rating is still server-synchronous (online-only by contract); a
- *   successful write invalidates its resource so the next read refetches.
- * - [rateCard] is the offline path: the event lands in `review_outbox` inside one Room
- *   transaction that also hides the card from the local queue, then the in-process sync
- *   coordinator replays it with its FIXED client_event_id + Idempotency-Key.
+ * - Writes land through the offline outbox paths: [rateCard] (the review queue) and
+ *   [deleteProject]/[deleteProjectMaterial] (the deletion tombstones). Each lands its event
+ *   inside one Room transaction that also applies the local effect, then the in-process sync
+ *   coordinator replays the fixed Idempotency-Key against the server. A replayed deletion that
+ *   comes back NOT_FOUND is success — the goal state already holds.
+ * - Everything else stays server-synchronous (online-only by contract); a successful write
+ *   invalidates its resource so the next read refetches.
  */
 class OfflineFirstV25Repository(
     private val remote: V25Repository,
@@ -87,6 +89,7 @@ class OfflineFirstV25Repository(
     private val sessionStore: SessionStore,
     private val lanes: RequestLanes,
     val reviewSync: ReviewSyncCoordinator,
+    val deletionSync: DeletionSyncCoordinator,
     private val clock: Clock,
 ) : V25Repository {
 
@@ -412,6 +415,8 @@ class OfflineFirstV25Repository(
     fun onSignedIn() {
         reviewSync.resume()
         reviewSync.requestSync()
+        deletionSync.resume()
+        deletionSync.requestSync()
     }
 
     // --- everything else stays server-synchronous ----------------------------------------------------
@@ -477,17 +482,24 @@ class OfflineFirstV25Repository(
         materialId: String,
         retainCards: Boolean,
         idempotencyKey: String?,
-    ): V25Result<V25LearningProject> =
-        remote.deleteProjectMaterial(projectId, materialId, retainCards, idempotencyKey).alsoOnSuccess {
-            // The response carries the re-aggregated project (EMPTY when the last material
-            // went away); fold it in and refresh the derived lists.
-            userId()?.let { user -> cache.replaceProject(user, it, clock.millis()) }
-        }.alsoOnSuccess {
-            userId()?.let { user ->
-                cache.invalidate(user, V25CacheStore.KEY_DECKS)
-                cache.invalidate(user, V25CacheStore.KEY_TODAY_PLAN)
-            }
+    ): V25Result<Unit> {
+        val user = userId() ?: return requireUserId()
+        val key = idempotencyKey ?: UUID.randomUUID().toString()
+        return try {
+            // Optimistic delete (the rating-outbox shape): tombstone + local row removal in ONE
+            // transaction — every Room-flow UI updates in the same frame — then the fixed-key
+            // server DELETE replays in the background. A NOT_FOUND replay is success.
+            cache.enqueueMaterialDeletion(user, projectId, materialId, retainCards, key, clock.millis())
+            deletionSync.requestSync()
+            V25Result.Success(Unit)
+        } catch (failure: Throwable) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            V25Result.Failure(
+                V25ErrorCodes.INVALID_RESPONSE,
+                message = "本地删除写入失败，请重试：${failure.javaClass.simpleName}",
+            )
         }
+    }
 
     override suspend fun replaceProjectMaterialPdf(
         projectId: String,
@@ -509,15 +521,24 @@ class OfflineFirstV25Repository(
         projectId: String,
         retainDecks: Boolean,
         idempotencyKey: String?,
-    ): V25Result<Unit> =
-        remote.deleteProject(projectId, retainDecks, idempotencyKey).alsoOnSuccess {
-            userId()?.let { user ->
-                cache.invalidate(user, V25CacheStore.KEY_PROJECTS)
-                cache.invalidate(user, V25CacheStore.KEY_DECKS)
-                cache.invalidate(user, V25CacheStore.KEY_TODAY_PLAN)
-                cache.deleteTasksOf(user, projectId)
-            }
+    ): V25Result<Unit> {
+        val user = userId() ?: return requireUserId()
+        val key = idempotencyKey ?: UUID.randomUUID().toString()
+        return try {
+            // Same optimistic shape: the tombstone justifies every local row this removes
+            // (project, materials, chapters, tasks, un-retained decks) until the server
+            // confirms; cache rewrites keep the scope hidden while it is PENDING.
+            cache.enqueueProjectDeletion(user, projectId, retainDecks, key, clock.millis())
+            deletionSync.requestSync()
+            V25Result.Success(Unit)
+        } catch (failure: Throwable) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            V25Result.Failure(
+                V25ErrorCodes.INVALID_RESPONSE,
+                message = "本地删除写入失败，请重试：${failure.javaClass.simpleName}",
+            )
         }
+    }
 
     override suspend fun getProjectDeletionPreflight(
         projectId: String,

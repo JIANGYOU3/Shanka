@@ -154,9 +154,10 @@ class RemoteV25Repository internal constructor(
         materialId: String,
         retainCards: Boolean,
         idempotencyKey: String?,
-    ): V25Result<V25LearningProject> = wire {
+    ): V25Result<Unit> = wire {
         // The retain decision is part of the idempotent operation: a replay must never flip it.
-        api.deleteProjectMaterial(projectId, materialId, if (retainCards) null else false, idempotencyKey ?: newKey()).toDomain()
+        api.deleteProjectMaterial(projectId, materialId, if (retainCards) null else false, idempotencyKey ?: newKey())
+        Unit
     }
 
     override suspend fun replaceProjectMaterialPdf(

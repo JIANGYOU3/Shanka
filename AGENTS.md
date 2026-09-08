@@ -10,6 +10,9 @@ implementation guidance for Navigation 3, edge-to-edge, and Compose theming.
   reproduce its hierarchy, 402dp geometry, spacing, typography, colors, radii,
   icons/images, and interaction states. Do not substitute generic Material or
   agent-designed styling when the Figma design specifies a value.
+- Whenever a Figma node must be fetched, rendered, or compared, use the
+  `figma-design` skill — it documents the MCP tool path, the REST API fallback,
+  and the 402dp mapping.
 - **Physical-device visual acceptance is mandatory.** After every frontend UI
   build, install it only on the connected physical phone and compare captured
   screenshots against the corresponding Figma node. Check safe-area placement,

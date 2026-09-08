@@ -213,11 +213,9 @@ internal fun CardListScreen(
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
                     item {
-                        HintBox(
-                            text = "点击卡片可以查看答案。\n卡片左滑可进行编辑与删除。",
-                            parentIsWhite = true,
-                            theme = theme,
-                            designScale = designScale
+                        CardHint(
+                            "点击卡片可以查看答案。\n卡片左滑可进行编辑与删除。",
+                            designScale = designScale,
                         )
                     }
                     items(visibleCards, key = { it.id }) { card ->

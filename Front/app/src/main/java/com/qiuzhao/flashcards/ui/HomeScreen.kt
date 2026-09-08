@@ -1,5 +1,6 @@
 package com.qiuzhao.flashcards.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,10 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -29,10 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import com.qiuzhao.flashcards.R
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
@@ -74,62 +77,33 @@ internal fun HomeScreen(
                     item { StreakCard(compactScale, streakDays) }
                     item { HomeSectionHeading(homeGreeting(nickname), compactScale) }
                     item {
-                        TodayPlanCard(compactScale, todayPlan) {
-                            nav.navigate(AppRoute.StudyGoal)
-                        }
+                        TodayPlanCard(
+                            compactScale,
+                            todayPlan,
+                            onSetPlan = { nav.navigate(AppRoute.StudyGoal) },
+                            onContinue = { nav.navigate(AppRoute.StudyToday) }
+                        )
                     }
                     item { HomeSectionHeading("今日待学卡组", compactScale) }
                     if (activeDeck == null) {
                         item { EmptyHomeCard(compactScale, onGoImport = { nav.navigate(AppRoute.Import) }) }
                     } else {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy((16 * compactScale).dp)) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy((16 * compactScale).dp)
-                                ) {
-                                    QuickActionCard(
-                                        modifier = Modifier.weight(1f),
-                                        background = AppColors.Pink.background,
-                                        tile = AppColors.Pink.primarySecondary,
-                                        button = AppColors.Pink.primary,
-                                        textColor = AppColors.Pink.ink,
-                                        label = "昨日错题",
-                                        compactScale = compactScale,
-                                        onClick = { nav.navigate(AppRoute.Study(activeDeck.id, true)) }
-                                    )
-                                    QuickActionCard(
-                                        modifier = Modifier.weight(1f),
-                                        background = AppColors.Orange.background,
-                                        tile = AppColors.Orange.primarySecondary,
-                                        button = AppColors.Orange.primary,
-                                        textColor = AppColors.Orange.ink,
-                                        label = "随机复习",
-                                        compactScale = compactScale,
-                                        onClick = { nav.navigate(AppRoute.Study(activeDeck.id, false)) }
-                                    )
-                                }
-                                // The today deck card keeps its real project theme; the
-                                // priority badge appears only when the deck actually has
-                                // cards due (Figma 950:4943's latest card revision).
-                                ProjectThemedCard(
-                                    title = displayDeckTitle(activeDeck),
-                                    count = activeDeck.cardCount,
-                                    countLabel = "group",
-                                    progress = deckLearnedProgress(activeDeck),
-                                    theme = deckTheme(activeDeck, projects),
-                                    icon = studyDeckIcon(activeDeck),
-                                    variant = ProjectThemedCardVariant.BASE_PAGE,
-                                    designScale = compactScale,
-                                    onClick = { nav.navigate(AppRoute.Deck(activeDeck.id)) },
-                                    showPriority = activeDeck.dueCount > 0
-                                )
-                            }
-                        }
-                        item {
-                            ContinueLearningButton(compactScale) {
-                                nav.navigate(AppRoute.Study(activeDeck.id, true))
-                            }
+                            // The today deck card keeps its real project theme; the
+                            // priority badge appears only when the deck actually has
+                            // cards due (Figma 950:4943's latest card revision).
+                            ProjectThemedCard(
+                                title = displayDeckTitle(activeDeck),
+                                count = activeDeck.cardCount,
+                                countLabel = "group",
+                                progress = deckLearnedProgress(activeDeck),
+                                theme = deckTheme(activeDeck, projects),
+                                icon = studyDeckIcon(activeDeck),
+                                variant = ProjectThemedCardVariant.BASE_PAGE,
+                                designScale = compactScale,
+                                onClick = { nav.navigate(AppRoute.Deck(activeDeck.id)) },
+                                showPriority = activeDeck.dueCount > 0
+                            )
                         }
                     }
                 }
@@ -166,37 +140,46 @@ private fun HomeSectionHeading(text: String, compactScale: Float) {
 }
 
 /**
- * Figma 895:5089 — the streak card. The `acute` decoration bleeds off the
- * right edge exactly as the node places it (x=182, 236dp inside a 370dp card).
+ * Figma 895:5089 — the streak card. The clock decoration is the node's own
+ * 4x canvas render (drawable-nodpi/streak_clock.png) placed at the node's
+ * declared box — (192, -29, 239.02dp inside a 370dp card) — and scaled by
+ * compactScale, so every device reproduces the Figma canvas 1:1: the arc
+ * grazes the top edge, bleeds off the right, and covers the bottom-right
+ * corner. The icon-font glyph drifted inside its em box across devices and
+ * is replaced by this exact rendering.
  */
 @Composable
-private fun StreakCard(compactScale: Float, streakDays: Int?) {
+internal fun StreakCard(compactScale: Float, streakDays: Int?) {
+    val clockSize = 239f * compactScale
+    val clockX = 192f * compactScale
+    val clockY = -29f * compactScale
     Box(
         Modifier.fillMaxWidth()
-            .height((182 * compactScale).dp)
+            .height((186 * compactScale).dp)
             .clip(RoundedCornerShape((AppShapeRadius * compactScale).dp))
             .background(AppColors.Orange.surface)
     ) {
-        MaterialSymbol(
-            "acute",
-            null,
-            tint = AppColors.Orange.primary,
-            size = fixedSp(177 * compactScale),
+        Image(
+            painter = painterResource(R.drawable.streak_clock),
+            contentDescription = null,
             modifier = Modifier.align(Alignment.TopStart)
-                .offset(x = (222 * compactScale).dp, y = (41 * compactScale).dp)
-                .requiredSize((177 * compactScale).dp)
+                .offset(x = clockX.dp, y = clockY.dp)
+                .requiredSize(clockSize.dp)
         )
         Column(
             Modifier.padding((20 * compactScale).dp),
-            verticalArrangement = Arrangement.spacedBy((12 * compactScale).dp)
+            verticalArrangement = Arrangement.spacedBy((16 * compactScale).dp)
         ) {
             // Figma 895:5089 Frame 122: the metric line and its caption are a
-            // 2dp-gap pair; the card-level 12dp gap only separates the track.
+            // 2dp-gap pair; the card-level 16dp gap only separates the track.
+            // The line draws its ink half a step low (font metrics, not the
+            // 48dp frame), so the content is lifted back to Figma's baseline.
             Column(verticalArrangement = Arrangement.spacedBy((2 * compactScale).dp)) {
                 // Exact 48dp metric line: the icon font's default line padding would
-                // otherwise push the column past the 182dp card and squeeze the track.
+                // otherwise push the column past the 186dp card and squeeze the track.
                 Row(
-                    Modifier.height((48 * compactScale).dp),
+                    Modifier.height((48 * compactScale).dp)
+                        .offset(y = (-5.5f * compactScale).dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     MaterialSymbol(
@@ -235,8 +218,11 @@ private fun StreakCard(compactScale: Float, streakDays: Int?) {
                             .background(if (active) AppColors.Orange.primaryStrong else AppColors.Orange.background),
                         contentAlignment = Alignment.Center
                     ) {
+                        // 895:5090/5112 fill the reached slots with fire_check;
+                        // 895:5100/5106/5118 keep the pending slots on mode_heat.
                         MaterialSymbol(
-                            "fire_check", null,
+                            if (active) "fire_check" else "mode_heat",
+                            null,
                             tint = if (active) AppColors.Orange.surface else AppColors.Orange.primaryStrong,
                             size = fixedSp(24 * compactScale), filled = true
                         )
@@ -248,20 +234,30 @@ private fun StreakCard(compactScale: Float, streakDays: Int?) {
 }
 
 /**
- * Figma 961:5003 — today's plan. The three metrics are the server's own
+ * Figma 961:5003 — today's plan. The header carries the 12dp-radius 设定计划
+ * chip; the card closes with the shared 61dp 继续学习 action that starts the
+ * server's today-plan session. The three metrics are the server's own
  * remaining counts (GET /study/today): new, review, and the plan's total
  * remainder. No client-side recomputation joins them.
  */
 @Composable
-private fun TodayPlanCard(compactScale: Float, todayPlan: TodayPlanUiState, onSetPlan: () -> Unit) {
+private fun TodayPlanCard(
+    compactScale: Float,
+    todayPlan: TodayPlanUiState,
+    onSetPlan: () -> Unit,
+    onContinue: () -> Unit
+) {
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape((AppShapeRadius * compactScale).dp))
             .background(AppColors.Blue.background)
             .padding((20 * compactScale).dp),
-        verticalArrangement = Arrangement.spacedBy((12 * compactScale).dp)
+        verticalArrangement = Arrangement.spacedBy((16 * compactScale).dp)
     ) {
-        Row(Modifier.fillMaxWidth().height((32 * compactScale).dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = (32 * compactScale).dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             MaterialSymbol(
                 "local_fire_department", null,
                 tint = AppColors.TextIconDark,
@@ -269,6 +265,29 @@ private fun TodayPlanCard(compactScale: Float, todayPlan: TodayPlanUiState, onSe
             )
             Spacer(Modifier.width((8 * compactScale).dp))
             AppText("今日计划", AppTextRole.SectionTitle, color = AppColors.TextIconDark, designScale = compactScale)
+            Spacer(Modifier.weight(1f))
+            Surface(
+                onClick = onSetPlan,
+                color = AppColors.Blue.primarySecondary,
+                contentColor = AppColors.TextIconDark,
+                shape = RoundedCornerShape((12 * compactScale).dp)
+            ) {
+                Row(
+                    Modifier.padding(
+                        horizontal = (12 * compactScale).dp,
+                        vertical = (8 * compactScale).dp
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy((8 * compactScale).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MaterialSymbol(
+                        "edit_calendar", null,
+                        tint = AppColors.TextIconDark,
+                        size = fixedSp(20 * compactScale), filled = true
+                    )
+                    AppText("设定计划", AppTextRole.CardSubtitle, color = AppColors.TextIconDark, designScale = compactScale)
+                }
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * compactScale).dp)) {
             PlanMetricBox(
@@ -297,19 +316,19 @@ private fun TodayPlanCard(compactScale: Float, todayPlan: TodayPlanUiState, onSe
             )
         }
         Surface(
-            onClick = onSetPlan,
-            color = AppColors.Blue.primarySecondary,
-            contentColor = AppColors.TextIconDark,
+            onClick = onContinue,
+            color = AppColors.Blue.primary,
+            contentColor = AppColors.TextIconLight,
             shape = RoundedCornerShape((AppButtonShapeRadius * compactScale).dp),
             modifier = Modifier.fillMaxWidth().height((61 * compactScale).dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy((6 * compactScale).dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy((8 * compactScale).dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                MaterialSymbol("edit_calendar", null, tint = AppColors.TextIconDark, size = fixedSp(24 * compactScale), filled = true)
-                AppText("设定计划", AppTextRole.CardTitle, color = AppColors.TextIconDark, designScale = compactScale)
+                MaterialSymbol("book_5", null, tint = AppColors.TextIconLight, size = fixedSp(24 * compactScale), filled = true)
+                AppText("继续学习", AppTextRole.CardTitle, color = AppColors.TextIconLight, designScale = compactScale)
             }
         }
     }
@@ -343,88 +362,6 @@ private fun PlanMetricBox(
             letterSpacing = fixedSp(-0.6f * compactScale),
             style = figmaCardTextStyle()
         )
-    }
-}
-
-/**
- * Figma 287:8137 — the 昨日错题 / 随机复习 pair: a 169dp card with two 56dp
- * icon tiles above a 53dp label button.
- */
-@Composable
-private fun QuickActionCard(
-    modifier: Modifier,
-    background: Color,
-    tile: Color,
-    button: Color,
-    textColor: Color,
-    label: String,
-    compactScale: Float,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier.height((169 * compactScale).dp)
-            .clip(RoundedCornerShape((32 * compactScale).dp))
-            .background(background)
-            .padding((20 * compactScale).dp),
-        verticalArrangement = Arrangement.spacedBy((20 * compactScale).dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().height((56 * compactScale).dp),
-            horizontalArrangement = Arrangement.spacedBy((16 * compactScale).dp)
-        ) {
-            Surface(
-                shape = RoundedCornerShape((18 * compactScale).dp),
-                color = tile,
-                modifier = Modifier.weight(1f).fillMaxHeight()
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol(quickCardIcon(label), null, tint = textColor, size = fixedSp(24 * compactScale), filled = true)
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape((18 * compactScale).dp),
-                color = tile,
-                modifier = Modifier.weight(1f).fillMaxHeight()
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    MaterialSymbol("arrow_forward", null, tint = textColor, size = fixedSp(20 * compactScale), filled = true)
-                }
-            }
-        }
-        Surface(
-            onClick = onClick,
-            color = button,
-            contentColor = textColor,
-            shape = RoundedCornerShape((32 * compactScale).dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(Modifier.fillMaxWidth().padding(vertical = (16 * compactScale).dp), contentAlignment = Alignment.Center) {
-                AppText(label, AppTextRole.Label, color = textColor, designScale = compactScale, textAlign = TextAlign.Center)
-            }
-        }
-    }
-}
-
-private fun quickCardIcon(label: String): String = if (label == "昨日错题") "brightness_alert" else "star_shine"
-
-/** Figma 935:4903 — the full-width continue-study action under the deck card. */
-@Composable
-private fun ContinueLearningButton(compactScale: Float, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = AppColors.Purple.primary,
-        contentColor = AppColors.TextIconLight,
-        shape = RoundedCornerShape((AppButtonShapeRadius * compactScale).dp),
-        modifier = Modifier.fillMaxWidth().height((61 * compactScale).dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy((6 * compactScale).dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AppText("继续学习", AppTextRole.CardTitle, color = AppColors.TextIconLight, designScale = compactScale)
-            MaterialSymbol("arrow_forward", null, tint = AppColors.TextIconLight, size = fixedSp(24 * compactScale), filled = true)
-        }
     }
 }
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -70,6 +71,13 @@ internal fun DeckGenerationScreen(
     val materials = projectMats[project.id].orEmpty()
     val fileItems = materials.filter { it.type == ProjectDraftMaterialType.FILE }
     val textItems = materials.filter { it.type == ProjectDraftMaterialType.TEXT }
+    // Background material uploads from 完成设置: they land here one by one (refreshProjects
+    // projects each landed material with its PARSING status) while this screen shows live rows.
+    val uploadStates by viewModel.projectUploadStates.collectAsState()
+    val uploads = uploadStates[project.id].orEmpty()
+    val uploadingFiles = uploads.filter { it.isPdf && it.phase != MaterialUploadPhase.DONE }
+    val uploadingTexts = uploads.filter { !it.isPdf && it.phase != MaterialUploadPhase.DONE }
+    val uploadsBusy = uploads.isNotEmpty()
 
     var name by remember { mutableStateOf("") }
     var basicBoundary by remember { mutableFloatStateOf(40f) }
@@ -129,6 +137,8 @@ internal fun DeckGenerationScreen(
             item {
                 DeckGenerationMaterialSection(
                     title = "添加文件资料", icon = "files", materials = fileItems, theme = theme, scale = scale,
+                    uploading = uploadingFiles,
+                    onRetryUpload = { viewModel.retryProjectUploads(project.id) },
                     selectedIds = selectedFileIds,
                     onToggle = { id -> selectedFileIds = if (id in selectedFileIds) selectedFileIds - id else selectedFileIds + id },
                     onEditText = {},
@@ -142,6 +152,8 @@ internal fun DeckGenerationScreen(
             item {
                 DeckGenerationMaterialSection(
                     title = "添加文本资料", icon = "description", materials = textItems, theme = theme, scale = scale,
+                    uploading = uploadingTexts,
+                    onRetryUpload = { viewModel.retryProjectUploads(project.id) },
                     selectedIds = selectedTextIds,
                     onToggle = { id -> selectedTextIds = if (id in selectedTextIds) selectedTextIds - id else selectedTextIds + id },
                     onEditText = { material -> nav.navigate(AppRoute.ProjectTextEditor(material.id, theme.key, project.id, editorTitle = "编辑文本资料")) },
@@ -173,6 +185,7 @@ internal fun DeckGenerationScreen(
                     onReady = { ready -> if (ready) nav.navigate(AppRoute.SmartCardChapter(project.id)) },
                 )
             },
+            enabled = !uploadsBusy,
             color = theme.primary, contentColor = theme.onPrimary,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
@@ -452,6 +465,8 @@ private fun DeckGenerationMaterialSection(
     materials: List<ProjectDraftMaterial>,
     theme: DeckTheme,
     scale: Float,
+    uploading: List<MaterialUploadState> = emptyList(),
+    onRetryUpload: () -> Unit = {},
     selectedIds: Set<String>,
     onToggle: (String) -> Unit,
     onEditText: (ProjectDraftMaterial) -> Unit,
@@ -469,14 +484,7 @@ private fun DeckGenerationMaterialSection(
             MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24 * scale), filled = true)
             AppText(title, AppTextRole.SectionTitle, color = theme.text, designScale = scale, maxLines = 1)
         }
-        HintBox(
-            text = if (title == "添加文件资料") "选择该项目已添加的文件资料\n右滑卡片可编辑文件名称/删除文件"
-            else "选择该项目已添加的文件资料\n右滑卡片可编辑内容/删除文件",
-            parentIsWhite = false,
-            theme = theme,
-            designScale = scale
-        )
-        if (materials.isEmpty()) {
+        if (materials.isEmpty() && uploading.isEmpty()) {
             AppText(
                 "暂无资料",
                 AppTextRole.Supporting,
@@ -484,6 +492,9 @@ private fun DeckGenerationMaterialSection(
                 designScale = scale,
                 modifier = Modifier.padding(horizontal = (8 * scale).dp)
             )
+        }
+        uploading.forEach { state ->
+            DeckGenerationUploadCard(state, theme, scale, onRetry = onRetryUpload)
         }
         materials.forEach { material ->
             if (material.type == ProjectDraftMaterialType.FILE) {
@@ -501,6 +512,62 @@ private fun DeckGenerationMaterialSection(
                     onSelect = { onToggle(material.id) },
                     kind = ProjectMaterialTextCardKind.SELECTABLE,
                     parentSurface = ProjectMaterialCardParentSurface.THEME_BACKGROUND
+                )
+            }
+        }
+        // Figma 1050:4944 — the usage hint sits at the section's bottom-left.
+        CardHint("点击可选中文件。\n右滑可删除。", designScale = scale)
+    }
+}
+
+/**
+ * One background material upload from 完成设置, in this screen's own visual language
+ * (family cardPanel body, 36dp silhouette, same 56dp icon tile as the draft cards).
+ * UPLOADING renders a progress ring; FAILED turns the tile Warning and tapping the card
+ * replays only the failed uploads with their fixed idempotency keys.
+ */
+@Composable
+private fun DeckGenerationUploadCard(
+    state: MaterialUploadState,
+    theme: DeckTheme,
+    scale: Float,
+    onRetry: () -> Unit
+) {
+    val failed = state.phase == MaterialUploadPhase.FAILED
+    Surface(
+        color = theme.cardPanel,
+        shape = RoundedCornerShape((36 * scale).dp),
+        onClick = onRetry,
+        enabled = failed,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.fillMaxWidth().padding((16 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                color = if (failed) AppColors.Warning else theme.secondary,
+                shape = RoundedCornerShape((24 * scale).dp),
+                modifier = Modifier.size((56 * scale).dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (failed) {
+                        MaterialSymbol("wifi_off", null, tint = AppColors.WarningInk, size = fixedSp(24 * scale), filled = true)
+                    } else {
+                        CircularProgressIndicator(
+                            color = theme.primary,
+                            trackColor = theme.background,
+                            strokeWidth = (3 * scale).dp,
+                            modifier = Modifier.size((24 * scale).dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width((16 * scale).dp))
+            Column(verticalArrangement = Arrangement.spacedBy((2 * scale).dp)) {
+                AppText(state.name, AppTextRole.CardTitle, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AppText(
+                    if (failed) "上传失败 · 点按重试" else "上传中…",
+                    AppTextRole.CardSubtitle,
+                    color = if (failed) AppColors.WarningInk else theme.text.copy(alpha = .5f),
+                    designScale = scale
                 )
             }
         }

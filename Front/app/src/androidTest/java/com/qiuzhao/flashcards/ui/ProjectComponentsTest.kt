@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.deviceacceptance.RequiresOwnActivityLaunch
+import dev.chrisbanes.haze.HazeState
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -29,7 +30,8 @@ class ProjectComponentsTest {
                         AppBottomNavigationItem("主页", "home") {},
                         AppBottomNavigationItem("项目", "playing_cards") {},
                         AppBottomNavigationItem("数据", "query_stats") {}
-                    )
+                    ),
+                    hazeState = HazeState()
                 )
             }
         }

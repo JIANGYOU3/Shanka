@@ -383,12 +383,21 @@ class AppViewModel(
     val pdfUploading: StateFlow<Boolean> = pdfUploadCoordinator.uploading
 
     /**
-     * Two-step project creation (contract V25-D-29): one JSON POST /projects, then one materials
-     * call per staged material; retries replay only the failed step with fixed keys.
+     * Two-step project creation (contract V25-D-29): [ProjectCreationCoordinator.submit] runs
+     * only the fast JSON POST /projects and returns, while the staged materials upload in the
+     * background (parallel, fixed keys) and report through [projectUploadStates].
      */
-    private val projectCreationCoordinator = ProjectCreationCoordinator(v25Repository)
-    val projectCreationAttempt: StateFlow<ProjectCreationAttempt?> = projectCreationCoordinator.attempt
+    private val projectCreationCoordinator = ProjectCreationCoordinator(
+        repository = v25Repository,
+        scope = viewModelScope,
+        onUploadsChanged = { refreshProjects() },
+    )
     val projectCreating: StateFlow<Boolean> = projectCreationCoordinator.creating
+    val projectUploadStates: StateFlow<Map<String, List<MaterialUploadState>>> =
+        projectCreationCoordinator.uploadStates
+
+    /** Retries the failed background uploads of one project (same fixed idempotency keys). */
+    fun retryProjectUploads(projectId: String) = projectCreationCoordinator.retryUploads(projectId)
 
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
@@ -405,6 +414,34 @@ class AppViewModel(
                 refreshTodayPlan()
                 refreshDashboard()
             }
+        }
+        viewModelScope.launch {
+            // The deletion sync's merged refresh rewrites Room; these re-reads project the
+            // plan/dashboard StateFlows that are not direct Room flows.
+            v25Repository.deletionSync.drainedPasses.drop(1).collect {
+                refreshDecks()
+                refreshTodayPlan()
+                refreshDashboard()
+            }
+        }
+        viewModelScope.launch {
+            // An optimistic deletion the server permanently rejected: the tombstone was dropped
+            // and the authoritative refresh restored the scope — explain that to the user.
+            v25Repository.deletionSync.lastPermanentFailure.drop(1).collect { failure ->
+                if (failure != null) {
+                    _uiMessage.value = when (failure.kind) {
+                        com.qiuzhao.flashcards.data.local.DeletionKind.PROJECT ->
+                            "删除项目未能同步到服务器，该项目已恢复"
+                        else -> "删除资料未能同步到服务器，该资料已恢复"
+                    }
+                    v25Repository.deletionSync.clearPermanentFailure()
+                }
+            }
+        }
+        viewModelScope.launch {
+            // Each background material upload that lands re-projects the lists, so the
+            // configuration screen sees the material appear with its PARSING status.
+            projectCreationCoordinator.materialLanded.collect { refreshProjects() }
         }
         viewModelScope.launch {
             auth.state
@@ -679,7 +716,8 @@ class AppViewModel(
     fun resetProjectCreationDraft() {
         _projectCreationMaterials.value = emptyList()
         _materialImportDrafts.value = emptyList()
-        projectCreationCoordinator.reset()
+        // Only the not-yet-created attempt: other projects' in-flight uploads keep reporting.
+        projectCreationCoordinator.resetPendingCreate()
     }
 
     /**
@@ -925,7 +963,10 @@ class AppViewModel(
             return
         }
         if (projectId == null) {
-            _projectCreationMaterials.value = staged
+            // Append, don't clobber: the wizard may already hold text drafts staged before
+            // the import screen was opened.
+            _projectCreationMaterials.value =
+                (_projectCreationMaterials.value + staged).distinctBy { it.id }
             _materialImportDrafts.value = emptyList()
             onResult(true, null)
             return
@@ -1045,6 +1086,9 @@ class AppViewModel(
         viewModelScope.launch {
             when (val result = projectCreationCoordinator.submit(normalized, uploads)) {
                 is V25Result.Success -> {
+                    // The create step returned; materials now upload in the background and
+                    // report through projectUploadStates. Clear the form and navigate now —
+                    // the whole point is that the user stops waiting on the byte uploads.
                     _projectCreationMaterials.value = emptyList()
                     _materialImportDrafts.value = emptyList()
                     refreshProjects()
@@ -1139,6 +1183,10 @@ class AppViewModel(
         }
         var succeeded = false
         try {
+            // Optimistic: the repository's single Room transaction removes the project from
+            // every Room-flow surface before this returns; the fixed-key DELETE replays in
+            // the background (DeletionSyncCoordinator) and its permanent failures surface
+            // through lastPermanentFailure.
             when (val result = v25Repository.deleteProject(projectId, retainDecks, idempotencyKey)) {
                 is V25Result.Success -> {
                     succeeded = true
@@ -1146,9 +1194,6 @@ class AppViewModel(
                     _deletionPreflights.value = _deletionPreflights.value
                         .filterKeys { !it.startsWith("project:$projectId:") }
                     if (activePdfProjectId.value == projectId) clearPdfFlow()
-                    refreshProjects()
-                    refreshDecks()
-                    refreshTodayPlan()
                     onResult(true)
                 }
                 is V25Result.Failure -> {
@@ -1164,8 +1209,9 @@ class AppViewModel(
     /**
      * Deletes one material (contract V25-D-30). `retainCards` is the user's three-tier choice:
      * true keeps the material's generated cards, false deletes them with their review records.
-     * The server silently cancels tasks referencing the material, so the project and task
-     * projections refresh after a successful delete.
+     * Optimistic: the Room transaction drops the material (and its chapters) before this
+     * returns, so the list updates in the same frame; the server DELETE replays in the
+     * background and its permanent failure restores the material with a message.
      */
     fun deleteMaterial(
         projectId: String,
@@ -1184,10 +1230,6 @@ class AppViewModel(
             when (val result = v25Repository.deleteProjectMaterial(projectId, materialId, retainCards, idempotencyKey)) {
                 is V25Result.Success -> {
                     succeeded = true
-                    refreshProjects()
-                    refreshProjectTasks(projectId)
-                    refreshDecks()
-                    refreshTodayPlan()
                     onResult(true)
                 }
                 is V25Result.Failure -> {

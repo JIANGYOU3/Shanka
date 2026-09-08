@@ -183,7 +183,19 @@ class OfflineRecoveryAndBenchmarkTest {
             lanes = lanes,
             scope = scope,
         )
-        return Stack(db, cache, OfflineFirstV25Repository(remote, cache, store, lanes, sync, clock))
+        val deletionSync = DeletionSyncCoordinator(
+            remote = remote,
+            cache = cache,
+            sessionUser = { store.load()?.user?.userId },
+            clock = clock,
+            lanes = lanes,
+            scope = scope,
+        )
+        return Stack(
+            db,
+            cache,
+            OfflineFirstV25Repository(remote, cache, store, lanes, sync, deletionSync, clock),
+        )
     }
 
     @Test

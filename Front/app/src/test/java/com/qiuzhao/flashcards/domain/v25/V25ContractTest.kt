@@ -265,7 +265,6 @@ class V25ContractTest {
         val removed = repository.deleteProjectMaterial("project-1", "material-1", retainCards = false)
 
         assertTrue(kept is V25Result.Success)
-        assertEquals(V25ProjectStatus.EMPTY, (kept as V25Result.Success).value.status)
         assertTrue(removed is V25Result.Failure)
         assertEquals(V25ErrorCodes.MATERIAL_NOT_FOUND, (removed as V25Result.Failure).code)
     }
@@ -578,9 +577,9 @@ private class StubV25Repository : V25Repository {
         materialId: String,
         retainCards: Boolean,
         idempotencyKey: String?,
-    ): V25Result<V25LearningProject> =
+    ): V25Result<Unit> =
         if (deletedMaterialIds.add(materialId)) {
-            V25Result.Success(project.copy(materials = emptyList(), status = V25ProjectStatus.EMPTY))
+            V25Result.Success(Unit)
         } else {
             V25Result.Failure(V25ErrorCodes.MATERIAL_NOT_FOUND, "material.not_found", "资料不存在")
         }

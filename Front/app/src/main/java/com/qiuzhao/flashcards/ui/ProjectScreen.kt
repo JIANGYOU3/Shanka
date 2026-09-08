@@ -170,6 +170,7 @@ internal fun ProjectCreateScreen(
     val projectCreating by viewModel.projectCreating.collectAsState()
     val projectId = editingProject?.id
     var name by rememberSaveable(projectId) { mutableStateOf(editingProject?.name.orEmpty()) }
+    var nameError by rememberSaveable(projectId) { mutableStateOf(false) }
     var selectedTheme by rememberSaveable(projectId) { mutableStateOf(editingProject?.themeKey ?: "violet") }
     var message by remember { mutableStateOf<String?>(null) }
     var editingFile by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
@@ -199,21 +200,14 @@ internal fun ProjectCreateScreen(
                 contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp)
             ) {
                 item {
-                    Surface(color = theme.cardPanel, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.padding((24 * scale).dp), contentAlignment = Alignment.CenterStart) {
-                            AppText(
-                                if (editingProject == null) "填写名称创建项目，再添加 PDF 或文本资料" else "可编辑主题色、名称，以及管理资料",
-                                AppTextRole.CardSubtitle, color = theme.text, designScale = scale
-                            )
-                        }
-                    }
-                }
-                item {
                     ProjectCreationPanel(theme, scale) {
                         ProjectSectionLabel("stylus_note", "项目名称", theme, scale)
                         Surface(color = theme.cardPanel, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth().height((59 * scale).dp)) {
                             androidx.compose.foundation.text.BasicTextField(
-                                value = name, onValueChange = { name = it }, singleLine = true,
+                                value = name, onValueChange = {
+                                    name = it
+                                    nameError = false
+                                }, singleLine = true,
                                 textStyle = appInputTextStyle(AppTextRole.Body, scale, theme.text),
                                 visualTransformation = rememberBilingualInputTransformation(AppTextRole.Body, scale),
                                 modifier = Modifier.fillMaxSize().padding(horizontal = (24 * scale).dp),
@@ -223,6 +217,7 @@ internal fun ProjectCreateScreen(
                                 } }
                             )
                         }
+                        if (nameError) CardHint("未输入名称", designScale = scale, error = true)
                     }
                 }
                 item {
@@ -280,7 +275,7 @@ internal fun ProjectCreateScreen(
                         )
                     }
                 }
-                message?.let { error -> item { AppText(error, AppTextRole.CardSubtitle, color = AppColors.WarningStrong, designScale = scale) } }
+                message?.let { error -> item { CardHint(error, designScale = scale, error = true) } }
             }
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
@@ -314,6 +309,7 @@ internal fun ProjectCreateScreen(
                     // Two-step creation (V25-D-29): the wizard's single "完成设置" runs both
                     // network steps — POST /projects (JSON name), then materials/* per draft.
                     val hadMaterials = materials.isNotEmpty()
+                    if (name.isBlank()) nameError = true
                     viewModel.createProjectFromDraft(name, selectedTheme) { projectId, error ->
                         message = error
                         when {
@@ -326,6 +322,7 @@ internal fun ProjectCreateScreen(
                         }
                     }
                 } else {
+                    if (name.isBlank()) nameError = true
                     viewModel.renameProjectFromEditor(editingProject.id, name, selectedTheme) { error ->
                         message = error
                         if (error == null) nav.goBack()
@@ -527,13 +524,6 @@ private fun ProjectCreationMaterialsPanel(
         MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24 * scale), filled = true)
         AppText(title, AppTextRole.SectionTitle, color = theme.text, designScale = scale)
     }
-    Surface(color = AppColors.Card, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-        AppText(
-            if (materials.isEmpty()) "暂无资料。可通过“导入资料”添加，或点击“添加文本资料”" else "右滑卡片可编辑名称/删除资料",
-            AppTextRole.Supporting,
-            modifier = Modifier.padding((24 * scale).dp), color = theme.text, designScale = scale
-        )
-    }
     materials.forEach { material ->
         if (material.type == ProjectDraftMaterialType.FILE) {
             ProjectDraftFileCard(material, theme, scale, onEdit = { onEditFile(material) }, onDelete = { onDelete(material) })
@@ -541,6 +531,7 @@ private fun ProjectCreationMaterialsPanel(
             ProjectDraftTextCard(material, theme, scale, onEdit = { onEditText(material) }, onDelete = { onDelete(material) })
         }
     }
+    CardHint(if (materials.isEmpty()) "暂无资料" else "右滑卡片可编辑名称/删除资料", designScale = scale)
     onAddText?.let { action ->
         Surface(
             onClick = action,
@@ -699,14 +690,18 @@ internal fun ProjectDraftTextCard(
 ) = ProjectSwipeContainer(
     // Figma 648:2818 = 238dp management preview; Figma 796:6786 = 211dp
     // selectable preview. The viewport stays 36dp while its content is 32dp.
-    height = if (kind == ProjectMaterialTextCardKind.MANAGEMENT) 238f else 211f,
+    // Figma 796:6786 typography: the title pill is Card-Title 18/24, so the
+    // selectable viewport = 12 + 56 header + 10 + 102 two-line body + 12;
+    // management's full-width title pill pads 24 and totals 208.
+    height = if (kind == ProjectMaterialTextCardKind.MANAGEMENT) 208f else 192f,
     actions = listOf(
-        // Delete is Warning Primary; every edit action uses Primary-Secondary.
+        // Figma 796:6786: delete is Warning Primary; the edit reveal returns to
+        // white with the 80% neutral ink.
         ProjectSwipeAction("delete", "删除该卡", AppColors.Warning, theme.onPrimary, onDelete),
         ProjectSwipeAction(
             "edit", "编辑卡片",
-            theme.secondary,
-            theme.strongText,
+            AppColors.Card,
+            AppColors.TextIconDark,
             onEdit
         )
     ),
@@ -722,14 +717,14 @@ internal fun ProjectDraftTextCard(
     ) {
         Column(Modifier.fillMaxSize().padding((12 * scale).dp), verticalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
             if (isSelectable) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
+                // Figma 796:6784 / 796:6785: a 56dp-wide icon tile fills the
+                // title pill's 16 + 24 + 16 = 56dp height; the title itself
+                // steps down to the Card-Title level.
+                Row(Modifier.fillMaxWidth().height((56 * scale).dp), horizontalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
                     Surface(
                         color = if (selected) AppColors.Green.primary else theme.primary,
                         shape = RoundedCornerShape((24 * scale).dp),
-                        // Figma 796:6784 / 796:6785: this is not the compact
-                        // 56dp file-icon tile. It self-stretches to the title
-                        // panel's 24 + 27 + 24 = 75dp height and stays square.
-                        modifier = Modifier.size((75 * scale).dp)
+                        modifier = Modifier.width((56 * scale).dp).fillMaxHeight()
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             MaterialSymbol(if (selected) "check_circle" else "file_copy", null, tint = if (selected) AppColors.Green.background else theme.background, size = fixedSp(24 * scale), filled = true)
@@ -738,9 +733,19 @@ internal fun ProjectDraftTextCard(
                     Surface(
                         color = palette.title,
                         shape = RoundedCornerShape((32 * scale).dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     ) {
-                        AppText(material.title, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            AppText(
+                                material.title,
+                                AppTextRole.CardTitle,
+                                modifier = Modifier.padding(horizontal = (24 * scale).dp),
+                                color = theme.text,
+                                designScale = scale,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             } else {
@@ -754,7 +759,7 @@ internal fun ProjectDraftTextCard(
                         horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AppText(material.title, AppTextRole.Body, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        AppText(material.title, AppTextRole.CardTitle, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         materialStatusLine(material)?.let { status ->
                             AppText(status, AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .6f), designScale = scale, maxLines = 1)
                         }
@@ -762,7 +767,7 @@ internal fun ProjectDraftTextCard(
                 }
             }
             Surface(color = palette.body, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
-                AppText(material.content.ifBlank { "此处最多显示两行可以吗。此处最多显示两行。超出省略号" }, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = theme.text.copy(alpha = .5f), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                AppText(material.content.ifBlank { "此处最多显示两行可以吗。此处最多显示两行。超出省略号" }, AppTextRole.Body, modifier = Modifier.padding((24 * scale).dp), color = Color.Black.copy(alpha = .5f), designScale = scale, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

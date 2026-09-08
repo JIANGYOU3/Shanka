@@ -132,12 +132,22 @@ class ObservationEngineTest {
             scope = scope,
             onAuthoritativeRefreshNeeded = {},
         )
+        val deletionSync = DeletionSyncCoordinator(
+            remote = remote,
+            cache = cache,
+            sessionUser = { store.load()?.user?.userId },
+            clock = TestClock(),
+            lanes = lanes,
+            scope = scope,
+            onAuthoritativeRefreshNeeded = {},
+        )
         return OfflineFirstV25Repository(
             remote = remote,
             cache = cache,
             sessionStore = store,
             lanes = lanes,
             reviewSync = sync,
+            deletionSync = deletionSync,
             clock = TestClock(),
         )
     }

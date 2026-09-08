@@ -76,12 +76,13 @@ internal fun formatImportDate(importedAt: Instant?): String =
 
 
 /**
- * Figma 987:5203. The floating light root navigation: a translucent near-white
- * pill with a 12dp inset track of three 94×60 items and an animated #B0D7FF
- * selection indicator. The glass is a real backdrop blur (haze, RenderEffect
- * on API 31+): Figma fill rgba(250,253,255,0.5) over blur(24px); on older
- * devices the blur degrades to the pre-1.0 stronger near-white scrim (0xB3)
- * so text beneath still reads as frosted rather than plainly visible.
+ * Figma 568:2326 (NavBar). The floating light root navigation: a translucent
+ * near-white pill with a 12dp inset track of three 94×60 items and an animated
+ * #CCE6FF selection indicator. The glass is a real backdrop blur (haze,
+ * RenderEffect on API 31+): Figma fill rgba(250,253,255,0.5) over
+ * backdropFilter blur(12px); on older devices the blur degrades to the
+ * pre-1.0 stronger near-white scrim (0xB3) so text beneath still reads as
+ * frosted rather than plainly visible.
  */
 @Composable
 internal fun AppBottomNavigation(
@@ -95,8 +96,8 @@ internal fun AppBottomNavigation(
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val barShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Surface(
-        // Figma fill rgba(250,253,255,0.5) + backgroundBlur 24px; the haze
-        // modifier supplies the blur and its 0 4 16 rgba(218,218,218,0.5)
+        // Figma fill rgba(250,253,255,0.5) + backdropFilter blur(12px); the
+        // haze modifier supplies the blur and its 0 4 16 rgba(218,218,218,0.5)
         // shadow rides on the container modifier below.
         color = Color(0x80FAFDFF),
         shape = barShape,
@@ -110,9 +111,13 @@ internal fun AppBottomNavigation(
             )
             .clip(barShape)
             .hazeEffect(hazeState) {
+                // Device feedback: the Figma 12px blur + 50% tint read as a
+                // see-through strip on real hardware. Double the blur radius
+                // and lift the frost to ~78% so background cards stop bleeding
+                // through; fallback covers pre-RenderEffect devices.
                 blurRadius = (24f * designScale).dp
-                tints = listOf(HazeTint(Color(0x80FAFDFF)))
-                fallbackTint = HazeTint(Color(0xB3FAFDFF))
+                tints = listOf(HazeTint(Color(0x33FAFDFF)))
+                fallbackTint = HazeTint(Color(0xE6FAFDFF))
             }
             .height((84 * designScale).dp)
     ) {
@@ -130,7 +135,8 @@ internal fun AppBottomNavigation(
                 label = "bottom navigation selection indicator"
             )
             Surface(
-                color = AppColors.Blue.primarySecondary,
+                // Figma 568:2326 selection indicator fill #CCE6FF (Blue.surface).
+                color = AppColors.Blue.surface,
                 shape = RoundedCornerShape((24 * designScale).dp),
                 modifier = Modifier.width(itemWidth).fillMaxHeight()
                     .graphicsLayer { translationX = indicatorTranslationPx }

@@ -14,3 +14,7 @@ Thumbs.db
 
 # Claude local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Release signing credentials (local only, never commit)
+Front/keystore.properties
+Front/release.keystore

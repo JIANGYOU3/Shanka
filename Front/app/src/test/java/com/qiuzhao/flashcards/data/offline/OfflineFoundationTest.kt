@@ -200,12 +200,22 @@ class OfflineFoundationTest {
             scope = offlineRepoScope,
             onAuthoritativeRefreshNeeded = { authoritativeRefreshes++ },
         )
+        val deletionSync = DeletionSyncCoordinator(
+            remote = remote,
+            cache = cache,
+            sessionUser = { store.load()?.user?.userId },
+            clock = clock,
+            lanes = lanes,
+            scope = offlineRepoScope,
+            onAuthoritativeRefreshNeeded = { authoritativeRefreshes++ },
+        )
         return OfflineFirstV25Repository(
             remote = remote,
             cache = cache,
             sessionStore = store,
             lanes = lanes,
             reviewSync = sync,
+            deletionSync = deletionSync,
             clock = clock,
         )
     }

@@ -30,6 +30,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DashboardEntity::class,
         CacheMetadataEntity::class,
         ReviewOutboxEntity::class,
+        DeletionOutboxEntity::class,
     ],
     version = ShankaV25Database.VERSION,
     exportSchema = true,
@@ -46,10 +47,11 @@ abstract class ShankaV25Database : RoomDatabase() {
     abstract fun dashboardDao(): DashboardDao
     abstract fun cacheMetadataDao(): CacheMetadataDao
     abstract fun reviewOutboxDao(): ReviewOutboxDao
+    abstract fun deletionOutboxDao(): DeletionOutboxDao
 
     companion object {
         const val NAME = "shanka-v25.db"
-        const val VERSION = 3
+        const val VERSION = 4
 
         /** Projection schema version written into cache metadata rows. */
         const val CACHE_SCHEMA_VERSION = 3
@@ -106,6 +108,26 @@ abstract class ShankaV25Database : RoomDatabase() {
                     db.execSQL(
                         "CREATE INDEX IF NOT EXISTS `index_generation_tasks_user_id_project_id` " +
                             "ON `generation_tasks` (`user_id`, `project_id`)",
+                    )
+                }
+            },
+            // v3 → v4 (optimistic deletions): the `deletion_outbox` tombstone table lands.
+            // A brand-new rebuildable queue — existing cached facts keep their rows.
+            object : Migration(3, 4) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `deletion_outbox` (" +
+                            "`user_id` TEXT NOT NULL, `operation_id` TEXT NOT NULL, " +
+                            "`kind` TEXT NOT NULL, `project_id` TEXT NOT NULL, " +
+                            "`material_id` TEXT, `retain` INTEGER NOT NULL, " +
+                            "`idempotency_key` TEXT NOT NULL, `created_at` INTEGER NOT NULL, " +
+                            "`status` TEXT NOT NULL, `attempt_count` INTEGER NOT NULL, " +
+                            "`next_attempt_at` INTEGER NOT NULL, `last_error_code` TEXT, " +
+                            "PRIMARY KEY(`user_id`, `operation_id`))",
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_deletion_outbox_user_id_idempotency_key` " +
+                            "ON `deletion_outbox` (`user_id`, `idempotency_key`)",
                     )
                 }
             },

@@ -38,8 +38,13 @@ import com.qiuzhao.flashcards.domain.v25.V25TodayPlan
 import com.qiuzhao.flashcards.domain.v25.V25UserPreferences
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -47,51 +52,51 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Locks the two-step project creation (contract V25-D-29/30) on the JVM: step one is a single
- * JSON POST /projects with only the name (the EMPTY project), step two attaches every staged
- * material through its own endpoint. One user operation owns fixed Idempotency Keys and
- * remembers the created project plus finished uploads, so a retry after a lost response replays
- * only the failed step and can never create a second project or duplicate a material.
+ * Locks the split two-step project creation (contract V25-D-29/30) on the JVM: [ProjectCreationCoordinator.submit]
+ * runs only the fast JSON POST /projects and returns the projectId immediately; every staged
+ * material then uploads in the background (parallel, each with its own fixed Idempotency-Key)
+ * while the caller has already navigated. A retry replays only the failed materials with their
+ * identical keys — it can never create a second project or duplicate a material.
  */
 private val NOW: java.time.Instant = java.time.Instant.parse("2026-08-31T00:00:00Z")
+
+private fun emptyProject(name: String, id: String) = V25LearningProject(
+    projectId = id,
+    name = name,
+    materials = emptyList(),
+    status = V25ProjectStatus.EMPTY,
+    chapterCount = 0,
+    deckCount = 0,
+    taskCount = 0,
+    createdAt = NOW,
+    updatedAt = NOW,
+    version = 1,
+)
+
+private fun pdfMaterial(name: String, projectId: String) = V25Material(
+    materialId = "material-pdf",
+    projectId = projectId,
+    type = V25MaterialType.PDF,
+    name = name,
+    status = V25MaterialStatus.PENDING,
+    createdAt = NOW,
+)
+
+private fun textMaterial(name: String, projectId: String) = V25Material(
+    materialId = "material-text",
+    projectId = projectId,
+    type = V25MaterialType.TEXT,
+    name = name,
+    status = V25MaterialStatus.READY,
+    charCount = 4,
+    chapter = V25Chapter("chapter-text", "material-text", name, startPage = null, endPage = null),
+    createdAt = NOW,
+)
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ProjectCreationCoordinatorTest {
 
     private val networkFailure = V25Result.Failure("NETWORK_UNAVAILABLE", null, "网络错误")
-
-    private fun emptyProject(name: String) = V25LearningProject(
-        projectId = "project-new",
-        name = name,
-        materials = emptyList(),
-        status = V25ProjectStatus.EMPTY,
-        chapterCount = 0,
-        deckCount = 0,
-        taskCount = 0,
-        createdAt = NOW,
-        updatedAt = NOW,
-        version = 1,
-    )
-
-    private fun pdfMaterial(name: String) = V25Material(
-        materialId = "material-pdf",
-        projectId = "project-new",
-        type = V25MaterialType.PDF,
-        name = name,
-        status = V25MaterialStatus.PENDING,
-        createdAt = NOW,
-    )
-
-    private fun textMaterial(name: String) = V25Material(
-        materialId = "material-text",
-        projectId = "project-new",
-        type = V25MaterialType.TEXT,
-        name = name,
-        status = V25MaterialStatus.READY,
-        charCount = 4,
-        chapter = V25Chapter("chapter-text", "material-text", name, startPage = null, endPage = null),
-        createdAt = NOW,
-    )
 
     private fun pdfUpload(name: String = "线性代数.pdf", body: ByteArray = byteArrayOf(1)) =
         MaterialUpload.Pdf(draftId = "draft-pdf", materialName = name, openStream = { ByteArrayInputStream(body) })
@@ -100,61 +105,72 @@ class ProjectCreationCoordinatorTest {
         MaterialUpload.Text(draftId = "draft-text", materialName = name, content = content)
 
     @Test
-    fun `step one creates the EMPTY project and step two attaches every staged material`() = runTest {
+    fun `submit returns after the create step and uploads land in the background`() = runTest {
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
         val repo = ScriptedRepository()
-        val coordinator = ProjectCreationCoordinator(repo)
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
 
         val result = coordinator.submit("概率论", listOf(pdfUpload(), textUpload()))
 
+        // The create step completed: navigation can happen now.
         assertTrue(result is V25Result.Success)
-        assertEquals("project-new", (result as V25Result.Success).value)
-        // Step one: exactly one JSON create call without any file bytes.
+        assertEquals("project-1", (result as V25Result.Success).value)
         assertEquals(1, repo.createProjectCalls.size)
         assertEquals("概率论", repo.createProjectCalls.single().first)
-                // Step two: one materials call per staged draft, each with its own key.
+        // Background uploads have not even started under the deterministic scheduler.
+        assertEquals(0, repo.addPdfCalls.size)
+        assertEquals(0, repo.addTextCalls.size)
+
+        advanceUntilIdle()
+        // Step two: one materials call per staged draft, each with its own key.
         assertEquals(1, repo.addPdfCalls.size)
         assertEquals(1, repo.addTextCalls.size)
-        val (createKey) = repo.createProjectCalls.single()
-        val (pdfKey, _) = repo.addPdfCalls.single()
-        val (textKey, _, _) = repo.addTextCalls.single()
+        val createKey = repo.createProjectCalls.single().second
+        val pdfKey = repo.addPdfCalls.single().first
+        val textKey = repo.addTextCalls.single().first
         assertTrue(createKey.isNotBlank() && pdfKey.isNotBlank() && textKey.isNotBlank())
         assertTrue("each step owns a distinct key", createKey != pdfKey && pdfKey != textKey)
-        assertNull("a committed creation clears the attempt", coordinator.attempt.value)
+        assertNull("a fully uploaded creation leaves no renderable state", coordinator.uploadStates.value["project-1"])
     }
 
     @Test
-    fun `a failed material upload keeps the project and a retry uploads only the missing material`() = runTest {
-        val repo = ScriptedRepository().apply { addPdfResultsQueue += networkFailure }
-        val coordinator = ProjectCreationCoordinator(repo)
+    fun `a failed material upload reports FAILED and retryUploads replays only it with the same key`() = runTest {
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val repo = ScriptedRepository().apply { pdfGate = CompletableDeferred(V25Result.Failure("NETWORK_UNAVAILABLE", null, null)) }
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
 
-        // Text first so it lands before the PDF upload fails.
-        val failed = coordinator.submit("概率论", listOf(textUpload(), pdfUpload()))
-        assertTrue(failed is V25Result.Failure)
-        val attempt = coordinator.attempt.value
-        assertEquals("the created project is remembered", "project-new", attempt!!.createdProjectId)
-        assertEquals("the text material landed before the failure", setOf("draft-text"), attempt.uploadedDraftIds)
+        val created = coordinator.submit("概率论", listOf(textUpload(), pdfUpload()))
+        assertTrue(created is V25Result.Success)
+        advanceUntilIdle()
 
-        val retried = coordinator.submit("概率论", listOf(textUpload(), pdfUpload()))
-        assertTrue(retried is V25Result.Success)
-
-        // The project was created exactly once and the text material never duplicated.
+        val states = coordinator.uploadStates.value.getValue("project-1")
+        assertEquals(MaterialUploadPhase.DONE, states.first { it.draftId == "draft-text" }.phase)
+        assertEquals(MaterialUploadPhase.FAILED, states.first { it.draftId == "draft-pdf" }.phase)
         assertEquals(1, repo.createProjectCalls.size)
         assertEquals(1, repo.addTextCalls.size)
+        assertEquals(1, repo.addPdfCalls.size)
+        val firstPdfKey = repo.addPdfCalls.single().first
+
+        // Retry: only the FAILED upload replays, with the identical fixed key.
+        repo.pdfGate = CompletableDeferred(V25Result.Success(pdfMaterial("线性代数.pdf", "project-1")))
+        coordinator.retryUploads("project-1")
+        advanceUntilIdle()
+
+        assertEquals("the project was created exactly once", 1, repo.createProjectCalls.size)
+        assertEquals("the text material never duplicated", 1, repo.addTextCalls.size)
         assertEquals("only the PDF upload replayed", 2, repo.addPdfCalls.size)
-        val firstPdfKey = repo.addPdfCalls[0].first
-        val retryPdfKey = repo.addPdfCalls[1].first
-        assertEquals("the retry reuses the same PDF key", firstPdfKey, retryPdfKey)
-        assertNull(coordinator.attempt.value)
+        assertEquals("the retry reuses the same PDF key", firstPdfKey, repo.addPdfCalls[1].first)
+        assertNull("all landed — state dropped", coordinator.uploadStates.value["project-1"])
     }
 
     @Test
     fun `a failed project creation replays the identical create key`() = runTest {
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
         val repo = ScriptedRepository().apply { createProjectResultsQueue += networkFailure }
-        val coordinator = ProjectCreationCoordinator(repo)
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
 
         val failed = coordinator.submit("概率论", listOf(pdfUpload()))
         assertTrue(failed is V25Result.Failure)
-        assertNull(coordinator.attempt.value!!.createdProjectId)
 
         val retried = coordinator.submit("概率论", listOf(pdfUpload()))
         assertTrue(retried is V25Result.Success)
@@ -164,40 +180,65 @@ class ProjectCreationCoordinatorTest {
             repo.createProjectCalls[0].second,
             repo.createProjectCalls[1].second,
         )
+        advanceUntilIdle()
         assertEquals(1, repo.addPdfCalls.size)
     }
 
     @Test
     fun `a different creation starts fresh with new keys`() = runTest {
-        val repo = ScriptedRepository().apply { addPdfResultsQueue += networkFailure }
-        val coordinator = ProjectCreationCoordinator(repo)
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val repo = ScriptedRepository()
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
 
-        coordinator.submit("概率论", listOf(pdfUpload()))
-        val firstKey = coordinator.attempt.value!!.createProjectKey
+        val first = coordinator.submit("概率论", listOf(pdfUpload()))
+        assertTrue(first is V25Result.Success)
+        advanceUntilIdle()
 
-        repo.addPdfResultsQueue += V25Result.Success(pdfMaterial("线性代数.pdf"))
-        coordinator.submit("概率统计", listOf(pdfUpload()))
+        val second = coordinator.submit("概率统计", listOf(pdfUpload()))
+        assertTrue(second is V25Result.Success)
 
         assertEquals("a changed operation re-creates the project", 2, repo.createProjectCalls.size)
         assertTrue(repo.createProjectCalls[0].second != repo.createProjectCalls[1].second)
-        assertTrue(firstKey.isNotBlank())
-        assertNull(coordinator.attempt.value)
     }
 
     @Test
-    fun `a concurrent submit is rejected while one creation is in flight`() = runTest(kotlinx.coroutines.test.UnconfinedTestDispatcher()) {
-        val repo = ScriptedRepository().apply { creationGate = kotlinx.coroutines.CompletableDeferred() }
-        val coordinator = ProjectCreationCoordinator(repo)
+    fun `a new creation can start while an older upload is still in flight`() = runTest {
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val repo = ScriptedRepository().apply { pdfGate = CompletableDeferred() } // holds every PDF upload
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
 
-        val first = launch { coordinator.submit("概率论", listOf(pdfUpload())) }
+        val first = coordinator.submit("概率论", listOf(pdfUpload()))
+        assertTrue(first is V25Result.Success)
+        runCurrent()
+        assertEquals(1, coordinator.uploadStates.value.getValue("project-1").size)
+
+        // The create step is NOT blocked by another project's background uploads.
+        val second = coordinator.submit("概率统计", listOf(textUpload()))
+        assertTrue(second is V25Result.Success)
+        assertEquals(2, repo.createProjectCalls.size)
+
+        repo.pdfGate!!.complete(V25Result.Success(pdfMaterial("线性代数.pdf", "project-1")))
+        advanceUntilIdle()
+        assertNull("older project's upload landed — its state dropped", coordinator.uploadStates.value["project-1"])
+        assertNull("the text upload of the second project landed", coordinator.uploadStates.value["project-2"])
+    }
+
+    @Test
+    fun `a concurrent submit is rejected while one create step is in flight`() = runTest {
+        val uploadScope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val repo = ScriptedRepository().apply { creationGate = CompletableDeferred() }
+        val coordinator = ProjectCreationCoordinator(repo, uploadScope)
+
+        backgroundScope.launch { coordinator.submit("概率论", listOf(pdfUpload())) }
+        runCurrent()
         assertTrue(coordinator.creating.value)
 
         val rejected = coordinator.submit("概率论", listOf(pdfUpload()))
         assertTrue(rejected is V25Result.Failure)
         assertEquals(ProjectCreationCoordinator.IN_FLIGHT_CODE, (rejected as V25Result.Failure).code)
 
-        repo.creationGate!!.complete(V25Result.Success(emptyProject("概率论")))
-        first.join()
+        repo.creationGate!!.complete(V25Result.Success(emptyProject("概率论", "project-1")))
+        runCurrent()
         assertEquals(false, coordinator.creating.value)
         assertEquals(1, repo.createProjectCalls.size)
     }
@@ -208,27 +249,17 @@ class ProjectCreationCoordinatorTest {
         val addPdfCalls = mutableListOf<Pair<String, ByteArray?>>() // key to body bytes
         val addTextCalls = mutableListOf<Triple<String, String, String?>>() // key, name, content
         val createProjectResultsQueue = ArrayDeque<V25Result<V25LearningProject>>()
-        val addPdfResultsQueue = ArrayDeque<V25Result<V25Material>>()
-        var creationGate: kotlinx.coroutines.CompletableDeferred<V25Result<V25LearningProject>>? = null
+        val projectCounter = AtomicInteger(0)
+
+        /** When set, every PDF upload awaits this gate before returning its value. */
+        var pdfGate: CompletableDeferred<V25Result<V25Material>>? = null
+        var creationGate: CompletableDeferred<V25Result<V25LearningProject>>? = null
 
         override suspend fun createProject(name: String, idempotencyKey: String?): V25Result<V25LearningProject> {
             createProjectCalls += name to (idempotencyKey ?: "")
             creationGate?.let { gate -> return gate.await() }
             return createProjectResultsQueue.removeFirstOrNull()
-                ?: V25Result.Success(
-                    V25LearningProject(
-                        projectId = "project-new",
-                        name = name,
-                        materials = emptyList(),
-                        status = V25ProjectStatus.EMPTY,
-                        chapterCount = 0,
-                        deckCount = 0,
-                        taskCount = 0,
-                        createdAt = NOW,
-                        updatedAt = NOW,
-                        version = 1,
-                    ),
-                )
+                ?: V25Result.Success(emptyProject(name, "project-${projectCounter.incrementAndGet()}"))
         }
 
         override suspend fun addProjectMaterialPdf(
@@ -238,17 +269,8 @@ class ProjectCreationCoordinatorTest {
             idempotencyKey: String?,
         ): V25Result<V25Material> {
             addPdfCalls += (idempotencyKey ?: "") to content.use { it.readBytes() }
-            return addPdfResultsQueue.removeFirstOrNull()
-                ?: V25Result.Success(
-                    V25Material(
-                        materialId = "material-pdf",
-                        projectId = projectId,
-                        type = V25MaterialType.PDF,
-                        name = fileName,
-                        status = V25MaterialStatus.PENDING,
-                        createdAt = NOW,
-                    ),
-                )
+            return pdfGate?.await()
+                ?: V25Result.Success(pdfMaterial(fileName, projectId))
         }
 
         override suspend fun addProjectMaterialText(
@@ -258,18 +280,7 @@ class ProjectCreationCoordinatorTest {
             idempotencyKey: String?,
         ): V25Result<V25Material> {
             addTextCalls += Triple(idempotencyKey ?: "", name, content)
-            return V25Result.Success(
-                V25Material(
-                    materialId = "material-text",
-                    projectId = projectId,
-                    type = V25MaterialType.TEXT,
-                    name = name,
-                    status = V25MaterialStatus.READY,
-                    charCount = content.length,
-                    chapter = V25Chapter("chapter-text", "material-text", name, startPage = null, endPage = null),
-                    createdAt = NOW,
-                ),
-            )
+            return V25Result.Success(textMaterial(name, projectId))
         }
 
         // Untouched boundary methods: any call is a test bug.
@@ -289,7 +300,7 @@ class ProjectCreationCoordinatorTest {
             materialId: String,
             retainCards: Boolean,
             idempotencyKey: String?,
-        ): V25Result<V25LearningProject> = throw NotImplementedError()
+        ): V25Result<Unit> = throw NotImplementedError()
         override suspend fun replaceProjectMaterialPdf(
             projectId: String,
             materialId: String,

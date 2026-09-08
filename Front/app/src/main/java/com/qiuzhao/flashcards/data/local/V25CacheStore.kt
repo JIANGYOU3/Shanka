@@ -48,18 +48,30 @@ class V25CacheStore(private val db: ShankaV25Database) {
     private val dashboardDao = db.dashboardDao()
     private val metadataDao = db.cacheMetadataDao()
     private val outboxDao = db.reviewOutboxDao()
+    private val deletionDao = db.deletionOutboxDao()
 
     // --- projects -------------------------------------------------------------------------------
 
     suspend fun replaceProjects(userId: String, projects: List<V25LearningProject>, now: Long) {
         db.withTransaction {
+            // Resurrection guard: a rewrite must never reinsert a scope an unsynced tombstone
+            // already deleted locally (refreshes run constantly — RESUME, pollers, workers).
+            val tombs = deletionDao.allPending(userId)
+            val deadProjects = tombs.filter { it.kind == DeletionKind.PROJECT }.mapTo(mutableSetOf()) { it.projectId }
+            val deadMaterials = tombs.filter { it.kind == DeletionKind.MATERIAL }.mapTo(mutableSetOf()) { it.materialId ?: "" }
+            val deadProjectsWithDecks = tombs
+                .filter { it.kind == DeletionKind.PROJECT && !it.retain }
+                .mapTo(mutableSetOf()) { it.projectId }
+            val kept = projects.filter { it.projectId !in deadProjects }
             projectDao.deleteProjects(userId)
             projectDao.deleteMaterials(userId)
             projectDao.deleteChapters(userId)
-            projectDao.insertProjects(projects.map { it.toEntity(userId) })
-            projectDao.insertMaterials(projects.flatMap { p -> p.materials.toEntities(userId) })
+            projectDao.insertProjects(kept.map { it.toEntity(userId) })
+            projectDao.insertMaterials(
+                kept.flatMap { p -> p.materials.filter { it.materialId !in deadMaterials }.toEntities(userId) },
+            )
             projectDao.insertChapters(
-                projects.flatMap { p -> p.chapters.toEntities(userId, p.projectId) },
+                kept.flatMap { p -> p.chapters.toEntities(userId, p.projectId) },
             )
             metadataDao.upsert(
                 CacheMetadataEntity(
@@ -71,28 +83,151 @@ class V25CacheStore(private val db: ShankaV25Database) {
                     schemaVersion = ShankaV25Database.CACHE_SCHEMA_VERSION,
                 ),
             )
+            keepDecksHidden(userId, deadProjectsWithDecks)
         }
     }
 
     /** Single-project scope: detail refreshes replace only that project's projection. */
     suspend fun replaceProject(userId: String, project: V25LearningProject, now: Long) {
         db.withTransaction {
+            val tombs = deletionDao.allPending(userId)
+            val deadProjects = tombs.filter { it.kind == DeletionKind.PROJECT }.mapTo(mutableSetOf()) { it.projectId }
+            val deadMaterials = tombs.filter { it.kind == DeletionKind.MATERIAL }.mapTo(mutableSetOf()) { it.materialId ?: "" }
+            val deadProjectsWithDecks = tombs
+                .filter { it.kind == DeletionKind.PROJECT && !it.retain }
+                .mapTo(mutableSetOf()) { it.projectId }
+            if (project.projectId in deadProjects) return@withTransaction
             projectDao.deleteProject(userId, project.projectId)
             projectDao.deleteMaterialsOf(userId, project.projectId)
             projectDao.deleteChaptersOf(userId, project.projectId)
             projectDao.insertProjects(listOf(project.toEntity(userId)))
-            projectDao.insertMaterials(project.materials.toEntities(userId))
+            projectDao.insertMaterials(project.materials.filter { it.materialId !in deadMaterials }.toEntities(userId))
             projectDao.insertChapters(project.chapters.toEntities(userId, project.projectId))
+            keepDecksHidden(userId, deadProjectsWithDecks)
         }
     }
+
+    /**
+     * Re-asserts the deck-level shadow of un-retained project deletions: a full-user deck
+     * rewrite between the optimistic delete and its server replay would otherwise resurrect
+     * the tombstoned project's decks until the sync lands.
+     */
+    private suspend fun keepDecksHidden(userId: String, deadProjectsWithDecks: Set<String>) {
+        if (deadProjectsWithDecks.isEmpty()) return
+        deckDao.deleteDecksOfProjects(userId, deadProjectsWithDecks)
+    }
+
+    // --- deletion outbox (optimistic project/material deletions) ---------------------------------
+
+    /**
+     * The optimistic delete transaction: the tombstone row lands first, then the local rows go
+     * away in the same commit — every Room-flow UI updates in one write. The fixed
+     * `idempotency_key` replays verbatim on every retry.
+     */
+    suspend fun enqueueProjectDeletion(
+        userId: String,
+        projectId: String,
+        retainDecks: Boolean,
+        idempotencyKey: String,
+        now: Long,
+    ) {
+        db.withTransaction {
+            deletionDao.insert(
+                DeletionOutboxEntity(
+                    userId = userId,
+                    operationId = projectDeletionOperationId(projectId),
+                    kind = DeletionKind.PROJECT,
+                    projectId = projectId,
+                    materialId = null,
+                    retain = retainDecks,
+                    idempotencyKey = idempotencyKey,
+                    createdAt = now,
+                    status = OutboxStatus.PENDING,
+                    attemptCount = 0,
+                    nextAttemptAt = now,
+                    lastErrorCode = null,
+                ),
+            )
+            projectDao.deleteProject(userId, projectId)
+            projectDao.deleteMaterialsOf(userId, projectId)
+            projectDao.deleteChaptersOf(userId, projectId)
+            taskDao.deleteTasksOf(userId, projectId)
+            if (!retainDecks) deckDao.deleteDecksOfProjects(userId, setOf(projectId))
+        }
+    }
+
+    /** Same one-transaction shape for a single material; chapters ride on the material id. */
+    suspend fun enqueueMaterialDeletion(
+        userId: String,
+        projectId: String,
+        materialId: String,
+        retainCards: Boolean,
+        idempotencyKey: String,
+        now: Long,
+    ) {
+        db.withTransaction {
+            deletionDao.insert(
+                DeletionOutboxEntity(
+                    userId = userId,
+                    operationId = materialDeletionOperationId(projectId, materialId),
+                    kind = DeletionKind.MATERIAL,
+                    projectId = projectId,
+                    materialId = materialId,
+                    retain = retainCards,
+                    idempotencyKey = idempotencyKey,
+                    createdAt = now,
+                    status = OutboxStatus.PENDING,
+                    attemptCount = 0,
+                    nextAttemptAt = now,
+                    lastErrorCode = null,
+                ),
+            )
+            projectDao.deleteMaterial(userId, materialId)
+            projectDao.deleteChaptersOfMaterial(userId, materialId)
+        }
+    }
+
+    /** 2xx (or an accepted idempotent replay): the deletion is server truth — drop the tombstone. */
+    suspend fun completeDeletion(userId: String, operationId: String) {
+        deletionDao.delete(userId, operationId)
+    }
+
+    suspend fun retryDeletion(
+        userId: String,
+        operationId: String,
+        attemptCount: Int,
+        nextAttemptAt: Long,
+        errorCode: String?,
+    ) {
+        deletionDao.scheduleRetry(userId, operationId, attemptCount, nextAttemptAt, errorCode)
+    }
+
+    /** Permanent server rejection: drop the tombstone so the authoritative refresh restores truth. */
+    suspend fun failDeletion(userId: String, operationId: String, errorCode: String) {
+        deletionDao.markFailed(userId, operationId, errorCode)
+        deletionDao.delete(userId, operationId)
+    }
+
+    suspend fun nextDueDeletion(userId: String, now: Long): DeletionOutboxEntity? =
+        deletionDao.nextDue(userId, now)
+
+    suspend fun allPendingDeletions(userId: String): List<DeletionOutboxEntity> =
+        deletionDao.allPending(userId)
+
+    fun observePendingDeletions(userId: String): Flow<List<DeletionOutboxEntity>> =
+        deletionDao.observePending(userId)
 
     // --- generation tasks (V25-D-34 observation projection) --------------------------------------
 
     /** Full-user scope replace: the task list payload is the authority for every project's rows. */
     suspend fun replaceTasks(userId: String, tasks: List<V25GenerationTask>, now: Long) {
         db.withTransaction {
+            // A deleted project's tasks are server-gone too; keep them hidden until the sync lands.
+            val deadProjects = deletionDao.allPending(userId)
+                .filter { it.kind == DeletionKind.PROJECT }
+                .mapTo(mutableSetOf()) { it.projectId }
             taskDao.deleteTasks(userId)
-            taskDao.insertTasks(tasks.map { it.toEntity(userId) })
+            taskDao.insertTasks(tasks.filter { it.projectId !in deadProjects }.map { it.toEntity(userId) })
         }
     }
 
@@ -154,8 +289,11 @@ class V25CacheStore(private val db: ShankaV25Database) {
 
     suspend fun replaceDecks(userId: String, decks: List<V25Deck>, now: Long) {
         db.withTransaction {
+            val deadProjectsWithDecks = deletionDao.allPending(userId)
+                .filter { it.kind == DeletionKind.PROJECT && !it.retain }
+                .mapTo(mutableSetOf()) { it.projectId }
             deckDao.deleteDecks(userId)
-            deckDao.insertDecks(decks.map { it.toEntity(userId) })
+            deckDao.insertDecks(decks.filter { it.projectId !in deadProjectsWithDecks }.map { it.toEntity(userId) })
             markFetched(userId, KEY_DECKS, now)
         }
     }
@@ -384,6 +522,12 @@ class V25CacheStore(private val db: ShankaV25Database) {
         const val KEY_TODAY_PLAN = "today_plan"
         const val KEY_PROGRESS = "progress"
         const val KEY_DASHBOARD = "dashboard"
+
+        /** One semantic deletion = one stable operation id, shared by the gate and the tombstone. */
+        fun projectDeletionOperationId(projectId: String) = "project:$projectId"
+
+        fun materialDeletionOperationId(projectId: String, materialId: String) =
+            "material:$projectId:$materialId"
     }
 }
 

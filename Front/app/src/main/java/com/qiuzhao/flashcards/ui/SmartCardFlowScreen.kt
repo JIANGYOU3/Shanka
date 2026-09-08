@@ -193,11 +193,10 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
             }
             requestError?.let { error ->
                 item {
-                    HintBox(
-                        text = "无法生成样卡：$error",
-                        parentIsWhite = true,
-                        theme = theme,
+                    CardHint(
+                        "无法生成样卡：$error",
                         designScale = scale,
+                        error = true,
                     )
                 }
             }
@@ -274,11 +273,9 @@ private data class SmartChapter(val id: String, val title: String, val pages: St
 
 /** Figma 839:6220 import note: family Surface pill, 24dp clip. */
 @Composable
-private fun SmartChapterIntroCard(theme: DeckTheme, scale: Float) = HintBox(
-    text = "根据已选文件选择要制作闪卡的章节。",
-    parentIsWhite = true,
-    theme = theme,
-    designScale = scale
+private fun SmartChapterIntroCard(theme: DeckTheme, scale: Float) = CardHint(
+    "根据已选文件选择要制作闪卡的章节。",
+    designScale = scale,
 )
 
 /**
@@ -410,20 +407,17 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
             verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
         ) {
             item {
-                HintBox(
-                    text = if (samples.isEmpty()) "服务端尚未返回样卡，请返回重新生成。" else "点击卡片可以查看答案。样卡确认后才会开始正式生成。",
-                    parentIsWhite = true,
-                    theme = theme,
-                    designScale = scale
+                CardHint(
+                    if (samples.isEmpty()) "服务端尚未返回样卡，请返回重新生成。" else "点击卡片可以查看答案。样卡确认后才会开始正式生成。",
+                    designScale = scale,
                 )
             }
             startError?.let { error ->
                 item {
-                    HintBox(
-                        text = "无法开始生成：$error",
-                        parentIsWhite = true,
-                        theme = theme,
+                    CardHint(
+                        "无法开始生成：$error",
                         designScale = scale,
+                        error = true,
                     )
                 }
             }

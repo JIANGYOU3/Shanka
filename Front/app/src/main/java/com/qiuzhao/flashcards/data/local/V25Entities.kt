@@ -275,3 +275,36 @@ data class ReviewOutboxEntity(
     @ColumnInfo(name = "next_attempt_at") val nextAttemptAt: Long,
     @ColumnInfo(name = "last_error_code") val lastErrorCode: String?,
 )
+
+/** What kind of server deletion one tombstone replays. */
+object DeletionKind {
+    const val PROJECT = "PROJECT"
+    const val MATERIAL = "MATERIAL"
+}
+
+/**
+ * One pending optimistic deletion ("tombstone"). The row justifies the local rows that were
+ * deleted alongside it: until the server DELETE is replayed (or the tombstone is cleared after
+ * a permanent failure), every cache rewrite must keep the deleted scope hidden. The
+ * `idempotency_key` is fixed at enqueue time so retries can never double-delete server-side.
+ */
+@Entity(
+    tableName = "deletion_outbox",
+    primaryKeys = ["user_id", "operation_id"],
+    indices = [Index(value = ["user_id", "idempotency_key"], unique = true)],
+)
+data class DeletionOutboxEntity(
+    @ColumnInfo(name = "user_id") val userId: String,
+    /** "project:{projectId}" or "material:{projectId}:{materialId}" — one semantic deletion. */
+    @ColumnInfo(name = "operation_id") val operationId: String,
+    @ColumnInfo(name = "kind") val kind: String,
+    @ColumnInfo(name = "project_id") val projectId: String,
+    @ColumnInfo(name = "material_id") val materialId: String?,
+    @ColumnInfo(name = "retain") val retain: Boolean,
+    @ColumnInfo(name = "idempotency_key") val idempotencyKey: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "status") val status: String,
+    @ColumnInfo(name = "attempt_count") val attemptCount: Int,
+    @ColumnInfo(name = "next_attempt_at") val nextAttemptAt: Long,
+    @ColumnInfo(name = "last_error_code") val lastErrorCode: String?,
+)

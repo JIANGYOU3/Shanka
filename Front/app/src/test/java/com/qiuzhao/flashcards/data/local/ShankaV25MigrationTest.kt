@@ -201,6 +201,123 @@ class ShankaV25MigrationTest {
         db.close()
     }
 
+    @Test
+    fun test_migration_v3_to_v4_creates_deletion_outbox_and_preserves_facts() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = File(context.cacheDir, "migration-v3-v4-${System.nanoTime()}.db")
+
+        // A v3 database with one cached fact: opening it through the production builder must
+        // run MIGRATIONS(3→4) and validate the resulting schema against the exported entities.
+        createV3Database(dbFile)
+        insertV3Fact(dbFile)
+
+        val migrated = ShankaV25Database.buildOnFile(context, dbFile.absolutePath)
+        val cache = V25CacheStore(migrated)
+        assertEquals("the pre-existing project survives the migration", 1, cache.readProjects("u-1").size)
+
+        // The brand-new tombstone table accepts writes, keeps the scope hidden from rewrites
+        // and reads back through the coordinator-facing API.
+        cache.enqueueProjectDeletion(
+            userId = "u-1",
+            projectId = "p-1",
+            retainDecks = true,
+            idempotencyKey = "migration-key",
+            now = 5_000L,
+        )
+        assertTrue(cache.readProjects("u-1").isEmpty())
+        val pending = cache.allPendingDeletions("u-1").single()
+        assertEquals(V25CacheStore.projectDeletionOperationId("p-1"), pending.operationId)
+        assertEquals("migration-key", pending.idempotencyKey)
+        cache.completeDeletion("u-1", pending.operationId)
+        assertTrue(cache.allPendingDeletions("u-1").isEmpty())
+        migrated.close()
+    }
+
+    /**
+     * The v3 schema is the current projection minus `deletion_outbox`: every v2 table plus the
+     * `generation_tasks` projection (v3's own addition), verbatim from `3.json`.
+     */
+    private fun createV3Database(dbFile: File) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(3))
+                .build(),
+        )
+        val db = helper.writableDatabase
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `projects` (`user_id` TEXT NOT NULL, `project_id` TEXT NOT NULL, `name` TEXT NOT NULL, `status` TEXT NOT NULL, `chapter_count` INTEGER NOT NULL, `deck_count` INTEGER NOT NULL, `task_count` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `version` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `project_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `project_materials` (`user_id` TEXT NOT NULL, `material_id` TEXT NOT NULL, `project_id` TEXT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `status` TEXT NOT NULL, `error_code` TEXT, `size_bytes` INTEGER, `char_count` INTEGER, `created_at` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `material_id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_project_materials_user_id_project_id` ON `project_materials` (`user_id`, `project_id`)",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `project_chapters` (`user_id` TEXT NOT NULL, `chapter_id` TEXT NOT NULL, `project_id` TEXT NOT NULL, `material_id` TEXT NOT NULL, `name` TEXT NOT NULL, `start_page` INTEGER, `end_page` INTEGER, `position` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `chapter_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `generation_tasks` (`user_id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `project_id` TEXT, `deck_id` TEXT, `retry_of_task_id` TEXT, `status` TEXT NOT NULL, `internal_stage` TEXT, `generated_card_count` INTEGER NOT NULL, `error_code` TEXT, `failure_stage` TEXT, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `task_id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_generation_tasks_user_id_project_id` ON `generation_tasks` (`user_id`, `project_id`)",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `decks` (`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, `name` TEXT NOT NULL, `project_id` TEXT, `card_count` INTEGER NOT NULL, `due_count` INTEGER NOT NULL, `mastered_card_count` INTEGER NOT NULL, `review_count` INTEGER NOT NULL, `mastery_ratio` REAL, `not_started_count` INTEGER NOT NULL, `learning_count` INTEGER NOT NULL, `relearning_count` INTEGER NOT NULL, `consolidating_count` INTEGER NOT NULL, `mastered_count` INTEGER NOT NULL, `review_event_count` INTEGER NOT NULL, `last_studied_at` INTEGER, PRIMARY KEY(`user_id`, `deck_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `cards` (`user_id` TEXT NOT NULL, `card_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, `front` TEXT NOT NULL, `back` TEXT NOT NULL, `card_type` TEXT NOT NULL, `position` INTEGER NOT NULL, `target_difficulty` TEXT, `chapter_id` TEXT, `source_task_id` TEXT, `publication_state` TEXT, `version` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `card_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `review_states` (`user_id` TEXT NOT NULL, `card_id` TEXT NOT NULL, `state` TEXT NOT NULL, `due` INTEGER, `synced_at` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `card_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `review_queue` (`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `card_id` TEXT NOT NULL, PRIMARY KEY(`user_id`, `deck_id`, `position`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `study_plan` (`user_id` TEXT NOT NULL, `configured` INTEGER NOT NULL, `current_project_id` TEXT, `selected_deck_ids` TEXT NOT NULL, `daily_new_goal` INTEGER NOT NULL, `daily_review_goal` INTEGER NOT NULL, `updated_at` INTEGER, PRIMARY KEY(`user_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `today_plan` (`user_id` TEXT NOT NULL, `study_date` TEXT NOT NULL, `timezone` TEXT NOT NULL, `current_project_id` TEXT, `current_project_name` TEXT, `daily_goal` INTEGER NOT NULL, `today_completed_count` INTEGER NOT NULL, `due_count` INTEGER NOT NULL, `main_plan_remaining` INTEGER NOT NULL, `backlog_count` INTEGER NOT NULL, `daily_new_goal` INTEGER NOT NULL, `daily_review_goal` INTEGER NOT NULL, `new_completed_count` INTEGER NOT NULL, `review_completed_count` INTEGER NOT NULL, `new_remaining_count` INTEGER NOT NULL, `review_remaining_count` INTEGER NOT NULL, `core_target_count` INTEGER NOT NULL, `plan_configured` INTEGER NOT NULL, `selected_deck_ids` TEXT NOT NULL, PRIMARY KEY(`user_id`, `study_date`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `today_plan_cards` (`user_id` TEXT NOT NULL, `study_date` TEXT NOT NULL, `position` INTEGER NOT NULL, `card_id` TEXT NOT NULL, `plan_kind` TEXT, `is_new` INTEGER NOT NULL, `hidden` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `study_date`, `position`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `project_progress` (`user_id` TEXT NOT NULL, `project_id` TEXT NOT NULL, `card_count` INTEGER NOT NULL, `not_started_count` INTEGER NOT NULL, `learning_count` INTEGER NOT NULL, `relearning_count` INTEGER NOT NULL, `consolidating_count` INTEGER NOT NULL, `mastered_count` INTEGER NOT NULL, `due_count` INTEGER NOT NULL, `review_event_count` INTEGER NOT NULL, `last_studied_at` INTEGER, PRIMARY KEY(`user_id`, `project_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `dashboard_snapshot` (`user_id` TEXT NOT NULL, `has_data` INTEGER NOT NULL, `week_start_date` TEXT NOT NULL, `weekly_activity` TEXT NOT NULL, `weekly_total` INTEGER NOT NULL, `weekly_change_rate` REAL, `weekly_goal` INTEGER NOT NULL, `weekly_completed_count` INTEGER NOT NULL, `weekly_goal_progress` REAL, `recall_accuracy` REAL, `first_answer_accuracy` REAL, `retention_rate` REAL, `streak_days` INTEGER NOT NULL, `mastered_card_count` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`user_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `cache_metadata` (`user_id` TEXT NOT NULL, `resource_key` TEXT NOT NULL, `server_version` TEXT, `server_updated_at` INTEGER, `fetched_at` INTEGER NOT NULL, `schema_version` INTEGER NOT NULL, PRIMARY KEY(`user_id`, `resource_key`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `review_outbox` (`user_id` TEXT NOT NULL, `client_event_id` TEXT NOT NULL, `card_id` TEXT NOT NULL, `rating` TEXT NOT NULL, `idempotency_key` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `status` TEXT NOT NULL, `attempt_count` INTEGER NOT NULL, `next_attempt_at` INTEGER NOT NULL, `last_error_code` TEXT, PRIMARY KEY(`user_id`, `client_event_id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_review_outbox_user_id_idempotency_key` ON `review_outbox` (`user_id`, `idempotency_key`)",
+        )
+        db.close()
+    }
+
+    private fun insertV3Fact(dbFile: File) {
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(3))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "INSERT INTO projects VALUES ('u-1', 'p-1', 'v3 项目', 'READY', 0, 0, 0, 100, 200, 7)",
+        )
+        db.close()
+    }
+
     private fun assertNullPages(project: V25LearningProject) {
         val textChapter = project.chapters.single { it.id == "ch-text" }
         assertEquals(null, textChapter.startPage)

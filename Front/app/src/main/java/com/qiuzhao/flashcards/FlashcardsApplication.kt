@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.qiuzhao.flashcards.data.local.ShankaV25Database
 import com.qiuzhao.flashcards.data.local.V25CacheStore
+import com.qiuzhao.flashcards.data.offline.DeletionSyncCoordinator
 import com.qiuzhao.flashcards.data.offline.ObservationEngine
 import com.qiuzhao.flashcards.data.offline.OfflineFirstV25Repository
 import com.qiuzhao.flashcards.data.offline.RefreshPolicy
@@ -18,6 +19,7 @@ import com.qiuzhao.flashcards.data.remote.v25.RemoteV25Repository
 import com.qiuzhao.flashcards.data.session.KeystoreSessionStore
 import com.qiuzhao.flashcards.data.session.SessionStore
 import com.qiuzhao.flashcards.data.session.loadQuietly
+import com.qiuzhao.flashcards.work.DeletionSyncWorker
 import com.qiuzhao.flashcards.work.ProcessingSyncWorker
 import com.qiuzhao.flashcards.work.ReviewSyncWorker
 import java.time.Clock
@@ -67,13 +69,24 @@ class AppContainer(context: Context) {
         onAuthoritativeRefreshNeeded = ::authoritativeRefresh,
     )
 
-    /** The repository the AppViewModel consumes: offline-first reads + outbox ratings. */
+    val deletionSync: DeletionSyncCoordinator = DeletionSyncCoordinator(
+        remote = remoteV25,
+        cache = cache,
+        sessionUser = { sessionStore.loadQuietly()?.user?.userId },
+        clock = clock,
+        lanes = lanes,
+        scope = applicationScope,
+        onAuthoritativeRefreshNeeded = ::authoritativeRefresh,
+    )
+
+    /** The repository the AppViewModel consumes: offline-first reads + outbox ratings/deletions. */
     val v25Repository: OfflineFirstV25Repository = OfflineFirstV25Repository(
         remote = remoteV25,
         cache = cache,
         sessionStore = sessionStore,
         lanes = lanes,
         reviewSync = reviewSync,
+        deletionSync = deletionSync,
         clock = clock,
     )
 
@@ -99,6 +112,7 @@ class AppContainer(context: Context) {
         if (userId.isBlank()) return
         v25Repository.currentPolicy = RefreshPolicy.FORCE
         try {
+            runCatching { v25Repository.listProjects() }
             runCatching { v25Repository.listDecks() }
             runCatching { v25Repository.todayPlan() }
             runCatching { v25Repository.statsDashboard() }
@@ -114,6 +128,7 @@ class AppContainer(context: Context) {
         observationEngine.start()
         observationEngine.reconcile()
         ReviewSyncWorker.enqueue(appContext, userId)
+        DeletionSyncWorker.enqueue(appContext, userId)
         ProcessingSyncWorker.enqueueOneTime(appContext)
         ProcessingSyncWorker.enqueuePeriodic(appContext)
     }

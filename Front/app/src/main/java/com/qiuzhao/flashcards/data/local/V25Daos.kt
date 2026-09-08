@@ -60,6 +60,12 @@ interface ProjectDao {
 
     @Query("DELETE FROM project_chapters WHERE user_id = :userId AND project_id = :projectId")
     suspend fun deleteChaptersOf(userId: String, projectId: String)
+
+    @Query("DELETE FROM project_materials WHERE user_id = :userId AND material_id = :materialId")
+    suspend fun deleteMaterial(userId: String, materialId: String)
+
+    @Query("DELETE FROM project_chapters WHERE user_id = :userId AND material_id = :materialId")
+    suspend fun deleteChaptersOfMaterial(userId: String, materialId: String)
 }
 
 @Dao
@@ -75,6 +81,9 @@ interface DeckDao {
 
     @Query("DELETE FROM decks WHERE user_id = :userId")
     suspend fun deleteDecks(userId: String)
+
+    @Query("DELETE FROM decks WHERE user_id = :userId AND project_id IN (:projectIds)")
+    suspend fun deleteDecksOfProjects(userId: String, projectIds: Set<String>)
 }
 
 /**
@@ -322,6 +331,49 @@ interface ReviewOutboxDao {
         nextAttemptAt: Long,
         errorCode: String?,
     )
+}
+
+@Dao
+interface DeletionOutboxDao {
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(entry: DeletionOutboxEntity)
+
+    /** Strict createdAt order (operation_id as the deterministic tiebreaker). */
+    @Query(
+        "SELECT * FROM deletion_outbox WHERE user_id = :userId AND status = 'PENDING' " +
+            "AND next_attempt_at <= :now ORDER BY created_at, operation_id LIMIT 1",
+    )
+    suspend fun nextDue(userId: String, now: Long): DeletionOutboxEntity?
+
+    @Query("SELECT * FROM deletion_outbox WHERE user_id = :userId AND status = 'PENDING'")
+    suspend fun allPending(userId: String): List<DeletionOutboxEntity>
+
+    @Query("SELECT * FROM deletion_outbox WHERE user_id = :userId AND status = 'PENDING'")
+    fun observePending(userId: String): Flow<List<DeletionOutboxEntity>>
+
+    /** A tombstone leaves no trace once its server DELETE is confirmed. */
+    @Query(
+        "DELETE FROM deletion_outbox WHERE user_id = :userId AND operation_id = :operationId",
+    )
+    suspend fun delete(userId: String, operationId: String)
+
+    @Query(
+        "UPDATE deletion_outbox SET attempt_count = :attemptCount, next_attempt_at = :nextAttemptAt, " +
+            "last_error_code = :errorCode WHERE user_id = :userId AND operation_id = :operationId",
+    )
+    suspend fun scheduleRetry(
+        userId: String,
+        operationId: String,
+        attemptCount: Int,
+        nextAttemptAt: Long,
+        errorCode: String?,
+    )
+
+    @Query(
+        "UPDATE deletion_outbox SET status = 'FAILED', last_error_code = :errorCode " +
+            "WHERE user_id = :userId AND operation_id = :operationId",
+    )
+    suspend fun markFailed(userId: String, operationId: String, errorCode: String)
 }
 
 // --- single-query JOIN projections -----------------------------------------------------------------

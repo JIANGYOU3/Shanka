@@ -5,9 +5,13 @@ import com.qiuzhao.flashcards.domain.v25.V25Repository
 import com.qiuzhao.flashcards.domain.v25.V25Result
 import java.io.InputStream
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * One staged material of a two-step project creation (contract V25-D-29/30). PDF uploads carry
@@ -48,12 +52,218 @@ sealed interface MaterialUpload {
     }
 }
 
+/** UI-facing phase of one background material upload after the create step. */
+enum class MaterialUploadPhase { UPLOADING, FAILED, DONE }
+
+/** One material's live upload state, rendered on the post-creation configuration screen. */
+data class MaterialUploadState(
+    val draftId: String,
+    val name: String,
+    val isPdf: Boolean,
+    val phase: MaterialUploadPhase,
+    val errorCode: String? = null,
+)
+
+/**
+ * The two-step creation, split for latency (contract V25-D-29): [submit] runs only step one —
+ * the fast JSON POST /projects — and returns the projectId immediately, so the caller can
+ * navigate while the bytes are still travelling. Step two (every staged material, each with its
+ * own fixed idempotency key) then runs in the injected [scope], materials in PARALLEL — each
+ * add carries its own key, and the server treats concurrent material adds as independent
+ * idempotent operations.
+ *
+ * Attempt state survives across screens (the scope outlives them) so a retry replays only the
+ * materials that never landed. A fresh creation while an older one still uploads is a distinct
+ * attempt under its own projectId. After a full process death the attempt is gone by design;
+ * the caller refreshes server state instead of replaying blindly.
+ */
+class ProjectCreationCoordinator(
+    private val repository: V25Repository,
+    private val scope: CoroutineScope,
+    /** Fired on the scope after each material settles DONE, for a fire-and-forget refresh. */
+    private val onUploadsChanged: suspend (projectId: String) -> Unit = {},
+) {
+
+    companion object {
+        /** A guarded re-entry while a create step is still running; callers ignore it silently. */
+        const val IN_FLIGHT_CODE = "PROJECT_CREATION_IN_FLIGHT"
+    }
+
+    /** The create-step attempt, kept until its POST /projects lands so a retry reuses the key. */
+    private var pendingCreate: ProjectCreationAttempt? = null
+
+    /** Per-project upload bookkeeping, keyed by the created projectId. */
+    private val runningUploads = mutableMapOf<String, ProjectCreationAttempt>()
+
+    private val _submitting = MutableStateFlow(false)
+    val creating: StateFlow<Boolean> = _submitting.asStateFlow()
+
+    private val _uploadStates = MutableStateFlow<Map<String, List<MaterialUploadState>>>(emptyMap())
+
+    /** Live per-project material upload states (only in-flight/failed sets are present). */
+    val uploadStates: StateFlow<Map<String, List<MaterialUploadState>>> = _uploadStates.asStateFlow()
+
+    /** Emits the projectId each time one of its materials lands; callers re-read the lists. */
+    val materialLanded = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+    /**
+     * Runs (or resumes) the create step for [name] and [uploads] and returns the created project
+     * id right away — material uploads continue in [scope]. Resuming reuses the stored attempt's
+     * fixed create key; starting a different creation generates a fresh one.
+     */
+    suspend fun submit(name: String, uploads: List<MaterialUpload>): V25Result<String> {
+        if (_submitting.value) return V25Result.Failure(IN_FLIGHT_CODE, null, null)
+        val normalized = name.trim()
+        val fingerprint = uploads.map { it.fingerprint }
+        val attempt = pendingCreate
+            ?.takeIf { it.name == normalized && it.uploads.map(MaterialUpload::fingerprint) == fingerprint }
+            ?: ProjectCreationAttempt(
+                name = normalized,
+                uploads = uploads,
+                createProjectKey = UUID.randomUUID().toString(),
+                materialKeys = uploads.associate { upload -> upload.draftId to UUID.randomUUID().toString() },
+            ).also { pendingCreate = it }
+        _submitting.value = true
+        val projectId = try {
+            // Step one: the EMPTY project. The JSON body carries only the name; no bytes travel here.
+            when (val created = repository.createProject(attempt.name, attempt.createProjectKey)) {
+                is V25Result.Success -> created.value.projectId
+                is V25Result.Failure -> return created
+            }
+        } finally {
+            _submitting.value = false
+        }
+        pendingCreate = null
+        runningUploads[projectId] = attempt
+        publishStates(projectId)
+        startUploads(projectId)
+        return V25Result.Success(projectId)
+    }
+
+    /** Retries only the FAILED uploads of [projectId]; the fixed keys replay identical requests. */
+    fun retryUploads(projectId: String) {
+        val attempt = runningUploads[projectId] ?: return
+        startUploads(projectId, onlyFailed = true, attempt = attempt)
+    }
+
+    /**
+     * Starts a new creation form: drop a stale not-yet-created attempt so the next submit
+     * generates a fresh key. In-flight material uploads of other projects keep running and
+     * stay visible on their own screens.
+     */
+    fun resetPendingCreate() {
+        pendingCreate = null
+    }
+
+    /** Clears every attempt and state so the next creation starts fresh (sign-out). */
+    fun reset() {
+        pendingCreate = null
+        runningUploads.clear()
+        _uploadStates.value = emptyMap()
+    }
+
+    private fun startUploads(projectId: String, onlyFailed: Boolean = false, attempt: ProjectCreationAttempt? = null) {
+        val current = attempt ?: runningUploads[projectId] ?: return
+        val targets = current.uploads.filter { upload ->
+            val state = _uploadStates.value[projectId]?.firstOrNull { it.draftId == upload.draftId }
+            when {
+                onlyFailed -> state?.phase == MaterialUploadPhase.FAILED
+                else -> upload.draftId !in current.uploadedDraftIds &&
+                    state?.phase != MaterialUploadPhase.DONE
+            }
+        }
+        if (targets.isEmpty()) {
+            finishProjectIfSettled(projectId)
+            return
+        }
+        setPhase(projectId, targets.map { it.draftId }, MaterialUploadPhase.UPLOADING, null)
+        scope.launch {
+            kotlinx.coroutines.coroutineScope {
+                targets.forEach { upload ->
+                    launch {
+                        val key = current.materialKeys[upload.draftId] ?: UUID.randomUUID().toString()
+                        val result = try {
+                            when (upload) {
+                                is MaterialUpload.Pdf ->
+                                    upload.openStream()?.let { input ->
+                                        input.use { content ->
+                                            repository.addProjectMaterialPdf(projectId, upload.materialName, content, key)
+                                        }
+                                    } ?: V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选文件")
+                                is MaterialUpload.Text ->
+                                    repository.addProjectMaterialText(projectId, upload.materialName, upload.content, key)
+                            }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (failure: Throwable) {
+                            V25Result.Failure(V25ErrorCodes.NETWORK_UNAVAILABLE)
+                        }
+                        when (result) {
+                            is V25Result.Success -> {
+                                markLanded(projectId, upload.draftId)
+                                materialLanded.tryEmit(projectId)
+                            }
+                            is V25Result.Failure ->
+                                setPhase(projectId, listOf(upload.draftId), MaterialUploadPhase.FAILED, result.code)
+                        }
+                    }
+                }
+            }
+            finishProjectIfSettled(projectId)
+            onUploadsChanged(projectId)
+        }
+    }
+
+    private fun markLanded(projectId: String, draftId: String) {
+        _uploadStates.update { all ->
+            val states = all[projectId].orEmpty()
+            all + (projectId to states.map { state ->
+                if (state.draftId == draftId) state.copy(phase = MaterialUploadPhase.DONE, errorCode = null) else state
+            })
+        }
+        runningUploads[projectId]?.let { attempt ->
+            runningUploads[projectId] = attempt.copy(uploadedDraftIds = attempt.uploadedDraftIds + draftId)
+        }
+    }
+
+    private fun setPhase(projectId: String, draftIds: List<String>, phase: MaterialUploadPhase, errorCode: String?) {
+        _uploadStates.update { all ->
+            val states = all[projectId].orEmpty()
+            all + (projectId to states.map { state ->
+                if (state.draftId in draftIds) state.copy(phase = phase, errorCode = errorCode) else state
+            })
+        }
+    }
+
+    /** Once every material of a project is DONE, drop its state — nothing left to render. */
+    private fun finishProjectIfSettled(projectId: String) {
+        val states = _uploadStates.value[projectId].orEmpty()
+        if (states.isNotEmpty() && states.all { it.phase == MaterialUploadPhase.DONE }) {
+            _uploadStates.update { it - projectId }
+            runningUploads.remove(projectId)
+        }
+    }
+
+    private fun publishStates(projectId: String) {
+        val attempt = runningUploads[projectId] ?: return
+        val states = attempt.uploads.map { upload ->
+            val done = upload.draftId in attempt.uploadedDraftIds
+            MaterialUploadState(
+                draftId = upload.draftId,
+                name = upload.materialName,
+                isPdf = upload is MaterialUpload.Pdf,
+                phase = if (done) MaterialUploadPhase.DONE else MaterialUploadPhase.UPLOADING,
+            )
+        }
+        _uploadStates.update { it + (projectId to states) }
+    }
+}
+
 /**
  * The in-flight state of one project-creation attempt. It owns the attempt's fixed UUIDs and
  * remembers the created project id plus every finished material upload, so a retry after a lost
  * response replays only the failed step — it can never create a second project or duplicate a
- * material. After a full process death the attempt is gone by design; the caller refreshes
- * server state instead of replaying blindly.
+ * material.
  */
 data class ProjectCreationAttempt(
     val name: String,
@@ -63,92 +273,3 @@ data class ProjectCreationAttempt(
     val createdProjectId: String? = null,
     val uploadedDraftIds: Set<String> = emptySet(),
 )
-
-/**
- * Runs one user project creation as at most 1 + N idempotent server steps (create the EMPTY
- * project, then attach every staged material) and keeps the attempt state so a retry replays
- * only the failed step. This is the network shape of the "两步创建" contract: one POST /projects
- * with a JSON name body, then one POST materials/pdf|text per staged material.
- */
-class ProjectCreationCoordinator(private val repository: V25Repository) {
-
-    companion object {
-        /** A guarded re-entry while a creation is still running; callers ignore it silently. */
-        const val IN_FLIGHT_CODE = "PROJECT_CREATION_IN_FLIGHT"
-    }
-
-    private val _attempt = MutableStateFlow<ProjectCreationAttempt?>(null)
-    val attempt: StateFlow<ProjectCreationAttempt?> = _attempt.asStateFlow()
-
-    private val _creating = MutableStateFlow(false)
-    val creating: StateFlow<Boolean> = _creating.asStateFlow()
-
-    /**
-     * Submits (or resumes) the creation for [name] and [uploads] and returns the created project
-     * id. Resuming reuses the stored attempt's keys, the created project and the finished
-     * uploads; starting a different creation generates fresh keys.
-     */
-    suspend fun submit(name: String, uploads: List<MaterialUpload>): V25Result<String> {
-        if (_creating.value) return V25Result.Failure(IN_FLIGHT_CODE, null, null)
-        val normalized = name.trim()
-        val fingerprint = uploads.map { it.fingerprint }
-        val attempt = _attempt.value
-            ?.takeIf { it.name == normalized && it.uploads.map(MaterialUpload::fingerprint) == fingerprint }
-            ?: ProjectCreationAttempt(
-                name = normalized,
-                uploads = uploads,
-                createProjectKey = UUID.randomUUID().toString(),
-                materialKeys = uploads.associate { upload -> upload.draftId to UUID.randomUUID().toString() },
-            ).also { _attempt.value = it }
-        _creating.value = true
-        return try {
-            run(attempt)
-        } finally {
-            _creating.value = false
-        }
-    }
-
-    /** Clears a finished or abandoned attempt so the next creation starts fresh. */
-    fun reset() {
-        _attempt.value = null
-    }
-
-    private suspend fun run(attempt: ProjectCreationAttempt): V25Result<String> {
-        var projectId = attempt.createdProjectId
-        if (projectId == null) {
-            // Step one: the EMPTY project. The JSON body carries only the name; no bytes travel here.
-            projectId = when (val created = repository.createProject(attempt.name, attempt.createProjectKey)) {
-                is V25Result.Success -> created.value.projectId
-                is V25Result.Failure -> return created
-            }
-            // Remember the project so a retry never creates a second one.
-            _attempt.value = attempt.copy(createdProjectId = projectId)
-        }
-        var current = _attempt.value ?: attempt.copy(createdProjectId = projectId)
-        // Step two: attach every material that has not landed yet, each with its own fixed key.
-        for (upload in attempt.uploads) {
-            if (upload.draftId in current.uploadedDraftIds) continue
-            val key = current.materialKeys[upload.draftId] ?: UUID.randomUUID().toString()
-            val result = when (upload) {
-                is MaterialUpload.Pdf -> {
-                    val input = upload.openStream()
-                        ?: return V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选文件")
-                    input.use { content ->
-                        repository.addProjectMaterialPdf(projectId, upload.materialName, content, key)
-                    }
-                }
-                is MaterialUpload.Text ->
-                    repository.addProjectMaterialText(projectId, upload.materialName, upload.content, key)
-            }
-            when (result) {
-                is V25Result.Success -> {
-                    current = current.copy(uploadedDraftIds = current.uploadedDraftIds + upload.draftId)
-                    _attempt.value = current
-                }
-                is V25Result.Failure -> return result
-            }
-        }
-        _attempt.value = null
-        return V25Result.Success(projectId)
-    }
-}

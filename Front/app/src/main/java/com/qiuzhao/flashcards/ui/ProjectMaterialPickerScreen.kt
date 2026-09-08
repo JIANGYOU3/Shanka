@@ -166,17 +166,11 @@ private fun ProjectPickerGroup(
             MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24 * scale), filled = true)
             AppText(title, AppTextRole.SectionTitle, color = theme.text, designScale = scale)
         }
-        Surface(color = Color.White, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.fillMaxWidth()) {
-            AppText(
-                if (hasMaterials) "右滑卡片可编辑文件名称/删除文件。点击卡片完成选择"
-                else "暂无资料。点击下方“添加新资料”按钮来添加资料",
-                AppTextRole.Supporting,
-                modifier = Modifier.padding((24 * scale).dp),
-                color = theme.text,
-                designScale = scale
-            )
-        }
         if (hasMaterials) Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp), content = content)
+        CardHint(
+            if (hasMaterials) "点击可选中文件。右滑可编辑/删除。" else "暂无资料",
+            designScale = scale
+        )
     }
 }
 

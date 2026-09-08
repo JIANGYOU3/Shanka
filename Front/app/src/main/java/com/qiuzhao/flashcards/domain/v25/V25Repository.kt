@@ -106,15 +106,15 @@ interface V25Repository {
 
     /**
      * DELETE /projects/{project_id}/materials/{material_id}?retain_cards= — three-tier delete;
-     * the server silently cancels tasks referencing the material and returns the re-aggregated
-     * project (deleting the last material turns it EMPTY and it stays alive).
+     * the server silently cancels tasks referencing the material. Returns Unit: callers learn
+     * the outcome from the projects refresh, never from this payload.
      */
     suspend fun deleteProjectMaterial(
         projectId: String,
         materialId: String,
         retainCards: Boolean = true,
         idempotencyKey: String? = null,
-    ): V25Result<V25LearningProject>
+    ): V25Result<Unit>
 
     /** POST /projects/{project_id}/materials/{material_id}/replace — in-place re-upload of a FAILED PDF material. */
     suspend fun replaceProjectMaterialPdf(

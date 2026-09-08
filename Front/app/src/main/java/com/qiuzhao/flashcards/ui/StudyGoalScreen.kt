@@ -1,9 +1,18 @@
 package com.qiuzhao.flashcards.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
@@ -29,7 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,24 +47,30 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
- * Figma 977:4937 — the one plan-configuration page. Every user manages
- * 选择项目 / 选择卡组 / 每日目标 together: a configured user arrives with the real
- * plan's project, decks and goals pre-filled and saves them through the one
- * atomic PUT /study/plan, while a first-time user starts with nothing picked.
+ * Figma 977:4937 — the one plan-configuration page. 每日目标 carries the two
+ * 72dp wheels; 范围 shows every created project as a checked card whose drawer
+ * reveals its decks. A configured user arrives with the real plan's decks and
+ * goals pre-filled and saves through the one atomic PUT /study/plan, while a
+ * first-time user starts with nothing picked.
  */
 @Composable
 internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
@@ -66,8 +81,12 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     var newGoal by remember { mutableIntStateOf(10) }
     var reviewGoal by remember { mutableIntStateOf(40) }
     var seeded by remember { mutableStateOf(false) }
-    var selectedProjectId by remember { mutableStateOf<String?>(null) }
+    // 范围 selection is two sets: a whole-checked project implies all of its
+    // decks; the drawer's individually picked decks live beside it. The checked
+    // circle derives from either, so picking one deck re-checks its project.
+    var wholeProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedDeckIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var expandedProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshStudyPlan()
@@ -79,37 +98,33 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
             newGoal = plan.dailyNewGoal
             reviewGoal = plan.dailyReviewGoal
             if (plan.configured) {
-                // Restore the real current selection; a fresh user picks from scratch.
-                selectedProjectId = plan.currentProjectId
+                // Restore the real current deck picks; a fresh user picks from scratch.
                 selectedDeckIds = plan.selectedDeckIds.toSet()
             }
             seeded = true
         }
     }
-    // Switching project can only keep deck selections that belong to it.
-    LaunchedEffect(selectedProjectId, decks) {
-        if (selectedProjectId != null) {
-            selectedDeckIds = selectedDeckIds
-                .filter { id -> decks.any { it.id == id && it.projectId == selectedProjectId } }
-                .toSet()
-        }
-    }
 
-    val configured = plan.configured
-    val project = projects.firstOrNull { it.id == selectedProjectId }
-    val projectDecks = decks.filter { it.projectId == selectedProjectId }
-    val independentDecks = decks.filter { it.projectId == null && it.cardCount > 0 }
+    val learnableDecksByProject = projects.associate { project ->
+        project.id to decks.filter { it.projectId == project.id && it.cardCount > 0 }
+    }
+    val effectiveDeckIds = decks
+        .filter { it.cardCount > 0 && (it.projectId in wholeProjectIds || it.id in selectedDeckIds) }
+        .map { it.id }
+    val primaryProjectId = (
+        projects.firstOrNull { it.id in wholeProjectIds }
+            ?: projects.firstOrNull { project ->
+                decks.any { it.projectId == project.id && it.id in selectedDeckIds }
+            }
+        )?.id.orEmpty()
     val validGoals = newGoal in 0..200 && reviewGoal in 0..200 && newGoal % 10 == 0 &&
         reviewGoal % 10 == 0 && newGoal + reviewGoal > 0
-    val hasLearnableSelection = selectedDeckIds.any { id ->
-        projectDecks.any { it.id == id && it.cardCount > 0 }
-    }
     val canSave = studyGoalCanSave(
         seeded = seeded,
         saving = plan.saving,
         validGoals = validGoals,
-        hasProject = project != null,
-        hasLearnableSelection = hasLearnableSelection,
+        hasProject = primaryProjectId.isNotEmpty(),
+        hasLearnableSelection = effectiveDeckIds.isNotEmpty(),
     )
 
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
@@ -130,73 +145,64 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                             .padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        PlanSectionCard("选择项目", "folder_open") {
+                        PlanSectionCard("每日目标", "edit_calendar") {
+                            GoalRow("每日新学", newGoal) { newGoal = it }
+                            GoalRow("每日复习", reviewGoal) { reviewGoal = it }
+                            if (!validGoals) {
+                                CardHint(
+                                    "目标须为 0～200 的 10 的倍数，且不能同时为 0",
+                                    designScale = 1f,
+                                    error = true
+                                )
+                            }
+                        }
+                        PlanSectionCard("范围", "category_search") {
                             if (projects.isEmpty()) {
                                 PlanSectionHint("先创建项目并导入资料")
                             } else {
-                                projects.forEach { item ->
-                                    PlanChoiceRow(
-                                        title = item.name,
-                                        supporting = null,
-                                        selected = item.id == selectedProjectId,
-                                        onClick = { selectedProjectId = item.id },
-                                    )
-                                }
-                            }
-                        }
-                        PlanSectionCard("选择卡组", "list_alt_check") {
-                            when {
-                                project == null -> PlanSectionHint("先选择一个项目")
-                                !projectDecks.any { it.cardCount > 0 } ->
-                                    PlanSectionHint("先导入资料并生成卡组")
-                                else -> projectDecks.forEach { deck ->
-                                    PlanChoiceRow(
-                                        title = deck.name,
-                                        supporting = "${deck.cardCount} 张卡片 · 待巩固 ${deck.dueCount}",
-                                        selected = deck.id in selectedDeckIds,
-                                        onClick = {
+                                projects.forEach { project ->
+                                    val projectDecks = learnableDecksByProject[project.id].orEmpty()
+                                    ScopeProjectCard(
+                                        projectName = project.name,
+                                        decks = projectDecks,
+                                        checked = project.id in wholeProjectIds ||
+                                            projectDecks.any { it.id in selectedDeckIds },
+                                        expanded = project.id in expandedProjectIds,
+                                        onToggleProject = {
+                                            val isChecked = project.id in wholeProjectIds ||
+                                                projectDecks.any { it.id in selectedDeckIds }
+                                            if (isChecked) {
+                                                wholeProjectIds -= project.id
+                                                selectedDeckIds -= projectDecks.map { it.id }.toSet()
+                                            } else {
+                                                // Collapsed or not, checking a project implies
+                                                // every deck under it (Figma 范围 default).
+                                                wholeProjectIds += project.id
+                                            }
+                                        },
+                                        onToggleExpand = {
+                                            if (project.id in expandedProjectIds) {
+                                                expandedProjectIds -= project.id
+                                            } else {
+                                                expandedProjectIds += project.id
+                                                // Opening the drawer switches the project to
+                                                // manual mode: every deck starts unselected.
+                                                wholeProjectIds -= project.id
+                                                selectedDeckIds -= projectDecks.map { it.id }.toSet()
+                                            }
+                                        },
+                                        onToggleDeck = { deck ->
                                             selectedDeckIds = if (deck.id in selectedDeckIds) {
                                                 selectedDeckIds - deck.id
                                             } else {
                                                 selectedDeckIds + deck.id
                                             }
                                         },
+                                        deckChecked = {
+                                            it.id in selectedDeckIds || project.id in wholeProjectIds
+                                        },
                                     )
                                 }
-                            }
-                            if (project != null && independentDecks.isNotEmpty()) {
-                                AppText(
-                                    "独立卡组", AppTextRole.Label,
-                                    color = AppColors.TextIconDark.copy(alpha = .6f)
-                                )
-                                independentDecks.forEach { deck ->
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            AppText(deck.name, AppTextRole.CardTitle, color = AppColors.TextIconDark)
-                                            AppText(
-                                                "${deck.cardCount} 张卡片", AppTextRole.Supporting,
-                                                color = AppColors.TextIconDark.copy(alpha = .6f)
-                                            )
-                                        }
-                                        TextButton(onClick = {
-                                            viewModel.attachDeckToProject(project.id, deck.id)
-                                        }) { Text("归入当前项目") }
-                                    }
-                                }
-                            }
-                        }
-                        PlanSectionCard("每日目标", "edit_calendar") {
-                            GoalRow("每日新学", newGoal) { newGoal = it }
-                            GoalRow("每日复习", reviewGoal) { reviewGoal = it }
-                            if (!validGoals) {
-                                AppText(
-                                    "目标须为 0～200 的 10 的倍数，且不能同时为 0",
-                                    AppTextRole.Supporting, color = MaterialTheme.colorScheme.error
-                                )
                             }
                         }
                         uiMessage?.let { message ->
@@ -214,12 +220,12 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                     // One atomic save of the whole form; a configured user's picks were
                     // seeded from the loaded plan, so an untouched save preserves them.
                     viewModel.saveStudyPlan(
-                        currentProjectId = selectedProjectId.orEmpty(),
-                        selectedDeckIds = selectedDeckIds.toList(),
+                        currentProjectId = primaryProjectId,
+                        selectedDeckIds = effectiveDeckIds,
                         dailyNewGoal = newGoal,
                         dailyReviewGoal = reviewGoal,
                     ) {
-                        if (configured) nav.popBackStack() else nav.navigate(AppRoute.StudyToday)
+                        if (plan.configured) nav.popBackStack() else nav.navigate(AppRoute.StudyToday)
                     }
                 }
             },
@@ -247,7 +253,7 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
 
 /**
  * The single save gate, shared by first-time and configured users alike: the
- * form needs a picked project and at least one learnable deck, plus valid goals.
+ * form needs a checked project and at least one learnable deck, plus valid goals.
  */
 internal fun studyGoalCanSave(
     seeded: Boolean,
@@ -259,7 +265,7 @@ internal fun studyGoalCanSave(
 
 /** Figma 977:4937 card language: #EEF4FA r36, 20dp padding, 16dp item gap. */
 @Composable
-private fun PlanSectionCard(title: String, icon: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun PlanSectionCard(title: String, icon: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(AppShapeRadius.dp))
@@ -285,51 +291,143 @@ internal fun PlanSectionHeader(title: String, icon: String) {
     }
 }
 
+/** Figma 1050:4956-style empty hint: small gray copy at the card's bottom-left. */
 @Composable
 private fun PlanSectionHint(text: String) {
-    AppText(
-        text, AppTextRole.Body,
-        color = AppColors.TextIconDark.copy(alpha = .6f),
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-    )
+    CardHint(text, designScale = 1f)
 }
 
 /**
- * One selectable row of the first-configuration cards. Selection state follows
- * the shared Figma navigation language: #B0D7FF fill with #003C7A ink for the
- * picked row, white fill with dark ink otherwise.
+ * Figma 1019:6218 — one 范围 project card: #CCE6FF r24 shell, a checked circle
+ * beside the project name, and a 64x35 expand pill whose drawer lists the
+ * project's decks. The drawer opens like a drawer: vertical expand/collapse.
  */
 @Composable
-private fun PlanChoiceRow(title: String, supporting: String?, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = if (selected) AppColors.Blue.primarySecondary else AppColors.Card,
-        contentColor = if (selected) AppColors.Blue.ink else AppColors.TextIconDark,
-        shape = RoundedCornerShape(AppButtonShapeRadius.dp),
-        modifier = Modifier.fillMaxWidth()
+internal fun ScopeProjectCard(
+    projectName: String,
+    decks: List<DeckSummary>,
+    checked: Boolean,
+    expanded: Boolean,
+    onToggleProject: () -> Unit,
+    onToggleExpand: () -> Unit,
+    onToggleDeck: (DeckSummary) -> Unit,
+    deckChecked: (DeckSummary) -> Boolean,
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(AppColors.Blue.surface)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (selected) {
-                MaterialSymbol("check_circle", null, tint = AppColors.Blue.ink, size = fixedSp(20f), filled = true)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onToggleProject),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ScopeCheckCircle(checked = checked, restingColor = AppColors.Blue.background)
+                AppText(projectName, AppTextRole.CardTitle, color = AppColors.TextIconDark)
             }
-            Column(Modifier.weight(1f)) {
-                AppText(title, AppTextRole.CardTitle)
-                supporting?.let {
-                    AppText(it, AppTextRole.Supporting, color = AppColors.TextIconDark.copy(alpha = .6f))
+            if (decks.isNotEmpty()) {
+                Surface(
+                    onClick = onToggleExpand,
+                    color = AppColors.Blue.background,
+                    contentColor = AppColors.TextIconDark,
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.width(64.dp).height(35.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        MaterialSymbol(
+                            if (expanded) "arrow_drop_up" else "arrow_drop_down",
+                            if (expanded) "收起卡组" else "展开卡组",
+                            tint = AppColors.TextIconDark, size = fixedSp(24f), filled = true
+                        )
+                    }
+                }
+            }
+        }
+        if (decks.isNotEmpty()) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(
+                    animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top
+                ) + fadeIn(tween(240)),
+                exit = shrinkVertically(
+                    animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top
+                ) + fadeOut(tween(180))
+            ) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(AppColors.Blue.background, RoundedCornerShape(24.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    decks.forEach { deck ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onToggleDeck(deck) },
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ScopeCheckCircle(
+                                // A whole-checked project implies every deck under it.
+                                checked = deckChecked(deck),
+                                restingColor = AppColors.Blue.surface
+                            )
+                            AppText(deck.name, AppTextRole.CardSubtitle, color = AppColors.TextIconDark)
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/** Figma 977:4937's goal row: a white label pill beside the 72dp value wheel. */
+/**
+ * Drawer-smooth variant of [centreWheelOn]: glides [index] to the centre from
+ * wherever the track currently rests. Items scrolled far out are jumped in
+ * first, then corrected once their metrics are visible.
+ */
+private suspend fun androidx.compose.foundation.lazy.LazyListState.animateCentreOn(index: Int) {
+    val info = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+    if (info == null) {
+        scrollToItem(index)
+        androidx.compose.runtime.withFrameNanos { }
+        return animateCentreOn(index)
+    }
+    val viewportCentre = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+    val delta = info.offset + info.size / 2f - viewportCentre
+    if (abs(delta) > 1f) animateScrollBy(-delta, tween(180, easing = FastOutSlowInEasing))
+}
+
+/**
+ * Figma 1049:4848 — the 35dp round status mark. Checked is the blue circle
+ * with a white check; the resting state keeps a dash on the given tint.
+ */
 @Composable
-private fun GoalRow(label: String, value: Int, onValueChange: (Int) -> Unit) {
+private fun ScopeCheckCircle(checked: Boolean, restingColor: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(35.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (checked) AppColors.Blue.primary else restingColor),
+        contentAlignment = Alignment.Center
+    ) {
+        MaterialSymbol(
+            if (checked) "check" else "check_indeterminate_small",
+            null,
+            tint = if (checked) AppColors.TextIconLight else AppColors.TextIconDark,
+            size = fixedSp(24f), filled = true
+        )
+    }
+}
+
+/** Figma 977:5016's goal row: a white label pill beside the 72dp value wheel. */
+@Composable
+internal fun GoalRow(label: String, value: Int, onValueChange: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Surface(
             color = AppColors.Card,
@@ -351,78 +449,80 @@ private fun GoalRow(label: String, value: Int, onValueChange: (Int) -> Unit) {
 private val goalWheelValues: List<Int> = List(21) { it * 10 }
 
 /**
- * Three-digit values (100+) would overflow the 64dp slot at tier sizes, so the
- * font shrinks proportionally while keeping the tier hierarchy.
- */
-internal fun wheelFontScale(value: Int): Float = if (value >= 100) 0.68f else 1f
-
-/**
- * The 72dp horizontal wheel: values snap to the centre slot; the centred value
- * renders 48sp black, its neighbours 40sp at 75% and the rest 24sp at 45%,
- * matching Figma's Metric/Large / Medium / Small tiers.
+ * The 72dp horizontal wheel (Figma 979:4965): every value renders one uniform
+ * Metric/Large size with a fixed 8dp gap — only the ink differs. The centred
+ * value is black, its neighbours 75% and the rest 45% (fills 34dc0314 /
+ * d0560d9f / 60ac1bcd).
  */
 @Composable
-private fun GoalValueWheel(value: Int, onValueChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun GoalValueWheel(value: Int, onValueChange: (Int) -> Unit, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val latestValue by rememberUpdatedState(value)
     // The wheel only reports settle changes after the initial value scroll has
     // positioned the track, so the first composition can't emit a stray 0.
     var wheelReady by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.clip(RoundedCornerShape(AppButtonShapeRadius.dp)).background(AppColors.Card)) {
-        val slotWidth = 64.dp
-        val density = LocalDensity.current
-        val slotWidthPx = with(density) { slotWidth.toPx() }
-        LaunchedEffect(value, constraints.maxWidth) {
-            listState.centreWheelOn(goalWheelValues.indexOf(value).coerceAtLeast(0))
+        // One frame of layout, then land the seeded value exactly under the
+        // centre hairline before the settle listener opens the value gate.
+        LaunchedEffect(constraints.maxWidth) {
+            androidx.compose.runtime.withFrameNanos { }
+            listState.centreWheelOn(goalWheelValues.indexOf(latestValue).coerceAtLeast(0))
             wheelReady = true
         }
         LazyRow(
             state = listState,
-            flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
-            contentPadding = PaddingValues(horizontal = (maxWidth - slotWidth) / 2),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // Clock-dial physics: every fling damps onto a value centre and can
+            // never rest between ticks (variable value widths snap by centre).
+            flingBehavior = rememberSnapFlingBehavior(listState, snapPosition = SnapPosition.Center),
+            // Wide enough that even the widest (three-digit) value can centre.
+            contentPadding = PaddingValues(horizontal = ((maxWidth - 92.dp).coerceAtLeast(0.dp)) / 2),
             modifier = Modifier.fillMaxSize()
         ) {
             items(goalWheelValues.size) { index ->
                 val itemValue = goalWheelValues[index]
-                val distanceSlots = wheelDistanceSlots(listState, slotWidthPx, index)
+                val distanceSlots = wheelDistanceSlots(listState, index)
                 Box(
-                    Modifier.width(slotWidth).fillMaxHeight().clickable {
-                        scope.launch { listState.animateScrollToItem(index) }
+                    Modifier.fillMaxHeight().clickable {
+                        scope.launch { listState.animateCentreOn(index) }
                     },
                     contentAlignment = Alignment.Center
                 ) {
-                    val spec = when {
-                        distanceSlots == 0 -> WheelTier(48f, 0f, 1f, AppFonts.GoogleSansFlexBold)
-                        distanceSlots <= 1 -> WheelTier(40f, -0.6f, .75f, AppFonts.GoogleSansFlexBold)
-                        else -> WheelTier(24f, 0.6f, .45f, AppFonts.GoogleSansFlexExtraBold)
-                    }
-                    val fontScale = wheelFontScale(itemValue)
                     Text(
                         itemValue.toString(),
-                        color = AppColors.TextIconDark.copy(alpha = spec.alpha),
-                        fontFamily = spec.font,
+                        color = Color.Black.copy(
+                            alpha = when (distanceSlots) {
+                                0 -> 1f
+                                1 -> .75f
+                                else -> .45f
+                            }
+                        ),
+                        fontFamily = AppFonts.GoogleSansFlexBold,
                         fontWeight = FontWeight.Normal,
-                        fontSize = fixedSp(spec.size * fontScale),
-                        lineHeight = fixedSp(spec.size * fontScale),
-                        letterSpacing = fixedSp(spec.letterSpacing),
+                        fontSize = fixedSp(48f),
+                        lineHeight = fixedSp(48f),
                         style = figmaCardTextStyle(),
                         maxLines = 1
                     )
                 }
             }
         }
-        // A scroll settle is the moment the centred value becomes the form value.
-        LaunchedEffect(listState.isScrollInProgress) {
-            if (!listState.isScrollInProgress && wheelReady) {
-                val centred = centredWheelIndex(listState, slotWidthPx)
-                val resolved = goalWheelValues.getOrNull(centred) ?: return@LaunchedEffect
-                if (resolved != value) onValueChange(resolved)
-            }
+        // A scroll settle is the moment the centred value becomes the form
+        // value; the snap fling has already parked it under the hairline.
+        LaunchedEffect(Unit) {
+            snapshotFlow { listState.isScrollInProgress }
+                .filter { !it }
+                .collect {
+                    if (!wheelReady) return@collect
+                    val centred = centredWheelIndex(listState)
+                    val resolved = goalWheelValues.getOrNull(centred) ?: return@collect
+                    if (resolved != latestValue) onValueChange(resolved)
+                }
         }
     }
 }
-
-private data class WheelTier(val size: Float, val letterSpacing: Float, val alpha: Float, val font: androidx.compose.ui.text.font.FontFamily)
 
 /**
  * Lands [index] exactly under the wheel's centre hairline. scrollToItem aligns
@@ -438,7 +538,7 @@ private suspend fun androidx.compose.foundation.lazy.LazyListState.centreWheelOn
     if (kotlin.math.abs(delta) > 1f) scrollBy(delta)
 }
 
-private fun centredWheelIndex(listState: LazyListState, slotWidthPx: Float): Int {
+private fun centredWheelIndex(listState: LazyListState): Int {
     val layoutInfo = listState.layoutInfo
     val visible = layoutInfo.visibleItemsInfo
     if (visible.isEmpty()) return listState.firstVisibleItemIndex
@@ -446,12 +546,27 @@ private fun centredWheelIndex(listState: LazyListState, slotWidthPx: Float): Int
     return visible.minBy { distanceFromCentre(it.offset + it.size / 2f, centre) }.index
 }
 
-private fun wheelDistanceSlots(listState: LazyListState, slotWidthPx: Float, index: Int): Int {
+/**
+ * Tier of [index] measured in neighbour pitches (variable value widths plus the
+ * fixed 8dp gap): 0 = centred, 1 = adjacent, 2+ = outer.
+ */
+private fun wheelDistanceSlots(listState: LazyListState, index: Int): Int {
     val layoutInfo = listState.layoutInfo
-    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return 3
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return 2
     val centre = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
-    val distance = distanceFromCentre(item.offset + item.size / 2f, centre)
-    return (distance / slotWidthPx).toInt()
+    val itemCentre = item.offset + item.size / 2f
+    val prev = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index - 1 }
+    val next = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index + 1 }
+    val pitch = when {
+        prev != null && next != null ->
+            (next.offset + next.size / 2f - (prev.offset + prev.size / 2f)) / 2f
+        next != null -> next.offset + next.size / 2f - itemCentre
+        prev != null -> itemCentre - (prev.offset + prev.size / 2f)
+        else -> item.size.toFloat()
+    }.coerceAtLeast(1f)
+    // Round, not truncate: the fixed 8dp gap eats into each pitch, so an
+    // adjacent value sits below 1.0 pitches away and must still tier as 1.
+    return kotlin.math.round(abs(itemCentre - centre) / pitch).toInt()
 }
 
-private fun distanceFromCentre(itemCentre: Float, viewportCentre: Float): Float = kotlin.math.abs(itemCentre - viewportCentre)
+private fun distanceFromCentre(itemCentre: Float, viewportCentre: Float): Float = abs(itemCentre - viewportCentre)
