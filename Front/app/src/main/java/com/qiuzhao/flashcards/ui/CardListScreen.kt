@@ -244,7 +244,7 @@ internal fun CardListScreen(
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(horizontal = (16 * designScale).dp, vertical = (16 * designScale).dp)
-                    .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
+                    .fillMaxWidth().height((68 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy(((if (mode == CardListMode.EDIT) 16 else 12) * designScale).dp)
             ) {
                 if (mode == CardListMode.EDIT) {

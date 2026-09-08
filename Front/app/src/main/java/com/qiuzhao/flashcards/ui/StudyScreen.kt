@@ -697,7 +697,7 @@ private fun FreeStudy(cards: List<FlashcardEntity>, theme: DeckTheme, onBack: ()
                 FreeStudyCard(displayedCards[page], flipped, { flipped = !flipped }, designScale, theme, Modifier.fillMaxSize())
             }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * designScale).dp).height((60 * designScale).dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * designScale).dp).height((68 * designScale).dp),
                 horizontalArrangement = Arrangement.spacedBy((15 * designScale).dp)
             ) {
                 Surface(

@@ -42,8 +42,7 @@ internal fun ProjectThemedCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    showPriority: Boolean = true
+    onAction: (() -> Unit)? = null
 ) {
     val palette = projectThemedCardPalette(theme, variant)
     Surface(
@@ -62,10 +61,8 @@ internal fun ProjectThemedCard(
                 count = count,
                 countLabel = countLabel,
                 theme = theme,
-                badgeColor = palette.badge,
                 icon = icon,
-                designScale = designScale,
-                showPriority = showPriority
+                designScale = designScale
             )
             FigmaDeckProgressPanel(
                 progress = progress,
@@ -100,76 +97,58 @@ internal fun ProjectThemedCard(
     }
 }
 
+/**
+ * Figma 1130:8438: a 62dp theme icon tile beside the title, with the card
+ * count as the "N cards" subtitle line. The former right-side count badge and
+ * the 高优先级 row were retired with that revision.
+ */
 @Composable
 internal fun ProjectThemedCardHeader(
     title: String,
     count: Int,
     countLabel: String,
     theme: DeckTheme,
-    badgeColor: Color,
     icon: String,
-    designScale: Float,
-    showPriority: Boolean = true
+    designScale: Float
 ) = Row(
     modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp),
+    horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp),
     verticalAlignment = Alignment.CenterVertically
 ) {
-    Row(
-        modifier = Modifier.weight(1f),
-        horizontalArrangement = Arrangement.spacedBy((8 * designScale).dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        color = theme.primary,
+        // Figma 257:6634 uses the same 24dp corner on every colour
+        // variant. A per-theme 16dp fallback made the blue/green icons
+        // visibly too square in both the project list and Home card.
+        shape = RoundedCornerShape((24 * designScale).dp),
+        modifier = Modifier.size((62 * designScale).dp)
     ) {
-        Surface(
-            color = theme.primary,
-            // Figma 257:6634 uses the same 24dp corner on every colour
-            // variant. A per-theme 16dp fallback made the blue/green icons
-            // visibly too square in both the project list and Home card.
-            shape = RoundedCornerShape((24 * designScale).dp),
-            // Latest revision (950:4943): the 62dp icon box fills the header
-            // row whose height is set by the 62dp count badge beside it.
-            modifier = Modifier.size((62 * designScale).dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                MaterialSymbol(icon, null, tint = theme.onPrimary, size = fixedSp(24 * designScale), filled = true)
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy((4 * designScale).dp)
-        ) {
-            AppText(
-                title,
-                AppTextRole.CardTitle,
-                modifier = Modifier.fillMaxWidth(),
-                color = theme.text,
-                designScale = designScale,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (showPriority) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy((4 * designScale).dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MaterialSymbol("brightness_alert", null, tint = AppColors.WarningStrong, size = fixedSp(18 * designScale), filled = true)
-                    AppText(
-                        "高优先级",
-                        AppTextRole.CardSubtitle,
-                        color = AppColors.WarningStrong,
-                        designScale = designScale
-                    )
-                }
-            }
+        Box(contentAlignment = Alignment.Center) {
+            MaterialSymbol(icon, null, tint = theme.onPrimary, size = fixedSp(24 * designScale), filled = true)
         }
     }
-    ReviewCountBadge(
-        count = count,
-        background = badgeColor,
-        contentColor = theme.strongText,
-        compactScale = designScale,
-        label = countLabel
-    )
+    Column(
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy((4 * designScale).dp)
+    ) {
+        AppText(
+            title,
+            AppTextRole.CardTitle,
+            modifier = Modifier.fillMaxWidth(),
+            color = theme.text,
+            designScale = designScale,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        // 1130:8438 Label-latin（16/20 w800）＝AppTextRole.Label 的拉丁规格。
+        AppText(
+            "$count ${countLabel}",
+            AppTextRole.Label,
+            color = theme.text,
+            designScale = designScale,
+            maxLines = 1
+        )
+    }
 }
 
 /** Figma's card progress is two sibling rounded rectangles, never an overlay. */
@@ -197,7 +176,7 @@ internal fun FigmaDeckProgressPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AppText("进度", AppTextRole.CardSubtitle, color = theme.strongText, designScale = designScale)
+                AppText("学习进度", AppTextRole.CardSubtitle, color = theme.strongText, designScale = designScale)
                 Text("$percent%", color = theme.progress, fontFamily = AppFonts.GoogleSansFlexBold, fontSize = fixedSp(18 * designScale), lineHeight = fixedSp(18 * designScale), style = figmaCardTextStyle())
             }
             Row(

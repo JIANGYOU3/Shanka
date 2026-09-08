@@ -114,7 +114,7 @@ internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavig
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                    .fillMaxWidth().height((60 * scale).dp).zIndex(1f),
+                    .fillMaxWidth().height((68 * scale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)
             ) {
                 // Figma 1130:8193 后台生成: family Secondary-Primary surface.
@@ -125,7 +125,7 @@ internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavig
                     },
                     color = theme.secondary, contentColor = AppColors.TextIconDark,
                     shape = RoundedCornerShape((24 * scale).dp),
-                    modifier = Modifier.weight(1f).height((60 * scale).dp)
+                    modifier = Modifier.weight(1f).height((68 * scale).dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AppText("后台生成", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
@@ -136,7 +136,7 @@ internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavig
                     onClick = { paused = !paused },
                     color = theme.primary, contentColor = theme.onPrimary,
                     shape = RoundedCornerShape((24 * scale).dp),
-                    modifier = Modifier.width((224 * scale).dp).height((60 * scale).dp)
+                    modifier = Modifier.width((224 * scale).dp).height((68 * scale).dp)
                 ) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         MaterialSymbol(
@@ -155,7 +155,7 @@ internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavig
                 shape = RoundedCornerShape((24 * scale).dp),
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                    .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
+                    .fillMaxWidth().height((68 * scale).dp).zIndex(1f)
             ) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     MaterialSymbol("replay", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
@@ -353,7 +353,7 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
                 enabled = sections.isNotEmpty() && !blocked,
                 color = theme.secondary, contentColor = AppColors.TextIconDark,
                 shape = RoundedCornerShape((24 * scale).dp),
-                modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
+                modifier = Modifier.fillMaxWidth().height((68 * scale).dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppText(
@@ -387,7 +387,7 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
                 },
                 color = theme.primary, contentColor = theme.onPrimary,
                 shape = RoundedCornerShape((24 * scale).dp),
-                modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
+                modifier = Modifier.fillMaxWidth().height((68 * scale).dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppText(
@@ -502,7 +502,7 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
         Row(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((60 * scale).dp).zIndex(1f),
+                .fillMaxWidth().height((68 * scale).dp).zIndex(1f),
             horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)
         ) {
             CardListActionButton("返回调整", "cycle", false, Modifier.weight(1f), scale, theme, onClick = {

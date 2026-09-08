@@ -381,15 +381,20 @@ private fun ProjectSectionItem(
         animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
         label = "$section project section color"
     )
+    // 与底部导航同款 no-ripple：滑动的主题色指示器已经是选中反馈，点击不再叠涟漪。
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
-        onClick = onClick,
         color = Color.Transparent,
         contentColor = color,
         shape = RoundedCornerShape(24.dp),
-        modifier = modifier.fillMaxHeight().semantics(mergeDescendants = true) {
+        modifier = modifier.fillMaxHeight().selectable(
+            selected = selected,
+            onClick = onClick,
+            role = Role.Tab,
+            interactionSource = interactionSource,
+            indication = null
+        ).semantics(mergeDescendants = true) {
             contentDescription = if (selected) "项目内容切换：$label，当前选中" else "项目内容切换：$label"
-            this.selected = selected
-            role = Role.Tab
         }
     ) {
         Row(

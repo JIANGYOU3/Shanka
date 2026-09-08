@@ -195,7 +195,7 @@ internal fun AddCardScreen(deckId: String, viewModel: AppViewModel, nav: ScreenN
             BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
             Column(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (32 * designScale).dp).zIndex(1f),
+                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp).zIndex(1f),
                 verticalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {
                 DetailPrimaryButton(
@@ -464,8 +464,8 @@ private fun PasteTextImportScreen(
             BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
             Box(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (32 * designScale).dp)
-                    .height((60 * designScale).dp).fillMaxWidth().zIndex(1f)
+                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp)
+                    .height((68 * designScale).dp).fillMaxWidth().zIndex(1f)
             ) {
                 ImportActionButton("识别并预览", "scan", true, Modifier.fillMaxWidth(), designScale, onPreview)
             }

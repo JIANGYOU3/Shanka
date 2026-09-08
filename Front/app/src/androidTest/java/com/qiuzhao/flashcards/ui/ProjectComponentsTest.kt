@@ -230,7 +230,7 @@ class ProjectComponentsTest {
 
         rule.onNodeWithText("就绪资料").assertIsDisplayed().performClick()
         assertTrue(toggled)
-        rule.onNodeWithText("解析失败，原因如下：PDF 缺少目录结构，无法生成\n点击重试").assertIsDisplayed()
+        rule.onNodeWithText("解析失败：PDF 缺少目录结构，无法生成\n点击重试").assertIsDisplayed()
         rule.onNodeWithText("失败资料").assertIsDisplayed().performClick()
         assertTrue(retried)
     }

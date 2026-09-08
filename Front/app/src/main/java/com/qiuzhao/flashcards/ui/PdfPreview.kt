@@ -205,7 +205,7 @@ internal fun PdfPreviewScreen(samples: List<CardDraft>, onBack: () -> Unit, onGe
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(horizontal = (16 * designScale).dp, vertical = (16 * designScale).dp)
-                    .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
+                    .fillMaxWidth().height((68 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {
                 CardListActionButton("返回调整", "cycle", false, Modifier.weight(1f), designScale, onClick = onBack)

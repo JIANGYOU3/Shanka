@@ -47,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
@@ -151,8 +152,6 @@ private fun ProjectSummaryCard(project: ProjectSummary, decks: List<DeckSummary>
         theme = theme,
         icon = "heap_snapshot_multiple",
         variant = ProjectThemedCardVariant.BASE_PAGE,
-        // Figma 494:1447's project cards carry no priority row.
-        showPriority = false,
         designScale = scale,
         onClick = onClick
     )
@@ -252,16 +251,37 @@ internal fun ProjectCreateScreen(
                             Row(Modifier.fillMaxSize().padding((12 * scale).dp), horizontalArrangement = Arrangement.spacedBy((12 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
                                 DeckThemes.forEach { choice ->
                                     val selected = selectedTheme == choice.key
-                                    val choiceWidth by animateDpAsState(if (selected) (121 * scale).dp else 0.dp, tween(500, easing = FastOutSlowInEasing), label = "${choice.key} color width")
-                                    val border = if (selected) 6.dp else 4.dp
+                                    // 选中/未选中两侧都用连续 weight 过渡：原先「固定
+                                    // width ↔ weight」的测量模式互换会让整行瞬间回流，
+                                    // 表现为每次切换主题色卡片跳一下。1f+1.75f 使选中
+                                    // 色块在 402dp 下约 121dp，与 Figma 一致。
+                                    val expand by animateFloatAsState(
+                                        if (selected) 1f else 0f,
+                                        tween(500, easing = FastOutSlowInEasing),
+                                        label = "${choice.key} color expand"
+                                    )
+                                    val corner by animateDpAsState(
+                                        if (selected) (24 * scale).dp else 999.dp,
+                                        tween(500, easing = FastOutSlowInEasing),
+                                        label = "${choice.key} color corner"
+                                    )
+                                    val borderWidth by animateDpAsState(
+                                        if (selected) 6.dp else 4.dp,
+                                        tween(500, easing = FastOutSlowInEasing),
+                                        label = "${choice.key} color border"
+                                    )
                                     Surface(
                                         onClick = { selectedTheme = choice.key }, color = choice.primary,
-                                        shape = RoundedCornerShape(if (selected) (24 * scale).dp else 999.dp),
-                                        modifier = (if (selected) Modifier.width(choiceWidth) else Modifier.weight(1f)).height((60 * scale).dp),
-                                        border = androidx.compose.foundation.BorderStroke(border, AppColors.Card.copy(alpha = .5f))
+                                        shape = RoundedCornerShape(corner),
+                                        modifier = Modifier.weight(1f + expand * 1.75f).height((60 * scale).dp),
+                                        border = androidx.compose.foundation.BorderStroke(borderWidth, AppColors.Card.copy(alpha = .5f))
                                     ) {
-                                        if (selected) Box(contentAlignment = Alignment.Center) {
-                                            MaterialSymbol("check", "已选择${choice.label}", tint = choice.onPrimary, size = fixedSp(24 * scale), filled = true)
+                                        Box(Modifier.alpha(expand), contentAlignment = Alignment.Center) {
+                                            MaterialSymbol(
+                                                "check",
+                                                if (selected) "已选择${choice.label}" else null,
+                                                tint = choice.onPrimary, size = fixedSp(24 * scale), filled = true
+                                            )
                                         }
                                     }
                                 }
@@ -320,7 +340,7 @@ internal fun ProjectCreateScreen(
                 },
                 color = theme.cardPanel, contentColor = theme.text,
                 shape = RoundedCornerShape((24 * scale).dp),
-                modifier = Modifier.height((60 * scale).dp)
+                modifier = Modifier.height((68 * scale).dp)
             ) {
                 // Hug the content: a fillMaxWidth child would swallow the row and
                 // starve the weighted 完成设置 action beside it.
@@ -361,7 +381,7 @@ internal fun ProjectCreateScreen(
             enabled = !pdfUploading && !projectCreating,
             color = theme.primary, contentColor = theme.onPrimary,
             shape = RoundedCornerShape((24 * scale).dp),
-            modifier = Modifier.weight(1f).height((60 * scale).dp)
+            modifier = Modifier.weight(1f).height((68 * scale).dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
                 MaterialSymbol("list_alt_check", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
@@ -671,9 +691,9 @@ internal fun ProjectCompactMaterialCard(
     if (selectableOnly) {
         Column {
             card()
-            // Figma 807:4441: the caption sits under the failed card.
+            // Figma 807:4441: the caption sits tight under the failed card.
             if (state == ProjectMaterialCardState.FAILED) {
-                Spacer(Modifier.height((8 * scale).dp))
+                Spacer(Modifier.height((4 * scale).dp))
                 MaterialFailureHint(failureReasonText(material.errorCode), scale)
             }
         }
@@ -681,9 +701,9 @@ internal fun ProjectCompactMaterialCard(
         ProjectSwipeCompactContainer(scale = scale, onEdit = onEdit, onDelete = onDelete) {
             card()
         }
-        // Figma 807:4441: the caption sits under the failed card, inside the same swipe viewport.
+        // Figma 807:4441: the caption sits tight under the failed card, inside the same swipe viewport.
         if (state == ProjectMaterialCardState.FAILED) {
-            Spacer(Modifier.height((8 * scale).dp))
+            Spacer(Modifier.height((4 * scale).dp))
             MaterialFailureHint(failureReasonText(material.errorCode), scale)
         }
     }
@@ -1222,7 +1242,7 @@ internal fun ProjectTextEditorScreen(route: AppRoute.ProjectTextEditor, viewMode
                 }
                 nav.goBack()
             }, color = theme.primary, contentColor = theme.onPrimary,
-            shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(vertical = (16 * scale).dp).height((60 * scale).dp).zIndex(1f)
+            shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(vertical = (16 * scale).dp).height((68 * scale).dp).zIndex(1f)
         ) { Row(Modifier.fillMaxHeight().padding(horizontal = (36 * scale).dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             MaterialSymbol("list_alt_check", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
             Spacer(Modifier.width((8 * scale).dp)); AppText("完成输入", AppTextRole.Label, color = LocalContentColor.current, designScale = scale)

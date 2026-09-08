@@ -126,7 +126,7 @@ internal fun SmartCardReviewScreen(
         Row(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((60 * scale).dp).zIndex(1f),
+                .fillMaxWidth().height((68 * scale).dp).zIndex(1f),
             horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)
         ) {
             // Figma 849:6478 重新生成: family Primary-Secondary, cycle icon.
@@ -147,7 +147,7 @@ internal fun SmartCardReviewScreen(
                 },
                 color = theme.secondary, contentColor = AppColors.TextIconDark,
                 shape = RoundedCornerShape((24 * scale).dp),
-                modifier = Modifier.weight(1f).height((60 * scale).dp)
+                modifier = Modifier.weight(1f).height((68 * scale).dp)
             ) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     MaterialSymbol("cycle", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
@@ -175,7 +175,7 @@ internal fun SmartCardReviewScreen(
                 },
                 color = theme.primary, contentColor = theme.onPrimary,
                 shape = RoundedCornerShape((24 * scale).dp),
-                modifier = Modifier.weight(1f).height((60 * scale).dp)
+                modifier = Modifier.weight(1f).height((68 * scale).dp)
             ) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     MaterialSymbol("celebration", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)

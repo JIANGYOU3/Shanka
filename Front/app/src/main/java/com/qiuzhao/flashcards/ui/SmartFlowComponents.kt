@@ -159,7 +159,7 @@ internal fun StatusProgressCard(
 @Composable
 internal fun MaterialFailureHint(reason: String, designScale: Float = 1f) =
     AppText(
-        "解析失败，原因如下：$reason\n点击重试",
+        "解析失败：$reason\n点击重试",
         AppTextRole.CardSubtitle,
         color = Color(0x80000000),
         designScale = designScale

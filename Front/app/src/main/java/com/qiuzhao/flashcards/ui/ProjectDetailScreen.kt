@@ -92,10 +92,7 @@ internal fun ProjectDetailScreen(
             backContainer = theme.secondary,
             onTrailingAction = { nav.navigate(AppRoute.ProjectEdit(project.id)) },
             trailingActionSymbol = "edit", trailingActionDescription = "编辑项目",
-            trailingActionContainer = theme.secondary,
-            // Figma 540:3778 left-aligns the statistics title after the back
-            // circle; 1114:6906 keeps the empty 卡组管理 title centred.
-            titleAlignedStart = section == ProjectDetailSection.STATISTICS
+            trailingActionContainer = theme.secondary
         )
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp),
@@ -418,7 +415,7 @@ private fun ProjectDeckActions(
     color = theme.primary,
     contentColor = theme.onPrimary,
     shape = RoundedCornerShape((24 * scale).dp),
-    modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp).height((60 * scale).dp)
+    modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp).height((68 * scale).dp)
 ) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             MaterialSymbol("note_stack_add", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)

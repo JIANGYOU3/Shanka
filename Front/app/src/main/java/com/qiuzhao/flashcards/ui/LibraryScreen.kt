@@ -324,7 +324,6 @@ private fun StudyDeckCard(deck: DeckSummary, progress: DeckProgress, visual: Stu
                 count = deck.cardCount,
                 countLabel = "cards",
                 theme = theme,
-                badgeColor = visual.panel,
                 icon = visual.icon,
                 designScale = designScale
             )

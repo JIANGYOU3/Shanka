@@ -401,7 +401,6 @@ internal fun ScreenTopInformationBar(
     secondaryTrailingActionDescription: String = "删除",
     secondaryTrailingActionContainer: Color = AppColors.WarningStrong,
     secondaryTrailingActionColor: Color = AppColors.TextIconLight,
-    titleAlignedStart: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -423,7 +422,6 @@ internal fun ScreenTopInformationBar(
         secondaryTrailingActionDescription = secondaryTrailingActionDescription,
         secondaryTrailingActionContainer = secondaryTrailingActionContainer,
         secondaryTrailingActionColor = secondaryTrailingActionColor,
-        titleAlignedStart = titleAlignedStart,
         modifier = modifier.fillMaxWidth().statusBarsPadding()
             .padding(start = (16 * scale).dp, top = (16 * scale).dp, end = (16 * scale).dp)
     )
@@ -448,7 +446,6 @@ private fun TopInformationBarContent(
     secondaryTrailingActionDescription: String,
     secondaryTrailingActionContainer: Color,
     secondaryTrailingActionColor: Color,
-    titleAlignedStart: Boolean,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -468,41 +465,20 @@ private fun TopInformationBarContent(
                     MaterialSymbol("arrow_back", "返回", tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
                 }
             }
-            if (titleAlignedStart) {
-                // Figma 540:3778 #1014:5163: the hand-built statistics header
-                // starts its title flush after the 56dp back circle instead of
-                // centering it like the shared 209:2733 component.
-                Row(
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = (56 * scale).dp),
-                    horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AppText(
-                        text = title.orEmpty(), role = AppTextRole.PageTitle,
-                        color = titleColor ?: PageForegroundColor(), designScale = scale,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    subtitle?.let {
-                        AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.align(Alignment.Center).padding(
-                        start = (60 * scale).dp,
-                        end = (if (onSecondaryTrailingAction == null) 60 * scale else 124 * scale).dp
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AppText(
-                        text = title.orEmpty(), role = AppTextRole.PageTitle,
-                        color = titleColor ?: PageForegroundColor(), designScale = scale,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    subtitle?.let {
-                        AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
-                    }
+            // 统一规范（用户决策）：所有二级界面标题恒居中；60dp 对称留白避开
+            // 两侧 56dp 圆钮，切换页签/增删按钮都不会让标题移位。
+            Row(
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = (60 * scale).dp),
+                horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AppText(
+                    text = title.orEmpty(), role = AppTextRole.PageTitle,
+                    color = titleColor ?: PageForegroundColor(), designScale = scale,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                subtitle?.let {
+                    AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
                 }
             }
             onTrailingAction?.let { action ->
@@ -530,8 +506,10 @@ private fun TopInformationBarContent(
                     color = secondaryTrailingActionContainer,
                     contentColor = secondaryTrailingActionColor,
                     shape = RoundedCornerShape(999.dp),
+                    // 左右按钮贴边规范：删除钮独占右槽时贴屏幕右缘，只有与主
+                    // 按钮并排时才内缩 64dp 让出外侧位置。
                     modifier = Modifier.align(Alignment.CenterEnd)
-                        .padding(end = (64 * scale).dp)
+                        .padding(end = if (onTrailingAction != null) (64 * scale).dp else 0.dp)
                         .size((56 * scale).dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {

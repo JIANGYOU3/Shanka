@@ -212,7 +212,7 @@ internal const val NaturalScrollTail = 32
  * screens from accumulating unrelated 140–188dp padding values.
  */
 internal fun fixedBottomControlScrollTail(
-    controlHeight: Int = 60,
+    controlHeight: Int = 68,
     bottomOffset: Int = 32,
     controlCount: Int = 1,
     gapBetweenControls: Int = 0

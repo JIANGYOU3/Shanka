@@ -59,7 +59,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.data.remote.DeckSummary
-import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import kotlinx.coroutines.flow.filter
@@ -78,7 +77,6 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     val plan by viewModel.studyPlan.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val decks by viewModel.decks.collectAsState()
-    val tasks by viewModel.tasks.collectAsState()
     val uiMessage by viewModel.uiMessage.collectAsState()
     var newGoal by remember { mutableIntStateOf(10) }
     var reviewGoal by remember { mutableIntStateOf(40) }
@@ -107,19 +105,13 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
         }
     }
 
-    // 交接文档 5/1019-5568：生成完未确认的卡组（0 张可见卡 + 最新任务 AWAITING_CONFIRMATION）
-    // 不再被静默隐藏——在范围抽屉里可见但禁选，说明「未设置完成，无法选择」。
-    val awaitingConfirmationDeckIds = tasks
-        .filter { it.status == V25TaskStatus.AWAITING_CONFIRMATION }
-        .mapNotNull { it.deckId }
-        .toSet()
+    // 交接文档 5/1019-5568：尚未就绪的卡组（可见卡为 0：生成中/待确认/失败）不再被
+    // 静默隐藏——在范围抽屉里可见但禁选，说明「未设置完成，无法选择」。
     val learnableDecksByProject = projects.associate { project ->
         project.id to decks.filter { it.projectId == project.id && it.cardCount > 0 }
     }
     val pendingDecksByProject = projects.associate { project ->
-        project.id to decks.filter {
-            it.projectId == project.id && it.cardCount == 0 && it.id in awaitingConfirmationDeckIds
-        }
+        project.id to decks.filter { it.projectId == project.id && it.cardCount == 0 }
     }
     val effectiveDeckIds = decks
         .filter { it.cardCount > 0 && (it.projectId in wholeProjectIds || it.id in selectedDeckIds) }
@@ -251,7 +243,7 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                 .zIndex(1f)
                 .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                .height(60.dp)
+                .height(68.dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -335,12 +327,15 @@ internal fun ScopeProjectCard(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(AppColors.Blue.surface)
+            // Figma 1019:6218（用户决策）：整块淡蓝卡片都是点击目标，涟漪覆盖
+            // 整卡；展开按钮与抽屉内卡组行的自身点击在内层优先消费。
+            .clickable(onClick = onToggleProject)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Row(
-                Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onToggleProject),
+                Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

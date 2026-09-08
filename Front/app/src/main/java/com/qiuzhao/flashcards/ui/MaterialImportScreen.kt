@@ -177,7 +177,7 @@ internal fun MaterialImportScreen(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(vertical = (16 * scale).dp).zIndex(1f)
         ) {
             Row(
-                Modifier.padding(horizontal = (36 * scale).dp).height((60 * scale).dp),
+                Modifier.padding(horizontal = (36 * scale).dp).height((68 * scale).dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {

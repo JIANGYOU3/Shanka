@@ -119,7 +119,7 @@ internal fun MaterialManagementScreen(project: ProjectSummary?, viewModel: AppVi
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
+                .fillMaxWidth().height((68 * scale).dp).zIndex(1f)
         ) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 MaterialSymbol("folder_open", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)

@@ -250,7 +250,6 @@ internal enum class ProjectThemedCardVariant { BASE_PAGE, THEME_BACKGROUND }
 internal data class ProjectThemedCardPalette(
     val background: Color,
     val panel: Color,
-    val badge: Color,
     val progressTrack: Color
 )
 
@@ -266,15 +265,12 @@ internal fun projectThemedCardPalette(
     ProjectThemedCardVariant.BASE_PAGE -> ProjectThemedCardPalette(
         background = theme.background,
         panel = theme.cardPanel,
-        badge = theme.cardPanel,
-        // Figma 950:4943: the unfinished segment carries the family's
-        // Background token — the same colour as the card itself.
-        progressTrack = theme.background
+        // Figma 1130:8438：未完成段是家族 Primary-Secondary（紫家族 #C8C8FF）。
+        progressTrack = theme.secondary
     )
     ProjectThemedCardVariant.THEME_BACKGROUND -> ProjectThemedCardPalette(
         background = theme.cardPanel,
         panel = theme.background,
-        badge = theme.background,
         progressTrack = theme.secondary
     )
 }

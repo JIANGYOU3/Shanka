@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.qiuzhao.flashcards.R
 import com.qiuzhao.flashcards.data.remote.DeckSummary
@@ -89,9 +88,8 @@ internal fun HomeScreen(
                         item { EmptyHomeCard(compactScale, onGoImport = { nav.navigate(AppRoute.Import) }) }
                     } else {
                         item {
-                            // The today deck card keeps its real project theme; the
-                            // priority badge appears only when the deck actually has
-                            // cards due (Figma 950:4943's latest card revision).
+                            // The today deck card keeps its real project theme
+                            // (Figma 1130:8438's latest card revision).
                             ProjectThemedCard(
                                 title = displayDeckTitle(activeDeck),
                                 count = activeDeck.cardCount,
@@ -101,8 +99,7 @@ internal fun HomeScreen(
                                 icon = studyDeckIcon(activeDeck),
                                 variant = ProjectThemedCardVariant.BASE_PAGE,
                                 designScale = compactScale,
-                                onClick = { nav.navigate(AppRoute.Deck(activeDeck.id)) },
-                                showPriority = activeDeck.dueCount > 0
+                                onClick = { nav.navigate(AppRoute.Deck(activeDeck.id)) }
                             )
                         }
                     }
@@ -401,68 +398,3 @@ private fun EmptyHomeCard(compactScale: Float, onGoImport: () -> Unit) {
     }
 }
 
-/** Figma 287:8214 — the reusable English two-line total-card badge. */
-@Composable
-internal fun ReviewCountBadge(
-    count: Int,
-    background: Color,
-    contentColor: Color,
-    compactScale: Float,
-    label: String = "cards"
-) {
-    Surface(
-        color = background,
-        // Figma 257:6634 / 287:8214 specifies a 24dp rounded badge, not a
-        // fully-pill-shaped 999dp capsule. This distinction is visible on
-        // every project and Home deck card.
-        shape = RoundedCornerShape((24 * compactScale).dp),
-        // 287:8214: intrinsic Figma sizing — the 24dp icon and the two-line
-        // text stack determine the height; the component itself supplies the
-        // specified 12dp vertical padding without an Android-imposed height.
-        modifier = Modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(
-                horizontal = (16 * compactScale).dp,
-                vertical = (12 * compactScale).dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy((8 * compactScale).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            MaterialSymbol(
-                "playing_cards",
-                null,
-                tint = contentColor,
-                size = fixedSp(24 * compactScale)
-            )
-            // 287:8214 latest: the first text row overlaps the second by 2dp
-            // (Figma's negative bottom margin), rather than using a positive gap.
-            Column(verticalArrangement = Arrangement.spacedBy((-2 * compactScale).dp)) {
-                Text(
-                    count.toString(),
-                    color = contentColor,
-                    fontFamily = AppFonts.GoogleSansFlexExtraBold,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = fixedSp(16 * compactScale),
-                    // Figma's wrapper is 16dp, but its paragraph uses the
-                    // font's natural line metrics; leaving this unspecified
-                    // preserves the visible glyphs instead of Compose-clipping
-                    // the second line.
-                    lineHeight = TextUnit.Unspecified,
-                    letterSpacing = fixedSp(.6f * compactScale),
-                    style = figmaCardTextStyle()
-                )
-                Text(
-                    label,
-                    color = contentColor,
-                    fontFamily = AppFonts.GoogleSansFlexExtraBold,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = fixedSp(16 * compactScale),
-                    lineHeight = TextUnit.Unspecified,
-                    letterSpacing = fixedSp(.6f * compactScale),
-                    style = figmaCardTextStyle()
-                )
-            }
-        }
-    }
-}

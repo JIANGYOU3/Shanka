@@ -199,8 +199,8 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
             BottomContentFade(designScale, Modifier.align(Alignment.BottomCenter))
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (32 * designScale).dp)
-                    .fillMaxWidth().height((60 * designScale).dp).zIndex(1f),
+                    .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp)
+                    .fillMaxWidth().height((68 * designScale).dp).zIndex(1f),
                 horizontalArrangement = Arrangement.spacedBy((12 * designScale).dp)
             ) {
                 CardListActionButton("编辑", "edit", false, Modifier.weight(1f), designScale, theme) { nav.navigate(AppRoute.EditCardList(deck.id)) }
@@ -225,7 +225,7 @@ internal fun DetailPrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height((60 * designScale).dp),
+        modifier = Modifier.fillMaxWidth().height((68 * designScale).dp),
         shape = RoundedCornerShape((24 * designScale).dp),
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = container, contentColor = content),
         contentPadding = PaddingValues(horizontal = (24 * designScale).dp)
