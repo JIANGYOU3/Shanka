@@ -122,6 +122,8 @@ object ShankaOps {
     const val START_TASK = "start_task"
     const val ABANDON_TASK = "abandon_task"
     const val RETRY_TASK = "retry_task"
+    const val CONFIRM_TASK = "confirm_task"
+    const val LIST_TASK_CARDS = "list_task_cards"
     const val DELETE_TASK = "delete_task"
     const val LIST_DECKS = "list_decks"
     const val CREATE_DECK = "create_deck"

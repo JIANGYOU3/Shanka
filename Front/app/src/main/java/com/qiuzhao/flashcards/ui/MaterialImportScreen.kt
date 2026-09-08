@@ -1,8 +1,6 @@
 package com.qiuzhao.flashcards.ui
 
-import android.content.Context
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,7 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,14 +34,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 
-/** Figma 775:3842 / 783:4135.  Material is committed only after recognition ends. */
+/**
+ * Figma 807:4441. Recognition is automatic: staging a file or text immediately
+ * drives its wire status (autoRecognizeMaterialImport), and the cards mirror the
+ * 1100:5634/5644 recognizing/success states. 完成导入 only closes the sheet.
+ */
 @Composable
 internal fun MaterialImportScreen(
     route: AppRoute.MaterialImport,
@@ -55,35 +57,59 @@ internal fun MaterialImportScreen(
         DeckThemes.firstOrNull { it.key == route.themeKey }
             ?: DeckThemes.first { it.key == "azure" }
     }
+    val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val materials by viewModel.materialImportDrafts.collectAsState()
-    val pdfUploading by viewModel.pdfUploading.collectAsState()
-    var isRecognizing by rememberSaveable { mutableStateOf(false) }
+    val projectMaterials by viewModel.projectMaterials.collectAsState()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var editingFile by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.stageMaterialImportFiles(uris)
     }
-
-    LaunchedEffect(isRecognizing) {
-        if (!isRecognizing) return@LaunchedEffect
-        viewModel.commitMaterialImport(route.projectId) { success, _ ->
-            isRecognizing = false
-            if (success) navigator.goBack()
+    // 已落地资料的失败重试 = 换文件 replace 重传（V25-D-30）；尚未落地的草稿由自动识别重传。
+    var replaceTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
+    val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = replaceTarget
+        if (uri != null && target?.materialId != null && route.projectId != null) {
+            viewModel.replaceProjectMaterial(route.projectId, target.materialId, uri) { _, _ -> }
+            viewModel.markMaterialImportParsing(target.id)
         }
+        replaceTarget = null
     }
+    // Auto-recognition observer: every list change re-arms the pipeline, which
+    // picks up just-staged and failed drafts (idempotent for the rest).
+    LaunchedEffect(materials, route.projectId) {
+        viewModel.autoRecognizeMaterialImport(route.projectId)
+    }
+    // Drafts already committed to the server mirror the Room projection's live parse
+    // status, so a replace lands as PARSING→PARSED/FAILED without extra plumbing.
+    val liveForProject = route.projectId?.let { projectMaterials[it].orEmpty() }
+    val filtered = materials
+        .map { draft ->
+            val live = liveForProject?.firstOrNull { it.materialId == draft.materialId }
+            if (live != null) draft.copy(
+                serverStatus = live.serverStatus,
+                errorCode = live.errorCode,
+                charCount = live.charCount,
+            ) else draft
+        }
+        .filter { it.title.contains(searchQuery.trim(), ignoreCase = true) }
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
         LazyColumn(
-            // Figma 783:4135 owns a 370dp-wide, 24dp-rounded scroll viewport.
-            // The clip is deliberately on the viewport, not only on each child,
-            // so long cards fade/crop cleanly beneath the fixed action.
-            modifier = Modifier.fillMaxSize().padding(start = 16.dp, top = 136.dp, end = 16.dp)
-                .clip(RoundedCornerShape(24.dp)),
-            contentPadding = PaddingValues(bottom = 116.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Figma 807:4441 owns a 370dp-wide, 24dp-rounded scroll viewport. The
+            // clip is deliberately on the viewport so long cards fade/crop cleanly
+            // beneath the fixed bottom action.
+            modifier = Modifier.fillMaxSize().padding(start = (16 * scale).dp, top = (136 * scale).dp, end = (16 * scale).dp)
+                .clip(RoundedCornerShape((24 * scale).dp)),
+            contentPadding = PaddingValues(bottom = (116 * scale).dp),
+            verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
         ) {
             item {
+                ImportSearchField(theme, scale, searchQuery) { searchQuery = it }
+            }
+            item {
                 ImportAddPanel(
-                    theme = theme,
+                    theme = theme, scale = scale,
                     onChooseFile = { filePicker.launch(arrayOf("application/pdf")) },
                     onEnterText = {
                         val draftId = viewModel.stageMaterialImportText()
@@ -93,7 +119,7 @@ internal fun MaterialImportScreen(
                                 themeKey = theme.key,
                                 projectId = route.projectId,
                                 stageForMaterialImport = true,
-                                editorTitle = "导入文本",
+                                editorTitle = "添加文本",
                             )
                         )
                     }
@@ -101,49 +127,59 @@ internal fun MaterialImportScreen(
             }
             item {
                 ImportPreviewGroup(
-                    theme = theme, title = "文件资料", icon = "files",
-                    materials = materials.filter { it.type == ProjectDraftMaterialType.FILE },
+                    theme = theme, scale = scale, title = "文件资料", icon = "files",
+                    hint = "右滑卡片可编辑、删除文件",
+                    materials = filtered.filter { it.type == ProjectDraftMaterialType.FILE },
                     onEditFile = { editingFile = it },
-                    onEditText = {}, onDelete = viewModel::removeMaterialImportDraft
+                    onEditText = {},
+                    onRetry = { material ->
+                        if (material.materialId != null && route.projectId != null) replaceTarget = material
+                        else viewModel.autoRecognizeMaterialImport(route.projectId)
+                    },
+                    onDelete = viewModel::removeMaterialImportDraft
                 )
             }
             item {
                 ImportPreviewGroup(
-                    theme = theme, title = "文本资料", icon = "description",
-                    materials = materials.filter { it.type == ProjectDraftMaterialType.TEXT },
+                    theme = theme, scale = scale, title = "文本资料", icon = "description",
+                    hint = "右滑卡片可编辑、删除文本",
+                    materials = filtered.filter { it.type == ProjectDraftMaterialType.TEXT },
                     emptyHint = "暂无添加",
                     onEditFile = { editingFile = it },
                     onEditText = { material ->
                         navigator.navigate(
                             AppRoute.ProjectTextEditor(
                                 materialId = material.id, themeKey = theme.key, projectId = route.projectId,
-                                stageForMaterialImport = true, editorTitle = "编辑文本资料"
+                                stageForMaterialImport = true, editorTitle = "编辑文本"
                             )
                         )
                     },
+                    onRetry = { viewModel.autoRecognizeMaterialImport(route.projectId) },
                     onDelete = viewModel::removeMaterialImportDraft
                 )
             }
         }
 
         ScreenTopInformationBar(
-            title = if (route.projectCreation) "添加新资料" else "导入资料", subtitle = null, onBack = navigator::goBack,
+            title = "导入资料", subtitle = null, onBack = navigator::goBack,
             backContainer = theme.cardPanel, titleColor = theme.text
         )
         // Shared fixed-action fade: clips the scrolling card region visually
         // before it meets the bottom control, as in Figma 720:2251.
         BottomContentFade(1f, Modifier.align(Alignment.BottomCenter), color = Color.White)
         Surface(
-            color = theme.primary, contentColor = theme.onPrimary, shape = RoundedCornerShape(24.dp),
-            onClick = { if (materials.isNotEmpty()) isRecognizing = true },
-            enabled = !pdfUploading,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().zIndex(1f)
-                .padding(horizontal = 16.dp, vertical = 16.dp).height(60.dp)
+            onClick = { viewModel.finishMaterialImport(route.projectId) { navigator.goBack() } },
+            color = theme.primary, contentColor = theme.onPrimary, shape = RoundedCornerShape((24 * scale).dp),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(vertical = (16 * scale).dp).zIndex(1f)
         ) {
-            Row(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterVertically) {
-                MaterialSymbol("scan", null, tint = theme.onPrimary, size = fixedSp(24f))
-                Spacer(Modifier.width(10.dp))
-                AppText("识别并导入", AppTextRole.Label, color = theme.onPrimary)
+            Row(
+                Modifier.padding(horizontal = (36 * scale).dp).height((60 * scale).dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                MaterialSymbol("folder_open", null, tint = theme.onPrimary, size = fixedSp(24 * scale), filled = true)
+                Spacer(Modifier.width((8 * scale).dp))
+                AppText("完成导入", AppTextRole.Label, color = theme.onPrimary, designScale = scale)
             }
         }
     }
@@ -157,111 +193,125 @@ internal fun MaterialImportScreen(
             onDismiss = { editingFile = null }
         )
     }
-    if (isRecognizing) RecognitionDialog(theme)
 }
 
+/** Figma 807:4442: the search panel rides on family Secondary. */
 @Composable
-private fun ImportAddPanel(
-    theme: DeckTheme,
-    onChooseFile: () -> Unit,
-    onEnterText: () -> Unit
-) = Surface(
-    color = theme.background, shape = RoundedCornerShape(36.dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(36.dp))
+private fun ImportSearchField(theme: DeckTheme, scale: Float, query: String, onChange: (String) -> Unit) = Surface(
+    color = theme.secondary, shape = RoundedCornerShape((32 * scale).dp), modifier = Modifier.fillMaxWidth()
 ) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            MaterialSymbol(
-                "note_stack_add", null, tint = theme.text, size = fixedSp(24f), filled = true,
-                includeFontPadding = false
-            )
-            Spacer(Modifier.width(10.dp))
-            AppText("添加学习资料", AppTextRole.SectionTitle, color = theme.text)
+    Row(
+        Modifier.padding((12 * scale).dp),
+        horizontalArrangement = Arrangement.spacedBy((10 * scale).dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(color = theme.primary, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.size((51 * scale).dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                MaterialSymbol("search", null, tint = theme.onPrimary, size = fixedSp(28 * scale), filled = true)
+            }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ImportChoice("picture_as_pdf", "选择 PDF", "支持多份 PDF 文件，异步解析", theme, onChooseFile)
-            ImportChoice("file_copy", "输入文本", "粘贴文本资料，30000 字以内", theme, onEnterText)
+        Surface(color = theme.background, shape = RoundedCornerShape((24 * scale).dp), modifier = Modifier.weight(1f)) {
+            BasicTextField(
+                value = query,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = appInputTextStyle(AppTextRole.Body, scale, theme.text),
+                visualTransformation = rememberBilingualInputTransformation(AppTextRole.Body, scale),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = (24 * scale).dp, vertical = (12 * scale).dp),
+                decorationBox = { input ->
+                    Box(Modifier.fillMaxWidth()) {
+                        if (query.isBlank()) AppText("搜索", AppTextRole.Body, color = theme.text, designScale = scale)
+                        input()
+                    }
+                }
+            )
         }
     }
 }
 
+/** Figma 807:4443-ish: the two equal-width primary entry buttons. */
 @Composable
-private fun ImportChoice(icon: String, title: String, subtitle: String, theme: DeckTheme, onClick: () -> Unit) = Surface(
-    color = theme.primary, contentColor = theme.onPrimary, shape = RoundedCornerShape(32.dp), onClick = onClick,
-    modifier = Modifier.fillMaxWidth().height(80.dp)
+private fun ImportAddPanel(
+    theme: DeckTheme,
+    scale: Float,
+    onChooseFile: () -> Unit,
+    onEnterText: () -> Unit
+) = Surface(
+    color = theme.background, shape = RoundedCornerShape((36 * scale).dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape((36 * scale).dp))
 ) {
-    Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        // Figma 783:4136 / 783:4145: the 56dp icon tile is a 24dp nested
-        // surface, not the previous 28dp treatment that made the actions look heavy.
-        Surface(color = theme.cardPanel, shape = RoundedCornerShape(24.dp), modifier = Modifier.size(56.dp)) {
-            Box(contentAlignment = Alignment.Center) {
-                MaterialSymbol(icon, null, tint = theme.strongText, size = fixedSp(24f), filled = true, includeFontPadding = false)
-            }
-        }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            AppText(title, AppTextRole.CardTitle, color = theme.onPrimary)
-            AppText(subtitle, AppTextRole.CardSubtitle, color = theme.onPrimary.copy(alpha = .86f))
-        }
-        // Figma 783:4145 reserves a full 56dp trailing alignment container;
-        // placing the 24dp glyph directly in the Row shifts it 16dp too far.
-        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-            MaterialSymbol("arrow_forward", null, tint = theme.onPrimary, size = fixedSp(24f), includeFontPadding = false)
-        }
+    Row(Modifier.padding((12 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
+        ImportActionButton("picture_as_pdf", "添加文件", theme, scale, Modifier.weight(1f), onChooseFile)
+        ImportActionButton("file_copy", "添加文本", theme, scale, Modifier.weight(1f), onEnterText)
+    }
+}
+
+@Composable
+private fun ImportActionButton(
+    icon: String,
+    label: String,
+    theme: DeckTheme,
+    scale: Float,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) = Surface(
+    onClick = onClick,
+    color = theme.primary, contentColor = theme.onPrimary,
+    shape = RoundedCornerShape((24 * scale).dp),
+    modifier = modifier.height((60 * scale).dp)
+) {
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        MaterialSymbol(icon, null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
+        Spacer(Modifier.width((8 * scale).dp))
+        AppText(label, AppTextRole.Label, color = LocalContentColor.current, designScale = scale)
     }
 }
 
 @Composable
 private fun ImportPreviewGroup(
     theme: DeckTheme,
+    scale: Float,
     title: String,
     icon: String,
+    hint: String,
     materials: List<ProjectDraftMaterial>,
     emptyHint: String = "暂无添加",
     onEditFile: (ProjectDraftMaterial) -> Unit,
     onEditText: (ProjectDraftMaterial) -> Unit,
+    onRetry: (ProjectDraftMaterial) -> Unit,
     onDelete: (String) -> Unit
-) = Surface(color = theme.background, shape = RoundedCornerShape(36.dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(36.dp))) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24f), filled = true, includeFontPadding = false)
-            Spacer(Modifier.width(10.dp))
-            AppText(if (materials.isEmpty()) title else "刚添加的$title", AppTextRole.SectionTitle, color = theme.text)
+) = Surface(color = theme.background, shape = RoundedCornerShape((36 * scale).dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape((36 * scale).dp))) {
+    Column(Modifier.padding((20 * scale).dp), verticalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
+        Row(Modifier.padding(horizontal = (8 * scale).dp), horizontalArrangement = Arrangement.spacedBy((10 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
+            MaterialSymbol(icon, null, tint = theme.text, size = fixedSp(24 * scale), filled = true)
+            AppText(title, AppTextRole.SectionTitle, color = theme.text, designScale = scale)
         }
         if (materials.isEmpty()) {
-            CardHint(emptyHint, designScale = 1f)
+            CardHint(emptyHint, designScale = scale)
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
                 materials.forEach { material ->
-                    if (material.type == ProjectDraftMaterialType.FILE) {
-                        ProjectDraftFileCard(material, theme, 1f, onEdit = { onEditFile(material) }) { onDelete(material.id) }
-                    } else {
-                        ProjectDraftTextCard(material, theme, 1f, onEdit = { onEditText(material) }, onDelete = { onDelete(material.id) })
-                    }
+                    ProjectCompactMaterialCard(
+                        material = material,
+                        theme = theme,
+                        scale = scale,
+                        // Figma 1100:5644 状态=已选择: success shows check_circle.
+                        doneIcon = "check_circle",
+                        onEdit = {
+                            if (material.type == ProjectDraftMaterialType.FILE) onEditFile(material) else onEditText(material)
+                        },
+                        onDelete = { onDelete(material.id) },
+                        onRetry = { onRetry(material) }
+                    )
                 }
             }
         }
+        CardHint(hint, designScale = scale)
     }
 }
 
-@Composable
-private fun RecognitionDialog(theme: DeckTheme) {
-    Dialog(onDismissRequest = {}) {
-        Surface(color = Color(0xFFF0F8FF), shape = RoundedCornerShape(32.dp), modifier = Modifier.width(331.dp)) {
-            Column(
-                modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                GenerationProgressRing(color = theme.primary, trackColor = theme.secondary, designScale = 1f)
-                AppText("正在提交 PDF 文件", AppTextRole.PageTitle, color = theme.text, textAlign = TextAlign.Center)
-                AppText("正在发送到服务端", AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .5f), textAlign = TextAlign.Center)
-            }
-        }
-    }
-}
-
-private fun Uri.displayName(context: Context): String {
-    context.contentResolver.query(this, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))?.let { return it }
+private fun Uri.displayName(context: android.content.Context): String {
+    context.contentResolver.query(this, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(cursor.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME))?.let { return it }
     }
     return lastPathSegment?.substringAfterLast('/') ?: "未命名文件"
 }

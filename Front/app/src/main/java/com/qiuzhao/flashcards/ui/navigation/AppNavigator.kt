@@ -40,6 +40,12 @@ class AppNavigator(private val state: AppNavigationStore) {
         while (stack.size > 1) stack.removeLastOrNull()
     }
 
+    /** Pops every entry above [target], leaving it current; no-op when it is not on the stack. */
+    fun popUntil(target: AppRoute) {
+        val stack = state.stackFor(state.selectedTopLevel)
+        while (stack.size > 1 && stack.lastOrNull() != target) stack.removeLastOrNull()
+    }
+
     /** Transitional semantic name retained for existing screen callbacks. */
     fun popBackStack() = goBack()
 }

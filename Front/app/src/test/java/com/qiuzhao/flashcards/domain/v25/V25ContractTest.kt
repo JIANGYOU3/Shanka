@@ -29,7 +29,7 @@ class V25ContractTest {
             V25ProjectStatus.entries.map { it.name },
         )
         assertEquals(
-            listOf("DRAFT", "SAMPLE_GENERATING", "AWAITING_SAMPLE_CONFIRMATION", "GENERATING", "COMPLETED", "FAILED", "ABANDONED"),
+            listOf("DRAFT", "SAMPLE_GENERATING", "AWAITING_SAMPLE_CONFIRMATION", "GENERATING", "AWAITING_CONFIRMATION", "COMPLETED", "FAILED", "ABANDONED"),
             V25TaskStatus.entries.map { it.name },
         )
         assertEquals(
@@ -674,6 +674,11 @@ private class StubV25Repository : V25Repository {
 
     override suspend fun retryTask(taskId: String): V25Result<V25GenerationTask> =
         V25Result.Success(task.copy(taskId = "task-retry", retryOfTaskId = taskId, status = V25TaskStatus.DRAFT))
+
+    override suspend fun confirmTask(taskId: String): V25Result<V25GenerationTask> =
+        V25Result.Success(task.copy(taskId = taskId, status = V25TaskStatus.COMPLETED, endedAt = now))
+
+    override suspend fun listTaskCards(taskId: String): V25Result<List<V25Card>> = V25Result.Success(listOf(card))
 
     override suspend fun deleteTask(taskId: String, deleteGeneratedCards: Boolean): V25Result<Unit> =
         V25Result.Success(Unit)

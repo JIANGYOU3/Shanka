@@ -120,7 +120,14 @@ internal fun LearningDataProgressCard(
                         Spacer(Modifier.width((4 * designScale).dp))
                         FigmaLearningSmallMetric("/ $total", theme.onPrimary, designScale)
                     }
-                    AppText(" 张卡片已学习", AppTextRole.CardSubtitle, color = theme.onPrimary, designScale = designScale)
+                    Spacer(Modifier.width((4 * designScale).dp))
+                    // Figma 540:3778: the trailing copy is Card-Title ink at 75% white.
+                    AppText(
+                        "已复习",
+                        AppTextRole.CardTitle,
+                        color = theme.onPrimary.copy(alpha = .75f),
+                        designScale = designScale
+                    )
                 }
                 FigmaLearningLargeMetric(safePercent?.let { "$it%" } ?: "—", theme.onPrimary, designScale)
             }
@@ -129,10 +136,15 @@ internal fun LearningDataProgressCard(
                 horizontalArrangement = Arrangement.spacedBy((5 * designScale).dp)
             ) {
                 val completedWeight = (safePercent ?: 0) / 100f
-                Box(
-                    Modifier.weight(completedWeight.coerceAtLeast(0.001f)).fillMaxHeight()
-                        .clip(RoundedCornerShape(999.dp)).background(theme.surface)
-                )
+                // No fill pill at 0%: a minimum-weight sliver painted a stray
+                // white bar into the empty track (Figma shows fill only when
+                // there is progress to show).
+                if (completedWeight > 0f) {
+                    Box(
+                        Modifier.weight(completedWeight).fillMaxHeight()
+                            .clip(RoundedCornerShape(999.dp)).background(theme.surface)
+                    )
+                }
                 Box(
                     Modifier.weight((1f - completedWeight).coerceAtLeast(0.001f)).fillMaxHeight()
                         .clip(RoundedCornerShape(999.dp)).background(theme.onPrimary.copy(alpha = .45f))
@@ -282,7 +294,8 @@ internal data class ReviewProgressEntry(
 internal fun ReviewProgressCard(
     entries: List<ReviewProgressEntry>,
     designScale: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String = "学习进度",
 ) {
     require(entries.size == 5) { "Review progress cards require exactly five Figma columns." }
     Surface(
@@ -300,7 +313,7 @@ internal fun ReviewProgressCard(
             ) {
                 MaterialSymbol("local_fire_department", null, tint = AppColors.TextIconDark, size = fixedSp(28 * designScale), filled = true)
                 Spacer(Modifier.width((8 * designScale).dp))
-                FigmaReviewTitle("学习进度", designScale)
+                FigmaReviewTitle(title, designScale)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 entries.forEach { entry -> ReviewProgressLegend(entry, designScale) }

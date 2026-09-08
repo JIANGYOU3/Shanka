@@ -50,10 +50,22 @@ enum class V25MaterialType { PDF, TEXT }
 /** Material lifecycle: PDF uses PENDING/PARSING/PARSED/FAILED; TEXT is always READY. */
 enum class V25MaterialStatus { PENDING, PARSING, PARSED, FAILED, READY }
 
-/** User-visible generation task lifecycle (Architecture 3.4). */
+/**
+ * User-visible generation task lifecycle (Architecture 3.4). `AWAITING_CONFIRMATION` parks a
+ * finished task whose cards are all STAGED until the user confirms publication (交接文档 §5);
+ * it is quiescent — no server work, and it leaves the state only through a user action.
+ */
 enum class V25TaskStatus {
-    DRAFT, SAMPLE_GENERATING, AWAITING_SAMPLE_CONFIRMATION, GENERATING, COMPLETED, FAILED, ABANDONED,
+    DRAFT, SAMPLE_GENERATING, AWAITING_SAMPLE_CONFIRMATION, GENERATING, AWAITING_CONFIRMATION, COMPLETED, FAILED, ABANDONED,
 }
+
+/**
+ * Wire-safe task-status parse: an unrecognized server value must never crash the app. Unknown
+ * statuses fall back to DRAFT so the observation engine keeps polling until the task reaches a
+ * known terminal state.
+ */
+fun taskStatusFromWire(raw: String): V25TaskStatus =
+    runCatching { V25TaskStatus.valueOf(raw) }.getOrDefault(V25TaskStatus.DRAFT)
 
 /** Internal worker stage; never exposed to the user as a status (Architecture 3.4). */
 enum class V25InternalStage { PLANNING, GENERATING, SCORING, PUBLISHING }

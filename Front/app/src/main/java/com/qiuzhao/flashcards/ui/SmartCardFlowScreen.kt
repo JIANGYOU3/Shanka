@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
+import com.qiuzhao.flashcards.domain.v25.V25InternalStage
 import com.qiuzhao.flashcards.domain.v25.V25MaterialStatus
 import com.qiuzhao.flashcards.domain.v25.V25MaterialType
 import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
@@ -53,8 +53,11 @@ import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import com.qiuzhao.flashcards.ui.motion.AppMotion
 
 /**
- * Figma 849:6541 "正在生成". A full-page generation indicator that reuses the
- * parse-progress card while the V2.5 generation task runs in the background.
+ * Figma 1130:8101 "正在生成". The V2.5 generation task runs in the background; this
+ * screen renders its [StatusProgressCard] (stage subtitle from `internal_stage`) and
+ * hands control to the user: 后台生成 closes into the project page, 暂停生成 is a
+ * local display pause only (交接文档 决策① — the server has no pause). The task
+ * reaching `AWAITING_CONFIRMATION` auto-opens the read-only review screen (4.10).
  */
 @Composable
 internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavigator, viewModel: AppViewModel) {
@@ -62,78 +65,160 @@ internal fun SmartCardGeneratingScreen(project: ProjectSummary, nav: ScreenNavig
     val theme = deckTheme(project)
     val task by viewModel.pdfTask.collectAsState()
     val status = task?.status
+    // Local display pause (决策①): the ring stops and the button flips to 继续生成;
+    // the server task keeps running and nothing is cancelled.
+    var paused by remember { mutableStateOf(false) }
     // Navigation only: the observation engine (V25-D-34) polls the task and the projection
     // flow re-emits each status advance — this screen runs no loop of its own.
     LaunchedEffect(task?.taskId, status) {
-        if (status == V25TaskStatus.COMPLETED) {
-            task?.deckId?.let { nav.replaceTop(AppRoute.CardList(it)) }
+        if (status == V25TaskStatus.AWAITING_CONFIRMATION) {
+            task?.let { nav.replaceTop(AppRoute.SmartCardReview(it.taskId, project.id, theme.key)) }
         }
     }
-    val headline = when (status) {
-        V25TaskStatus.FAILED -> "生成失败"
-        V25TaskStatus.ABANDONED -> "任务已放弃"
-        V25TaskStatus.COMPLETED -> "生成完成"
-        else -> "正在生成卡片"
-    }
-    val detail = when (status) {
-        V25TaskStatus.FAILED -> task?.errorCode ?: "服务端未能完成本次生成。"
-        V25TaskStatus.ABANDONED -> "本次任务已停止，你可以返回项目重新设置。"
-        V25TaskStatus.COMPLETED -> "正在打开已生成的卡片组。"
-        else -> "可以安全离开，任务会在后台继续。"
+    val failed = status == V25TaskStatus.FAILED
+    val abandoned = status == V25TaskStatus.ABANDONED
+    // 状态卡副标题按 internalStage（交接文档 4.9）；无阶段时落到 Figma 的 稍安勿躁。
+    val stageSubtitle = when (task?.internalStage) {
+        V25InternalStage.PLANNING -> "已识别文件"
+        V25InternalStage.GENERATING -> "正在整理内容"
+        V25InternalStage.SCORING, V25InternalStage.PUBLISHING -> "正在检查结果"
+        null -> "稍安勿躁"
     }
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
             title = "正在生成", subtitle = null, onBack = nav::goBack,
             backContainer = theme.cardPanel, titleColor = theme.text
         )
-        Surface(
-            color = theme.cardPanel,
-            shape = RoundedCornerShape((AppShapeRadius * scale).dp),
-            modifier = Modifier.fillMaxWidth().statusBarsPadding()
-                .padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp)
-                .height((209 * scale).dp)
-        ) {
-            Column(
-                Modifier.fillMaxSize().padding((24 * scale).dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                GenerationProgressRing(color = theme.primary, trackColor = theme.secondary, designScale = scale)
-                Spacer(Modifier.height((20 * scale).dp))
-                AppText(headline, AppTextRole.SectionTitle, color = theme.text, designScale = scale, maxLines = 1)
-                Spacer(Modifier.height((8 * scale).dp))
-                AppText(detail, AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .55f), designScale = scale, maxLines = 2)
-            }
-        }
-        BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
-        Surface(
-            onClick = {
-                if (status == V25TaskStatus.FAILED) {
-                    viewModel.retryPdfTask { nav.replaceTop(AppRoute.SmartCardPreview(project.id)) }
-                } else {
-                    nav.goBack()
-                }
+        StatusProgressCard(
+            title = when {
+                failed -> "生成失败，点击重试"
+                abandoned -> "任务已停止"
+                else -> "正在生成卡片"
             },
-            color = theme.primary, contentColor = theme.onPrimary,
-            shape = RoundedCornerShape((24 * scale).dp),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
-        ) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                MaterialSymbol(if (status == V25TaskStatus.FAILED) "refresh" else "arrow_back", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
-                Spacer(Modifier.width((8 * scale).dp))
-                AppText(if (status == V25TaskStatus.FAILED) "重试生成" else "后台继续", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
+            subtitle = when {
+                abandoned -> "本次任务已停止，可以返回项目重新设置。"
+                else -> stageSubtitle
+            },
+            modifier = Modifier.align(Alignment.Center),
+            container = theme.background,
+            ringColor = theme.primary,
+            failed = failed,
+            failureReason = failureReasonText(task?.errorCode),
+            paused = paused && !failed && !abandoned,
+            onClick = if (failed) {
+                { viewModel.retryPdfTask { nav.replaceTop(AppRoute.SmartCardPreview(project.id)) } }
+            } else null,
+        )
+        BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
+        if (!failed && !abandoned) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
+                    .fillMaxWidth().height((60 * scale).dp).zIndex(1f),
+                horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)
+            ) {
+                // Figma 1130:8193 后台生成: family Secondary-Primary surface.
+                Surface(
+                    onClick = {
+                        nav.returnToTopLevel()
+                        nav.navigate(AppRoute.ProjectDetail(project.id))
+                    },
+                    color = theme.secondary, contentColor = AppColors.TextIconDark,
+                    shape = RoundedCornerShape((24 * scale).dp),
+                    modifier = Modifier.weight(1f).height((60 * scale).dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        AppText("后台生成", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
+                    }
+                }
+                // Figma 1130:8103 暂停生成: fixed 224dp primary action; local display only.
+                Surface(
+                    onClick = { paused = !paused },
+                    color = theme.primary, contentColor = theme.onPrimary,
+                    shape = RoundedCornerShape((24 * scale).dp),
+                    modifier = Modifier.width((224 * scale).dp).height((60 * scale).dp)
+                ) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        MaterialSymbol(
+                            if (paused) "play_circle" else "pause_circle", null,
+                            tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true
+                        )
+                        Spacer(Modifier.width((8 * scale).dp))
+                        AppText(if (paused) "继续生成" else "暂停生成", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
+                    }
+                }
+            }
+        } else if (failed) {
+            Surface(
+                onClick = { viewModel.retryPdfTask { nav.replaceTop(AppRoute.SmartCardPreview(project.id)) } },
+                color = theme.primary, contentColor = theme.onPrimary,
+                shape = RoundedCornerShape((24 * scale).dp),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
+                    .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
+            ) {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    MaterialSymbol("replay", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
+                    Spacer(Modifier.width((8 * scale).dp))
+                    AppText("重试生成", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
+                }
             }
         }
     }
 }
 
 /**
+ * Figma 849:6541 "正在生成"（样卡等待）. No bottom buttons (交接文档 决策①): the screen
+ * only observes the Room projection — samples landing (or the task reaching
+ * `AWAITING_SAMPLE_CONFIRMATION`) auto-advance to the preview, a FAILED task offers
+ * its in-place retry.
+ */
+@Composable
+internal fun SmartCardSampleWaitScreen(project: ProjectSummary, nav: ScreenNavigator, viewModel: AppViewModel) {
+    val theme = deckTheme(project)
+    val task by viewModel.pdfTask.collectAsState()
+    val samples by viewModel.pdfSamples.collectAsState()
+    val status = task?.status
+    var loadingSamples by remember { mutableStateOf(false) }
+    LaunchedEffect(task?.taskId, status, samples.size) {
+        when {
+            // Freshly generated samples ride in memory; the jump renders them directly.
+            samples.isNotEmpty() -> nav.replaceTop(AppRoute.SmartCardPreview(project.id))
+            status == V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION && !loadingSamples -> {
+                loadingSamples = true
+                viewModel.loadPdfSamples { loadingSamples = false }
+            }
+            // A retry that lands as DRAFT (no confirmed samples to reuse) needs its
+            // sample request re-armed; requestPdfSamples is idempotent.
+            status == V25TaskStatus.DRAFT -> viewModel.requestPdfSamples()
+        }
+    }
+    val failed = status == V25TaskStatus.FAILED
+    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
+        ScreenTopInformationBar(
+            title = "正在生成", subtitle = null, onBack = nav::goBack,
+            backContainer = theme.cardPanel, titleColor = theme.text
+        )
+        StatusProgressCard(
+            title = if (failed) "生成失败，点击重试" else "正在生成预览卡片",
+            subtitle = "稍安勿躁",
+            modifier = Modifier.align(Alignment.Center),
+            container = theme.background,
+            ringColor = theme.primary,
+            failed = failed,
+            failureReason = failureReasonText(task?.errorCode),
+            onClick = if (failed) {
+                { viewModel.retryPdfTask { } }
+            } else null,
+        )
+    }
+}
+
+/**
  * Figma 836:5895 / 839:6220 "智能制卡". After the user picks files and taps
- * "下一步" on generation settings, an AI parse dialog (Figma 856:6605) runs
- * through its three stages and then reveals the parsed chapter list. The page
- * and the dialog both follow the owning project's colour family.
+ * "下一步" on generation settings, the parsed 部分 list is shown; picking at least
+ * one and tapping 下一步 opens the sample-wait page immediately while the task is
+ * being created in the background.
  */
 @Composable
 internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigator, viewModel: AppViewModel) {
@@ -142,13 +227,13 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
     val activeProject by viewModel.activePdfProject.collectAsState()
     val generationDraft by viewModel.projectGenerationDraft.collectAsState()
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
-    var sampleRequestInFlight by remember { mutableStateOf(false) }
     var requestError by remember { mutableStateOf<String?>(null) }
     var replacingPdf by remember { mutableStateOf(false) }
+    var preparing by remember { mutableStateOf(false) }
     val active = activeProject?.takeIf { it.projectId == project.id }
-    // Chapters span every material of the project (contract 3.2a): PDF chapters show their page
-    // span, TEXT material chapters are whole-content with no pages.
-    val chapters = active?.chapters.orEmpty().map { chapter ->
+    // Sections span every material of the project (contract 3.2a): PDF sections show their page
+    // span, TEXT material sections are whole-content with no pages.
+    val sections = active?.chapters.orEmpty().map { chapter ->
         SmartChapter(chapter.id, chapter.name, chapter.pageSpanLabel ?: "全文")
     }
     // The wait states derive straight from the Room-backed project flow (V25-D-34): the
@@ -172,8 +257,8 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
             if (!success) requestError = message ?: "替换 PDF 失败"
         }
     }
-    LaunchedEffect(chapters) {
-        if (selectedIds.isEmpty() && chapters.isNotEmpty()) selectedIds = chapters.map { it.id }.toSet()
+    LaunchedEffect(sections) {
+        if (selectedIds.isEmpty() && sections.isNotEmpty()) selectedIds = sections.map { it.id }.toSet()
     }
 
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
@@ -185,11 +270,24 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
             modifier = Modifier.fillMaxSize().statusBarsPadding()
                 .padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp)
                 .clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
-            contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp),
+            contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16, controlCount = 2, gapBetweenControls = 12) * scale).dp),
             verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
         ) {
             item {
-                SmartChapterIntroCard(theme, scale)
+                // Figma 839:6234 导入说明: family Surface banner, 24dp radius.
+                Surface(
+                    color = theme.cardPanel,
+                    shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AppText(
+                        "选择要制作闪卡的部分。",
+                        AppTextRole.Supporting,
+                        modifier = Modifier.fillMaxWidth().padding((24 * scale).dp),
+                        color = AppColors.TextIconDark,
+                        designScale = scale,
+                    )
+                }
             }
             requestError?.let { error ->
                 item {
@@ -201,69 +299,111 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
                 }
             }
             if (parsing) {
-                item { SmartParseWaitCard(theme, scale) }
+                item {
+                    // Figma 836:5895 识别内容弹窗-已识别文件, in-page at full content width.
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        StatusProgressCard(
+                            title = "正在识别文件内容",
+                            subtitle = "已识别文件",
+                            container = theme.background,
+                            ringColor = theme.primary,
+                        )
+                    }
+                }
             }
             if (parseFailed) {
                 item {
-                    SmartParseFailedCard(
-                        errorCode = failedMaterial?.errorCode,
-                        replacing = replacingPdf,
-                        theme = theme,
-                        scale = scale,
-                        onReplacePdf = { pdfPicker.launch(arrayOf("application/pdf")) },
-                    )
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        StatusProgressCard(
+                            title = "解析失败，点击重试",
+                            subtitle = "",
+                            container = theme.background,
+                            ringColor = theme.primary,
+                            failed = true,
+                            failureReason = failureReasonText(failedMaterial?.errorCode),
+                            onClick = if (!replacingPdf) {
+                                { pdfPicker.launch(arrayOf("application/pdf")) }
+                            } else null,
+                        )
+                    }
                 }
             }
             item {
-                AppText("章节", AppTextRole.SectionTitle, modifier = Modifier.padding(start = (8 * scale).dp), color = theme.text, designScale = scale)
+                // 交接文档 决策⑥：「章节」改名「部分」。
+                AppText("部分", AppTextRole.SectionTitle, modifier = Modifier.padding(start = (8 * scale).dp), color = theme.text, designScale = scale)
             }
-            items(chapters, key = { it.id }) { chapter ->
-                SmartChapterCard(chapter, selected = chapter.id in selectedIds, theme, scale) {
+            items(sections, key = { it.id }) { section ->
+                SmartChapterCard(section, selected = section.id in selectedIds, theme, scale) {
                     selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
                 }
             }
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
-        Surface(
-            onClick = {
-                if (blocked || selectedIds.isEmpty() || sampleRequestInFlight || replacingPdf) return@Surface
-                sampleRequestInFlight = true
-                requestError = null
-                viewModel.generatePdfSamples(
-                    existingDeckId = null,
-                    deckName = generationDraft?.deckName.orEmpty().ifBlank { "${project.name} 卡片组" },
-                    chapterIds = selectedIds.toList(),
-                    config = generationDraft?.config ?: PdfGenerationConfig(),
-                    onReady = {
-                        sampleRequestInFlight = false
-                        nav.navigate(AppRoute.SmartCardPreview(project.id))
-                    },
-                    onFailure = { code ->
-                        sampleRequestInFlight = false
-                        requestError = code ?: "GENERATION_FAILED"
-                    },
-                )
-            },
-            color = theme.primary, contentColor = theme.onPrimary,
-            shape = RoundedCornerShape((24 * scale).dp),
+        Column(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((60 * scale).dp).zIndex(1f)
+                .fillMaxWidth().zIndex(1f),
+            verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AppText(
-                    when {
-                        parsing -> "正在解析"
-                        parseFailed -> "解析失败"
-                        replacingPdf -> "正在替换 PDF"
-                        sampleRequestInFlight -> "正在生成样卡"
-                        else -> "下一步"
-                    },
-                    AppTextRole.Label,
-                    color = LocalContentColor.current,
-                    designScale = scale,
-                    maxLines = 1,
-                )
+            // Figma 839:6237 button 组: 全选 (family Primary-Secondary) + 下一步 (Primary).
+            Surface(
+                onClick = {
+                    selectedIds = if (selectedIds.size == sections.size) emptySet() else sections.map { it.id }.toSet()
+                },
+                enabled = sections.isNotEmpty() && !blocked,
+                color = theme.secondary, contentColor = AppColors.TextIconDark,
+                shape = RoundedCornerShape((24 * scale).dp),
+                modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AppText(
+                        if (selectedIds.size == sections.size && sections.isNotEmpty()) "取消全选" else "全选",
+                        AppTextRole.Label,
+                        color = LocalContentColor.current,
+                        designScale = scale,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Surface(
+                onClick = {
+                    if (blocked || selectedIds.isEmpty() || preparing || replacingPdf) return@Surface
+                    preparing = true
+                    requestError = null
+                    viewModel.beginPdfSamples(
+                        existingDeckId = null,
+                        deckName = generationDraft?.deckName.orEmpty().ifBlank { "${project.name} 卡片组" },
+                        chapterIds = selectedIds.toList(),
+                        config = generationDraft?.config ?: PdfGenerationConfig(),
+                        onReady = {
+                            preparing = false
+                            nav.navigate(AppRoute.SmartCardSampleWait(project.id))
+                        },
+                        onFailure = { code ->
+                            preparing = false
+                            requestError = code ?: "GENERATION_FAILED"
+                        },
+                    )
+                },
+                color = theme.primary, contentColor = theme.onPrimary,
+                shape = RoundedCornerShape((24 * scale).dp),
+                modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AppText(
+                        when {
+                            parsing -> "正在解析"
+                            parseFailed -> "解析失败"
+                            replacingPdf -> "正在替换 PDF"
+                            preparing -> "正在创建任务"
+                            else -> "下一步"
+                        },
+                        AppTextRole.Label,
+                        color = LocalContentColor.current,
+                        designScale = scale,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -271,17 +411,10 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
 
 private data class SmartChapter(val id: String, val title: String, val pages: String)
 
-/** Figma 839:6220 import note: family Surface pill, 24dp clip. */
-@Composable
-private fun SmartChapterIntroCard(theme: DeckTheme, scale: Float) = CardHint(
-    "根据已选文件选择要制作闪卡的章节。",
-    designScale = scale,
-)
-
 /**
- * Figma 839:6220 chapter row. Unselected lifts to the family Background with a
- * Primary icon tile; selected turns green (check) following the shared
- * material-card hierarchy.
+ * Figma 222:4713 部分 row. Unselected lifts to the family Background with a
+ * Primary icon tile (16dp corner); selected turns green (#D6EEC9 family) with a
+ * check tile. 只能被选与未选（交接文档 决策⑥）— no edit, no delete.
  */
 @Composable
 private fun SmartChapterCard(
@@ -292,19 +425,19 @@ private fun SmartChapterCard(
     onToggle: (String) -> Unit
 ) = Surface(
     onClick = { onToggle(chapter.id) },
-    color = if (selected) AppColors.Green.background else theme.background,
+    color = if (selected) AppColors.Green.surface else theme.background,
     shape = RoundedCornerShape((AppShapeRadius * scale).dp),
     modifier = Modifier.fillMaxWidth()
 ) {
     Row(Modifier.fillMaxSize().padding((16 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(
             color = if (selected) AppColors.Green.primary else theme.primary,
-            shape = RoundedCornerShape((24 * scale).dp),
+            shape = RoundedCornerShape((16 * scale).dp),
             modifier = Modifier.size((56 * scale).dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 MaterialSymbol(
-                    if (selected) "check_circle" else "menu_book", null,
+                    if (selected) "check_circle" else "book_ribbon", null,
                     tint = if (selected) AppColors.Green.background else theme.background,
                     size = fixedSp(24 * scale), filled = true
                 )
@@ -318,71 +451,11 @@ private fun SmartChapterCard(
     }
 }
 
-/** In-page parse progress card: the observation engine keeps the projection fresh; leaving is safe. */
-@Composable
-private fun SmartParseWaitCard(theme: DeckTheme, scale: Float) = Surface(
-    color = theme.background,
-    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
-    modifier = Modifier.fillMaxWidth()
-) {
-    Column(
-        Modifier.fillMaxWidth().padding((24 * scale).dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
-    ) {
-        GenerationProgressRing(color = theme.primary, trackColor = theme.secondary, designScale = scale)
-        AppText("正在解析文件内容", AppTextRole.SectionTitle, color = theme.text, designScale = scale, maxLines = 1)
-        AppText(
-            "正在等待服务端解析结果；可以返回，解析完成后章节会自动出现",
-            AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .55f), designScale = scale,
-        )
-    }
-}
-
-/** Terminal parse failure: shows the backend reason and the failed PDF material's in-place replace way out. */
-@Composable
-private fun SmartParseFailedCard(
-    errorCode: String?,
-    replacing: Boolean,
-    theme: DeckTheme,
-    scale: Float,
-    onReplacePdf: () -> Unit,
-) = Surface(
-    color = AppColors.WarningSecondary,
-    shape = RoundedCornerShape((AppShapeRadius * scale).dp),
-    modifier = Modifier.fillMaxWidth()
-) {
-    Column(
-        Modifier.fillMaxWidth().padding((20 * scale).dp),
-        verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy((10 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
-            MaterialSymbol("error", null, tint = AppColors.WarningInk, size = fixedSp(24 * scale), filled = true)
-            AppText("PDF 解析失败", AppTextRole.SectionTitle, color = AppColors.WarningInk, designScale = scale)
-        }
-        AppText(
-            if (errorCode.isNullOrBlank()) "服务无法解析这份 PDF，请重新上传文件替换后重试。"
-            else "服务无法解析这份 PDF（$errorCode）。请重新上传文件替换后重试。",
-            AppTextRole.CardSubtitle, color = AppColors.WarningInk, designScale = scale,
-        )
-        Surface(
-            onClick = onReplacePdf,
-            enabled = !replacing,
-            color = AppColors.WarningStrong, contentColor = AppColors.TextIconLight,
-            shape = RoundedCornerShape((AppButtonShapeRadius * scale).dp),
-            modifier = Modifier.fillMaxWidth().height((48 * scale).dp)
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AppText(if (replacing) "正在替换 PDF" else "重新上传 PDF", AppTextRole.Label, color = LocalContentColor.current, designScale = scale)
-            }
-        }
-    }
-}
-
 /**
- * Figma 835:5784 "卡片预览". Three generated sample flashcards are shown as
- * flip cards (question front, answer back); the difficulty chip and the two
- * fixed actions reuse the shared CardListActionButton.
+ * Figma 835:5784 "卡片预览". The generated sample flashcards are shown as flip
+ * cards (question front, answer back); the difficulty chip and the two fixed
+ * actions reuse the shared CardListActionButton. 返回调整 unwinds the whole
+ * wizard back to generation settings (交接文档 4.8).
  */
 @Composable
 internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigator, viewModel: AppViewModel) {
@@ -408,7 +481,7 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
         ) {
             item {
                 CardHint(
-                    if (samples.isEmpty()) "服务端尚未返回样卡，请返回重新生成。" else "点击卡片可以查看答案。样卡确认后才会开始正式生成。",
+                    if (samples.isEmpty()) "服务端尚未返回样卡，请返回重新生成。" else "点击卡片可以查看答案。",
                     designScale = scale,
                 )
             }
@@ -432,7 +505,10 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
                 .fillMaxWidth().height((60 * scale).dp).zIndex(1f),
             horizontalArrangement = Arrangement.spacedBy((12 * scale).dp)
         ) {
-            CardListActionButton("返回调整", "cycle", false, Modifier.weight(1f), scale, theme, onClick = nav::goBack)
+            CardListActionButton("返回调整", "cycle", false, Modifier.weight(1f), scale, theme, onClick = {
+                // 返回调整 lands on 添加卡片组 so every wizard setting stays editable.
+                nav.popUntil(AppRoute.DeckGeneration(project.id))
+            })
             CardListActionButton(if (starting) "正在开始" else "开始生成", "play_circle", true, Modifier.weight(1f), scale, theme) {
                 if (samples.isNotEmpty() && !starting) {
                     starting = true

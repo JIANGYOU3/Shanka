@@ -373,6 +373,8 @@ class DeletionSyncCoordinatorTest {
         override suspend fun startTask(taskId: String): V25Result<V25GenerationTask> = throw NotImplementedError()
         override suspend fun abandonTask(taskId: String): V25Result<V25GenerationTask> = throw NotImplementedError()
         override suspend fun retryTask(taskId: String): V25Result<V25GenerationTask> = throw NotImplementedError()
+        override suspend fun confirmTask(taskId: String): V25Result<V25GenerationTask> = throw NotImplementedError()
+        override suspend fun listTaskCards(taskId: String): V25Result<List<V25Card>> = throw NotImplementedError()
         override suspend fun deleteTask(taskId: String, deleteGeneratedCards: Boolean): V25Result<Unit> = throw NotImplementedError()
         override suspend fun createDeck(name: String, projectId: String?, idempotencyKey: String?): V25Result<V25Deck> = throw NotImplementedError()
         override suspend fun getDeck(deckId: String): V25Result<V25Deck> = throw NotImplementedError()

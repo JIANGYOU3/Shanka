@@ -86,18 +86,6 @@ internal fun DeckGenerationScreen(
     var requirement by remember { mutableStateOf("") }
     var selectedFileIds by remember { mutableStateOf(setOf<String>()) }
     var selectedTextIds by remember { mutableStateOf(setOf<String>()) }
-    // Same contract as the material-management page: the bound PDF has no standalone delete,
-    // so its swipe-delete requests the project deletion flow with the advisory impact line.
-    var showProjectDeletion by remember { mutableStateOf(false) }
-    var projectDeletionInFlight by remember { mutableStateOf(false) }
-    var deletionPreflight by remember { mutableStateOf<com.qiuzhao.flashcards.domain.v25.V25DeletionPreflight?>(null) }
-    LaunchedEffect(showProjectDeletion) {
-        deletionPreflight = null
-        if (!showProjectDeletion) return@LaunchedEffect
-        viewModel.refreshProjectDeletionPreflight(project.id, retainDecks = true, allowCancel = false) { result ->
-            deletionPreflight = result
-        }
-    }
 
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
@@ -140,13 +128,7 @@ internal fun DeckGenerationScreen(
                     uploading = uploadingFiles,
                     onRetryUpload = { viewModel.retryProjectUploads(project.id) },
                     selectedIds = selectedFileIds,
-                    onToggle = { id -> selectedFileIds = if (id in selectedFileIds) selectedFileIds - id else selectedFileIds + id },
-                    onEditText = {},
-                    onDelete = { id ->
-                        val material = fileItems.firstOrNull { it.id == id }
-                        if (material?.projectId == null) viewModel.deleteProjectDraftMaterial(id)
-                        else showProjectDeletion = true
-                    }
+                    onToggle = { id -> selectedFileIds = if (id in selectedFileIds) selectedFileIds - id else selectedFileIds + id }
                 )
             }
             item {
@@ -155,13 +137,7 @@ internal fun DeckGenerationScreen(
                     uploading = uploadingTexts,
                     onRetryUpload = { viewModel.retryProjectUploads(project.id) },
                     selectedIds = selectedTextIds,
-                    onToggle = { id -> selectedTextIds = if (id in selectedTextIds) selectedTextIds - id else selectedTextIds + id },
-                    onEditText = { material -> nav.navigate(AppRoute.ProjectTextEditor(material.id, theme.key, project.id, editorTitle = "编辑文本资料")) },
-                    onDelete = { id ->
-                        val material = textItems.firstOrNull { it.id == id }
-                        if (material?.projectId == null) viewModel.deleteProjectDraftMaterial(id)
-                        else showProjectDeletion = true
-                    }
+                    onToggle = { id -> selectedTextIds = if (id in selectedTextIds) selectedTextIds - id else selectedTextIds + id }
                 )
             }
         }
@@ -185,8 +161,14 @@ internal fun DeckGenerationScreen(
                     onReady = { ready -> if (ready) nav.navigate(AppRoute.SmartCardChapter(project.id)) },
                 )
             },
-            enabled = !uploadsBusy,
-            color = theme.primary, contentColor = theme.onPrimary,
+            // Figma 835:5466: 下一步 needs at least one ready material picked; while
+            // background uploads are in flight nothing may be submitted.
+            enabled = !uploadsBusy && (selectedFileIds + selectedTextIds).isNotEmpty(),
+            color = if (!uploadsBusy && (selectedFileIds + selectedTextIds).isNotEmpty()) {
+                theme.primary
+            } else {
+                theme.primary.copy(alpha = .45f)
+            }, contentColor = theme.onPrimary,
             shape = RoundedCornerShape((24 * scale).dp),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
@@ -195,27 +177,6 @@ internal fun DeckGenerationScreen(
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 AppText("下一步", AppTextRole.Label, color = LocalContentColor.current, designScale = scale, maxLines = 1)
             }
-        }
-        if (showProjectDeletion) {
-            val impact = deletionPreflight?.impact
-            ProjectDeletionDialog(
-                projectName = project.name,
-                theme = theme,
-                deleting = projectDeletionInFlight,
-                impactText = impact?.let {
-                    "影响范围：${it.deckCount} 个牌组、${it.cardCount} 张卡片、${it.taskCount} 条制卡任务记录"
-                },
-                onConfirm = { retainDecks ->
-                    if (projectDeletionInFlight) return@ProjectDeletionDialog
-                    projectDeletionInFlight = true
-                    viewModel.deleteProject(project.id, retainDecks) { succeeded ->
-                        projectDeletionInFlight = false
-                        showProjectDeletion = false
-                        if (succeeded) nav.returnToTopLevel()
-                    }
-                },
-                onDismiss = { if (!projectDeletionInFlight) showProjectDeletion = false }
-            )
         }
     }
 }
@@ -468,9 +429,7 @@ private fun DeckGenerationMaterialSection(
     uploading: List<MaterialUploadState> = emptyList(),
     onRetryUpload: () -> Unit = {},
     selectedIds: Set<String>,
-    onToggle: (String) -> Unit,
-    onEditText: (ProjectDraftMaterial) -> Unit,
-    onDelete: (String) -> Unit
+    onToggle: (String) -> Unit
 ) = Surface(
     color = theme.background,
     shape = RoundedCornerShape((AppShapeRadius * scale).dp),
@@ -497,26 +456,34 @@ private fun DeckGenerationMaterialSection(
             DeckGenerationUploadCard(state, theme, scale, onRetry = onRetryUpload)
         }
         materials.forEach { material ->
+            // 解析中/失败资料不可选（交接文档 4.5）；选中态用绿色系（Figma 796:6785）。
+            val selectable = materialCardState(material) == ProjectMaterialCardState.DONE
             if (material.type == ProjectDraftMaterialType.FILE) {
                 ProjectDraftFileCard(
                     material = material, theme = theme, scale = scale,
                     onEdit = {}, selected = material.id in selectedIds,
-                    onSelect = { onToggle(material.id) },
-                    onDelete = { onDelete(material.id) }
+                    onSelect = if (selectable) {
+                        { onToggle(material.id) }
+                    } else null,
+                    selectableOnly = true,
+                    onDelete = {}
                 )
             } else {
                 ProjectDraftTextCard(
                     material = material, theme = theme, scale = scale,
-                    onEdit = { onEditText(material) }, onDelete = { onDelete(material.id) },
+                    onEdit = {}, onDelete = {},
                     selected = material.id in selectedIds,
-                    onSelect = { onToggle(material.id) },
+                    onSelect = if (selectable) {
+                        { onToggle(material.id) }
+                    } else null,
                     kind = ProjectMaterialTextCardKind.SELECTABLE,
-                    parentSurface = ProjectMaterialCardParentSurface.THEME_BACKGROUND
+                    parentSurface = ProjectMaterialCardParentSurface.THEME_BACKGROUND,
+                    selectableOnly = true
                 )
             }
         }
         // Figma 1050:4944 — the usage hint sits at the section's bottom-left.
-        CardHint("点击可选中文件。\n右滑可删除。", designScale = scale)
+        CardHint("点击可选中文件。", designScale = scale)
     }
 }
 

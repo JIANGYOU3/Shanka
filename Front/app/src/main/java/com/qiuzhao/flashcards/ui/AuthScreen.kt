@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -99,24 +98,27 @@ internal fun LoginScreen(
                     color = AppColors.Blue.background,
                     onClick = nav::popBackStack,
                     size = (56 * scale).dp,
-                    tint = AppColors.Blue.ink
+                    tint = Color.Black
                 )
             }
         }
         Column(
             modifier = Modifier.fillMaxSize().zIndex(1f).imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(start = (16 * scale).dp, top = (239 * scale).dp, end = (16 * scale).dp, bottom = (32 * scale).dp),
+                .padding(start = (16 * scale).dp, top = (266 * scale).dp, end = (16 * scale).dp, bottom = (32 * scale).dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Figma 454:4567 geometry: headline box at y275 (42.4 line), white
+            // card top edge at y370 — the 58dp spacer plus the 32dp role line
+            // height lands the card exactly there.
             AppText(
                 "欢迎使用，请登录",
                 AppTextRole.AuthHeroTitle,
-                color = AppColors.TextIconDark,
+                color = Color.Black,
                 designScale = scale,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height((56 * scale).dp))
+            Spacer(Modifier.height((58 * scale).dp))
             Surface(
                 color = AppColors.Card,
                 shape = RoundedCornerShape((48 * scale).dp),
@@ -126,15 +128,17 @@ internal fun LoginScreen(
                     modifier = Modifier.padding((24 * scale).dp),
                     verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
                 ) {
+                    // Field groups sit 16dp apart in the frame while every other
+                    // card gap is 12dp, so each field carries the extra 4dp.
                     AuthField(
                         label = "邮箱", placeholder = "请输入邮箱", icon = "alternate_email",
                         value = email, onValueChange = { email = it }, secret = false, scale = scale,
-                        fieldColor = AppColors.Blue.surface, fieldCornerRadius = 32f
+                        modifier = Modifier.padding(bottom = (4 * scale).dp)
                     )
                     AuthField(
                         label = "密码", placeholder = "请输入密码", icon = "lock",
                         value = password, onValueChange = { password = it }, secret = true, scale = scale,
-                        fieldColor = AppColors.Blue.surface, fieldCornerRadius = 32f
+                        modifier = Modifier.padding(bottom = (4 * scale).dp)
                     )
                     AppText(
                         "忘记密码？",
@@ -149,7 +153,7 @@ internal fun LoginScreen(
                         text = "完成登录",
                         icon = "login",
                         color = AppColors.Blue.primary,
-                        contentColor = AppColors.TextIconLight,
+                        contentColor = Color.White,
                         scale = scale,
                         enabled = !loginRevealStarted,
                         modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -164,7 +168,7 @@ internal fun LoginScreen(
                         text = "还未注册",
                         icon = "app_registration",
                         color = AppColors.Blue.surface,
-                        contentColor = AppColors.TextIconDark,
+                        contentColor = Color.Black,
                         scale = scale,
                         enabled = !loginRevealStarted
                     ) {
@@ -282,11 +286,12 @@ internal fun RegisterScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
         }
         item { AuthField("昵称", "请输入昵称", "badge", nickname, { nickname = it }, false, scale) }
         item { AuthField("邮箱", "请输入邮箱", "alternate_email", email, { email = it }, false, scale) }
-        item { AuthField("密码", "至少 6 位", "lock", password, { password = it }, true, scale) }
+        item { AuthField("密码", "请输入密码", "lock", password, { password = it }, true, scale) }
         item { AuthField("确认密码", "再次输入密码", "lock", confirmation, { confirmation = it }, true, scale) }
         message?.let { text -> item { AuthMessage(text, scale) { message = null } } }
         item {
-            AuthPrimaryButton("完成注册", scale) {
+            // Figma 400:3977: 44dp separates the last field group from the action.
+            AuthPrimaryButton("完成注册", scale, modifier = Modifier.padding(top = (28 * scale).dp)) {
                 viewModel.register(nickname, email, password, confirmation) { error ->
                     if (error == null) nav.popBackStack() else message = error
                 }
@@ -298,7 +303,9 @@ internal fun RegisterScreen(viewModel: AppViewModel, nav: ScreenNavigator) {
 @Composable
 private fun AuthLayout(title: String, onBack: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.(Float) -> Unit) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    // Figma 400:3977: the register sheet sits on pure white; its header is the
+    // shared bar with the #EEF4FA round back button and black title/arrow.
+    Surface(Modifier.fillMaxSize(), color = AppColors.Card) {
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().imePadding()
@@ -307,7 +314,12 @@ private fun AuthLayout(title: String, onBack: () -> Unit, content: androidx.comp
                 contentPadding = PaddingValues(bottom = (NaturalScrollTail * scale).dp),
                 verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
             ) { content(scale) }
-            ScreenTopInformationBar(title, null, onBack, modifier = Modifier.zIndex(1f))
+            ScreenTopInformationBar(
+                title, null, onBack,
+                backContainer = AppColors.Blue.background,
+                titleColor = Color.Black,
+                modifier = Modifier.zIndex(1f)
+            )
         }
     }
 }
@@ -321,12 +333,18 @@ private fun AuthField(
     onValueChange: (String) -> Unit,
     secret: Boolean,
     scale: Float,
+    modifier: Modifier = Modifier,
     fieldColor: Color = AppColors.Blue.background,
-    fieldCornerRadius: Float = 16f
+    fieldCornerRadius: Float = 24f
 ) {
     val textRole = if (value.isBlank()) AppTextRole.Supporting else AppTextRole.CardTitle
-    Column(verticalArrangement = Arrangement.spacedBy((12 * scale).dp)) {
-        AppText(label, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (8 * scale).dp), color = AppColors.TextIconDark, designScale = scale)
+    // Figma 454:4567 / 400:3977: label 8dp inside the field's left edge, 12dp
+    // above it; every glyph and symbol on these screens is pure #000000.
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy((12 * scale).dp)
+    ) {
+        AppText(label, AppTextRole.SectionTitle, modifier = Modifier.padding(horizontal = (8 * scale).dp), color = Color.Black, designScale = scale)
         Surface(
             color = fieldColor,
             shape = RoundedCornerShape((fieldCornerRadius * scale).dp),
@@ -337,7 +355,7 @@ private fun AuthField(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = appInputTextStyle(textRole, scale, AppColors.TextIconDark),
+                    textStyle = appInputTextStyle(textRole, scale, Color.Black),
                     visualTransformation = if (secret) PasswordVisualTransformation() else rememberBilingualInputTransformation(textRole, scale),
                     singleLine = true,
                     decorationBox = { inner ->
@@ -346,7 +364,7 @@ private fun AuthField(
                                 modifier = Modifier.align(Alignment.CenterStart),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                MaterialSymbol(icon, null, tint = AppColors.Blue.ink, size = fixedSp(24 * scale), filled = true)
+                                MaterialSymbol(icon, null, tint = Color.Black, size = fixedSp(24 * scale), filled = true)
                                 Spacer(Modifier.width((16 * scale).dp))
                             }
                             Box(
@@ -358,7 +376,7 @@ private fun AuthField(
                                     AppText(
                                         placeholder,
                                         AppTextRole.Supporting,
-                                        color = AppColors.TextIconDark.copy(alpha = .625f),
+                                        color = Color.Black,
                                         designScale = scale
                                     )
                                 }
@@ -547,7 +565,9 @@ private fun AnimatedBackgroundCard(
     val turn = ((flipDegrees % 360f) + 360f) % 360f
     val faceRotation = turn % 180f
     val showingBack = turn in 90f..270f
-    val faceColor = if (showingBack) AppColors.Blue.primary else AppColors.Blue.primarySecondary
+    // Figma 454:4567's resting blobs: three #CCE6FF faces and the flipped
+    // upper-left card on the #389DFF reverse.
+    val faceColor = if (showingBack) AppColors.Blue.primary else AppColors.Blue.surface
     // The Figma card wrappers are intentionally larger than the viewport. A
     // Compose child using those dimensions is constrained and re-centred by its
     // parent, which displaced the lower-left card. Draw in the viewport instead:
@@ -587,26 +607,41 @@ private fun AnimatedBackgroundCard(
 @Composable
 private fun AuthHintCard(text: String, scale: Float) = Surface(
     color = AppColors.Blue.background,
-    shape = RoundedCornerShape((AppNestedShapeRadius * scale).dp),
+    // Figma 400:3977 导入说明: 370x72, radius 32.
+    shape = RoundedCornerShape((32 * scale).dp),
     modifier = Modifier.fillMaxWidth().height((72 * scale).dp)
 ) {
     Box(
         modifier = Modifier.padding(horizontal = (24 * scale).dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        AppText(text, AppTextRole.Supporting, color = AppColors.TextIconDark, designScale = scale)
+        AppText(text, AppTextRole.Supporting, color = Color.Black, designScale = scale)
     }
 }
 
 @Composable
-private fun AuthPrimaryButton(text: String, scale: Float, onClick: () -> Unit) = Surface(
+private fun AuthPrimaryButton(
+    text: String,
+    scale: Float,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) = Surface(
     onClick = onClick,
     color = AppColors.Blue.primary,
-    contentColor = AppColors.TextIconLight,
+    contentColor = Color.White,
     shape = RoundedCornerShape((24 * scale).dp),
-    modifier = Modifier.fillMaxWidth().height((60 * scale).dp)
+    // Figma 400:3977 完成注册: 370x72, centered login icon + label.
+    modifier = modifier.fillMaxWidth().height((72 * scale).dp)
 ) {
-    Box(contentAlignment = Alignment.Center) { AppText(text, AppTextRole.Label, color = LocalContentColor.current, designScale = scale) }
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MaterialSymbol("login", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
+        Spacer(Modifier.width((8 * scale).dp))
+        AppText(text, AppTextRole.Label, color = LocalContentColor.current, designScale = scale)
+    }
 }
 
 @Composable
@@ -625,7 +660,8 @@ private fun AuthIconButton(
     color = color,
     contentColor = contentColor,
     shape = RoundedCornerShape((24 * scale).dp),
-    modifier = modifier.fillMaxWidth().height((72 * scale).dp)
+    // Figma 454:4567: both login actions are 322x64 with a centered icon+label.
+    modifier = modifier.fillMaxWidth().height((64 * scale).dp)
 ) {
     Row(
         modifier = Modifier.fillMaxSize(),

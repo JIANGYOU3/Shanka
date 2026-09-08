@@ -3,8 +3,13 @@ package com.qiuzhao.flashcards.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,11 +33,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
@@ -43,6 +51,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
@@ -75,41 +84,47 @@ internal fun formatImportDate(importedAt: Instant?): String =
     importedAt?.let { importDateFormatter.format(it.atZone(ZoneId.systemDefault())) } ?: "—"
 
 
+/** Figma 568:2326 glass token: rgba(250,253,255,0.5) over backdropFilter blur(12px). */
+private val NavigationGlassColor = Color(0x80FAFDFF)
+
+/** Figma 568:2326 shadow token: #DADADA at 50% opacity. */
+private val NavigationShadowColor = Color(0xFFDADADA)
+
 /**
- * Figma 568:2326 (NavBar). The floating light root navigation: a translucent
- * near-white pill with a 12dp inset track of three 94×60 items and an animated
- * #CCE6FF selection indicator. The glass is a real backdrop blur (haze,
- * RenderEffect on API 31+): Figma fill rgba(250,253,255,0.5) over
- * backdropFilter blur(12px); on older devices the blur degrades to the
- * pre-1.0 stronger near-white scrim (0xB3) so text beneath still reads as
- * frosted rather than plainly visible.
+ * Figma 568:2326 surface shadow, 0 4 16 rgba(218,218,218,0.5), on the Compose
+ * drop-shadow API that the miuix floating bars use. It renders a genuinely
+ * blurred shadow layer: the RenderNode elevation shadow was measured at ~1%
+ * darkening on this light background — invisible — and Modifier.blur clipped
+ * the spread to a hard-edged sliver, so both earlier attempts are gone.
+ */
+private fun navigationBarShadow(designScale: Float) = Shadow(
+    radius = (16 * designScale).dp,
+    color = NavigationShadowColor,
+    offset = DpOffset(0.dp, (4 * designScale).dp),
+    alpha = 0.5f
+)
+
+/**
+ * One Figma 568:2326 glass surface (the tab pill or the round add button),
+ * layered the miuix way: soft drop shadow first, then the clipped glass —
+ * a real backdrop blur (haze, RenderEffect on API 31+) under the 50% frost
+ * tint. On pre-RenderEffect devices haze degrades to its near-white fallback
+ * scrim so text beneath still reads as frosted rather than plainly visible.
  */
 @Composable
-internal fun AppBottomNavigation(
-    selectedIndex: Int,
-    items: List<AppBottomNavigationItem>,
+private fun GlassBarSurface(
+    shape: Shape,
+    designScale: Float,
     hazeState: HazeState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
 ) {
-    require(items.size == 3) { "The Figma bottom navigation has exactly three destinations." }
-    require(selectedIndex in items.indices) { "Selected bottom-navigation item must exist." }
-    val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    val barShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
     Surface(
-        // Figma fill rgba(250,253,255,0.5) + backdropFilter blur(12px); the
-        // haze modifier supplies the blur and its 0 4 16 rgba(218,218,218,0.5)
-        // shadow rides on the container modifier below.
-        color = Color(0x80FAFDFF),
-        shape = barShape,
-        modifier = modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(start = (16 * designScale).dp, end = (16 * designScale).dp, bottom = (16 * designScale).dp)
-            .shadow(
-                elevation = (8 * designScale).dp,
-                shape = barShape,
-                ambientColor = NavigationShadowColor,
-                spotColor = NavigationShadowColor
-            )
-            .clip(barShape)
+        color = NavigationGlassColor,
+        shape = shape,
+        modifier = modifier
+            .dropShadow(shape = shape, shadow = navigationBarShadow(designScale))
+            .clip(shape)
             .hazeEffect(hazeState) {
                 // Device feedback: the Figma 12px blur + 50% tint read as a
                 // see-through strip on real hardware. Double the blur radius
@@ -119,36 +134,85 @@ internal fun AppBottomNavigation(
                 tints = listOf(HazeTint(Color(0x33FAFDFF)))
                 fallbackTint = HazeTint(Color(0xE6FAFDFF))
             }
-            .height((84 * designScale).dp)
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize().padding((12 * designScale).dp)) {
-            val itemGap = (32 * designScale).dp
-            val itemWidth = (maxWidth - itemGap * 2) / 3
+        content()
+    }
+}
+
+/**
+ * Figma 568:2326 (NavBar). The 362dp group, centered 20dp inside the screen
+ * edges on the 402dp design canvas: a 276×68 translucent near-white pill
+ * holding three adjacent 88×56 tab items with an animated rgba(#CCE6FF,75%)
+ * selection indicator, an 18dp fixed gap, and a separate 68×68 round
+ * "添加项目" button on the right. The glass is a real backdrop blur (haze,
+ * RenderEffect on API 31+); on older devices the blur degrades to the stronger
+ * near-white scrim so text beneath still reads as frosted rather than plainly
+ * visible.
+ */
+@Composable
+internal fun AppBottomNavigation(
+    selectedIndex: Int,
+    items: List<AppBottomNavigationItem>,
+    hazeState: HazeState,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    require(items.size == 3) { "The Figma bottom navigation has exactly three destinations." }
+    require(selectedIndex in items.indices) { "Selected bottom-navigation item must exist." }
+    val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
+    Row(
+        modifier = modifier.fillMaxWidth().navigationBarsPadding()
+            .padding(bottom = (16 * designScale).dp),
+        horizontalArrangement = Arrangement.spacedBy((18 * designScale).dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        NavigationTabPill(selectedIndex, items, hazeState, designScale)
+        NavigationAddProjectButton(hazeState, designScale, onAddClick)
+    }
+}
+
+/** The left 276×68 glass pill: three 88×56 tabs over the sliding indicator. */
+@Composable
+private fun NavigationTabPill(
+    selectedIndex: Int,
+    items: List<AppBottomNavigationItem>,
+    hazeState: HazeState,
+    designScale: Float
+) {
+    val pillShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
+    GlassBarSurface(
+        shape = pillShape,
+        designScale = designScale,
+        hazeState = hazeState,
+        modifier = Modifier.width((276 * designScale).dp).height((68 * designScale).dp)
+    ) {
+        Box(Modifier.fillMaxSize().padding((6 * designScale).dp)) {
             val density = LocalDensity.current
-            // Figma motion does not export a keyframe payload for the tab switch.
-            // This duration is the user's explicit Smart Animate setting: 500ms, 轻巧.
-            // Translation is a render-layer property, so switching root tabs does
-            // not trigger a navigation-bar remeasure on each animation frame.
+            // miuix slides its floating-bar indicator with a critically damped
+            // spring (dampingRatio 1, stiffness 300): no overshoot, settling in
+            // about half a second — Figma's own 500ms 轻巧 Smart Animate feel.
+            // Translation is a render-layer property, so switching root tabs
+            // does not trigger a navigation-bar remeasure on each frame.
             val indicatorTranslationPx by animateFloatAsState(
-                targetValue = with(density) { ((itemWidth + itemGap) * selectedIndex).toPx() },
-                animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
+                targetValue = with(density) { ((88 * designScale) * selectedIndex).dp.toPx() },
+                animationSpec = spring(dampingRatio = 1f, stiffness = 300f),
                 label = "bottom navigation selection indicator"
             )
             Surface(
-                // Figma 568:2326 selection indicator fill #CCE6FF (Blue.surface).
-                color = AppColors.Blue.surface,
-                shape = RoundedCornerShape((24 * designScale).dp),
-                modifier = Modifier.width(itemWidth).fillMaxHeight()
+                // Figma 568:2326 selection indicator: #CCE6FF at 75% over the glass.
+                color = AppColors.Blue.surface.copy(alpha = 0.75f),
+                shape = RoundedCornerShape((AppShapeRadius * designScale).dp),
+                modifier = Modifier.width((88 * designScale).dp).fillMaxHeight()
                     .graphicsLayer { translationX = indicatorTranslationPx }
             ) {}
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(itemGap)) {
+            Row(Modifier.fillMaxSize().selectableGroup()) {
                 for (index in items.indices) {
                     val item = items[index]
                     AppBottomNavigationItemContent(
                         item = item,
                         selected = index == selectedIndex,
                         designScale = designScale,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.width((88 * designScale).dp).fillMaxHeight()
                     )
                 }
             }
@@ -156,8 +220,45 @@ internal fun AppBottomNavigation(
     }
 }
 
-/** Figma 987:5203's soft grey elevation tint, never pure black. */
-private val NavigationShadowColor = Color(0x80DADADA)
+/** The right 68×68 round glass button: the global 添加项目 entry. */
+@Composable
+private fun NavigationAddProjectButton(
+    hazeState: HazeState,
+    designScale: Float,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    GlassBarSurface(
+        shape = RoundedCornerShape(999.dp),
+        designScale = designScale,
+        hazeState = hazeState,
+        modifier = Modifier.size((68 * designScale).dp)
+    ) {
+        Box(
+            Modifier.fillMaxSize()
+                // miuix item convention: no ripple; the press reads through a
+                // whole-surface alpha drop instead (FloatingNavigationBarItem).
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onClick
+                )
+                .semantics(mergeDescendants = true) { contentDescription = "添加项目" }
+                .graphicsLayer { alpha = if (isPressed) 0.6f else 1f },
+            contentAlignment = Alignment.Center
+        ) {
+            MaterialSymbol(
+                "add_2",
+                null,
+                tint = AppColors.TextIconDark,
+                size = fixedSp(22.8f * designScale),
+                filled = false
+            )
+        }
+    }
+}
 
 @Composable
 private fun AppBottomNavigationItemContent(
@@ -166,39 +267,46 @@ private fun AppBottomNavigationItemContent(
     designScale: Float,
     modifier: Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     val contentColor by animateColorAsState(
         targetValue = if (selected) AppColors.Blue.ink else AppColors.TextIconDark,
         animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
         label = "${item.label} navigation color"
     )
-    Surface(
-        onClick = item.onClick,
-        color = Color.Transparent,
-        contentColor = contentColor,
-        shape = RoundedCornerShape((24 * designScale).dp),
-        modifier = modifier.fillMaxSize().semantics(mergeDescendants = true) {
-            contentDescription = if (selected) "${item.label}，当前页面" else item.label
-            this.selected = selected
-            role = Role.Tab
-        }
+    Column(
+        modifier = modifier.fillMaxSize()
+            // miuix NavigationBarItem convention: selectable with Role.Tab and
+            // no ripple inside a selectableGroup, pressed feedback via alpha.
+            .selectable(
+                selected = selected,
+                onClick = item.onClick,
+                role = Role.Tab,
+                interactionSource = interactionSource,
+                indication = null
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (selected) "${item.label}，当前页面" else item.label
+            }
+            .graphicsLayer { alpha = if (isPressed) 0.6f else 1f },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            MaterialSymbol(
-                item.symbol,
-                null,
-                tint = contentColor,
-                size = fixedSp(24f * designScale),
-                filled = selected
-            )
-            Spacer(Modifier.height((4 * designScale).dp))
-            Text(
-                text = item.label,
-                color = contentColor,
-                style = navigationBarLabelTextStyle(selected, designScale),
-                maxLines = 1,
-                textAlign = TextAlign.Center
-            )
-        }
+        MaterialSymbol(
+            item.symbol,
+            null,
+            tint = contentColor,
+            size = fixedSp(24f * designScale),
+            filled = selected
+        )
+        Spacer(Modifier.height((4 * designScale).dp))
+        Text(
+            text = item.label,
+            color = contentColor,
+            style = navigationBarLabelTextStyle(selected, designScale),
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

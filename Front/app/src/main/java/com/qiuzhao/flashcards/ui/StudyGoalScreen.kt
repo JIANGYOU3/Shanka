@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.data.remote.DeckSummary
+import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import kotlinx.coroutines.flow.filter
@@ -77,6 +78,7 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     val plan by viewModel.studyPlan.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val decks by viewModel.decks.collectAsState()
+    val tasks by viewModel.tasks.collectAsState()
     val uiMessage by viewModel.uiMessage.collectAsState()
     var newGoal by remember { mutableIntStateOf(10) }
     var reviewGoal by remember { mutableIntStateOf(40) }
@@ -105,8 +107,19 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
         }
     }
 
+    // 交接文档 5/1019-5568：生成完未确认的卡组（0 张可见卡 + 最新任务 AWAITING_CONFIRMATION）
+    // 不再被静默隐藏——在范围抽屉里可见但禁选，说明「未设置完成，无法选择」。
+    val awaitingConfirmationDeckIds = tasks
+        .filter { it.status == V25TaskStatus.AWAITING_CONFIRMATION }
+        .mapNotNull { it.deckId }
+        .toSet()
     val learnableDecksByProject = projects.associate { project ->
         project.id to decks.filter { it.projectId == project.id && it.cardCount > 0 }
+    }
+    val pendingDecksByProject = projects.associate { project ->
+        project.id to decks.filter {
+            it.projectId == project.id && it.cardCount == 0 && it.id in awaitingConfirmationDeckIds
+        }
     }
     val effectiveDeckIds = decks
         .filter { it.cardCount > 0 && (it.projectId in wholeProjectIds || it.id in selectedDeckIds) }
@@ -165,6 +178,7 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                     ScopeProjectCard(
                                         projectName = project.name,
                                         decks = projectDecks,
+                                        pendingDecks = pendingDecksByProject[project.id].orEmpty(),
                                         checked = project.id in wholeProjectIds ||
                                             projectDecks.any { it.id in selectedDeckIds },
                                         expanded = project.id in expandedProjectIds,
@@ -301,6 +315,9 @@ private fun PlanSectionHint(text: String) {
  * Figma 1019:6218 — one 范围 project card: #CCE6FF r24 shell, a checked circle
  * beside the project name, and a 64x35 expand pill whose drawer lists the
  * project's decks. The drawer opens like a drawer: vertical expand/collapse.
+ * [pendingDecks] (Figma 1019:5568 卡组3) render visible but disabled: a grey
+ * error circle, dimmed copy, and the 「未设置完成，无法选择」 note at the drawer's
+ * bottom — tapping them does nothing and they never join the saved plan.
  */
 @Composable
 internal fun ScopeProjectCard(
@@ -312,6 +329,7 @@ internal fun ScopeProjectCard(
     onToggleExpand: () -> Unit,
     onToggleDeck: (DeckSummary) -> Unit,
     deckChecked: (DeckSummary) -> Boolean,
+    pendingDecks: List<DeckSummary> = emptyList(),
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -329,7 +347,7 @@ internal fun ScopeProjectCard(
                 ScopeCheckCircle(checked = checked, restingColor = AppColors.Blue.background)
                 AppText(projectName, AppTextRole.CardTitle, color = AppColors.TextIconDark)
             }
-            if (decks.isNotEmpty()) {
+            if (decks.isNotEmpty() || pendingDecks.isNotEmpty()) {
                 Surface(
                     onClick = onToggleExpand,
                     color = AppColors.Blue.background,
@@ -347,7 +365,7 @@ internal fun ScopeProjectCard(
                 }
             }
         }
-        if (decks.isNotEmpty()) {
+        if (decks.isNotEmpty() || pendingDecks.isNotEmpty()) {
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(
@@ -380,6 +398,32 @@ internal fun ScopeProjectCard(
                             )
                             AppText(deck.name, AppTextRole.CardSubtitle, color = AppColors.TextIconDark)
                         }
+                    }
+                    pendingDecks.forEach { deck ->
+                        // Figma 1049:4926 卡组3: grey error circle + dimmed name; no click target.
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(35.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xFFA6A6A6)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                MaterialSymbol("error", null, tint = AppColors.TextIconLight, size = fixedSp(24f), filled = true)
+                            }
+                            AppText(deck.name, AppTextRole.CardSubtitle, color = AppColors.TextIconDark.copy(alpha = .5f))
+                        }
+                    }
+                    pendingDecks.forEach { deck ->
+                        // Figma 1133:8492: the explanation line sits at the drawer's bottom.
+                        AppText(
+                            "${deck.name}未设置完成，无法选择",
+                            AppTextRole.CardSubtitle,
+                            color = AppColors.TextIconDark.copy(alpha = .5f)
+                        )
                     }
                 }
             }

@@ -623,6 +623,23 @@ class OfflineFirstV25Repository(
             userId()?.let { user -> cache.upsertTask(user, task, clock.millis()) }
         }
 
+    override suspend fun confirmTask(taskId: String): V25Result<V25GenerationTask> =
+        remote.confirmTask(taskId).alsoOnSuccess { task ->
+            // Publication makes the STAGED cards visible in one transaction: the deck count,
+            // today plan and dashboard projections all change with it.
+            userId()?.let { user ->
+                cache.upsertTask(user, task, clock.millis())
+                cache.invalidate(user, V25CacheStore.KEY_DECKS)
+                cache.invalidate(user, V25CacheStore.KEY_TODAY_PLAN)
+                cache.invalidate(user, V25CacheStore.KEY_STUDY_PLAN)
+                cache.invalidate(user, V25CacheStore.KEY_DASHBOARD)
+            }
+        }
+
+    /** STAGED task cards are review-only: they must never enter the visible-cards Room projection. */
+    override suspend fun listTaskCards(taskId: String): V25Result<List<com.qiuzhao.flashcards.domain.v25.V25Card>> =
+        remote.listTaskCards(taskId)
+
     override suspend fun deleteTask(taskId: String, deleteGeneratedCards: Boolean): V25Result<Unit> =
         remote.deleteTask(taskId, deleteGeneratedCards).alsoOnSuccess {
             userId()?.let { user -> cache.invalidate(user, V25CacheStore.KEY_DECKS) }

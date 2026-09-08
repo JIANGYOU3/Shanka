@@ -1,5 +1,6 @@
 package com.qiuzhao.flashcards.data.remote.v25
 
+import com.qiuzhao.flashcards.domain.v25.taskStatusFromWire
 import com.qiuzhao.flashcards.domain.v25.V25ApiKeyState
 import com.qiuzhao.flashcards.domain.v25.V25ApiKeyStatus
 import com.qiuzhao.flashcards.domain.v25.V25AuthUser
@@ -631,7 +632,7 @@ internal fun TaskDto.toDomain(): V25GenerationTask = V25GenerationTask(
     fileId = fileId,
     deckId = deckId,
     retryOfTaskId = retryOfTaskId,
-    status = enumValueOf<V25TaskStatus>(status),
+    status = taskStatusFromWire(status),
     internalStage = internalStage?.let { enumValueOf<V25InternalStage>(it) },
     selectedChapters = selectedChapters.map { it.toDomain() },
     generationConfig = generationConfig.toDomain(),
@@ -649,7 +650,7 @@ internal fun TaskDto.toDomain(): V25GenerationTask = V25GenerationTask(
 
 internal fun TaskBlockerDto.toDomain(): V25DeletionTaskBlocker = V25DeletionTaskBlocker(
     taskId = taskId,
-    status = enumValueOf<V25TaskStatus>(status),
+    status = taskStatusFromWire(status),
     internalStage = internalStage?.let { enumValueOf<V25InternalStage>(it) },
     projectId = projectId,
     deckId = deckId,

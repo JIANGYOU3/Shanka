@@ -252,6 +252,19 @@ internal interface V25Api {
         @Header("Idempotency-Key") idempotencyKey: String,
     ): TaskDto
 
+    /** 交接文档 §5.4(a)：确认生成结果并发布（STAGED→PUBLISHED，任务落 COMPLETED）。 */
+    @Headers("X-Shanka-Op: ${ShankaOps.CONFIRM_TASK}")
+    @POST("tasks/{task_id}/confirm")
+    suspend fun confirmTask(
+        @Path("task_id") taskId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): TaskDto
+
+    /** 交接文档 §5.4(c)：确认前唯一可读 STAGED 卡的出口；仅 `AWAITING_CONFIRMATION` 可读。 */
+    @Headers("X-Shanka-Op: ${ShankaOps.LIST_TASK_CARDS}")
+    @GET("tasks/{task_id}/cards")
+    suspend fun listTaskCards(@Path("task_id") taskId: String): ItemsResponse<CardDto>
+
     @Headers("X-Shanka-Op: ${ShankaOps.DELETE_TASK}")
     @DELETE("tasks/{task_id}")
     suspend fun deleteTask(

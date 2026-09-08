@@ -344,6 +344,13 @@ class AppViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * Every task's light Room projection. The 项目-卡组 tiles and the 今日计划 drawer join it
+     * against decks locally (deckId) — the deck↔task association needs no extra endpoint.
+     */
+    val tasks: StateFlow<List<V25ObservedTask>> = v25Repository.observeAllTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** The project the smart-card flow has open; Room-driven like [pdfTask]. */
     private val activePdfProjectId = MutableStateFlow<String?>(null)
     val activePdfProject: StateFlow<V25LearningProject?> = activePdfProjectId
@@ -940,41 +947,76 @@ class AppViewModel(
     }
 
     /**
-     * Commits the staged import. For the creation flow (projectId == null) the drafts join the
-     * wizard and upload with the project; for a living project each draft lands immediately
-     * through its materials endpoint (PDF parse asynchronously, text READY in-line).
+     * Figma 1100:5634/5644: recognition starts the moment a material is staged.
+     * A living project uploads/parses each staged draft immediately (sequential —
+     * the upload coordinator owns one operation at a time) while the draft's wire
+     * status drives the card states; creation drafts join the wizard instead and
+     * upload with the project at 完成设置.
      */
-    internal fun commitMaterialImport(
-        projectId: String?,
-        onResult: (success: Boolean, message: String?) -> Unit = { _, _ -> },
-    ) {
+    internal fun autoRecognizeMaterialImport(projectId: String?) {
+        if (projectId == null) return
+        val pending = _materialImportDrafts.value.filter {
+            it.serverStatus == null || it.serverStatus == "PENDING" || it.serverStatus == "FAILED"
+        }
+        if (pending.isEmpty()) return
+        // Synchronous PENDING write keeps just-staged cards recognizing through the
+        // frame before the upload coroutine starts.
+        _materialImportDrafts.value = _materialImportDrafts.value.map {
+            if (it.serverStatus == null) it.copy(serverStatus = "PENDING") else it
+        }
+        viewModelScope.launch {
+            for (material in pending) {
+                updateImportDraftStatus(material.id, "PARSING")
+                val outcome = when (material.type) {
+                    ProjectDraftMaterialType.FILE -> commitStagedPdf(projectId, material)
+                    ProjectDraftMaterialType.TEXT -> commitStagedImportText(projectId, material)
+                }
+                if (outcome is V25Result.Failure) {
+                    if (outcome.code != ImportCoordinator.IN_FLIGHT_CODE) {
+                        handleFailure("commit_material", outcome, surface = false)
+                        updateImportDraftStatus(material.id, "FAILED")
+                    } else {
+                        // The upload coordinator is busy; the card keeps recognizing.
+                        updateImportDraftStatus(material.id, "PENDING")
+                    }
+                } else {
+                    // Remember the server material id: a parse failure retries through
+                    // replace (换文件重传) instead of creating a duplicate material.
+                    val landed = (outcome as? V25Result.Success<*>)?.value as? com.qiuzhao.flashcards.domain.v25.V25Material
+                    _materialImportDrafts.value = _materialImportDrafts.value.map {
+                        if (it.id == material.id) it.copy(serverStatus = "PARSED", materialId = landed?.materialId) else it
+                    }
+                }
+            }
+            refreshProjects()
+        }
+    }
+
+    /** 导入页失败 PDF 换文件重传成功后：草稿回到解析中，状态随后由 Room 投影驱动。 */
+    fun markMaterialImportParsing(materialId: String) {
+        _materialImportDrafts.value = _materialImportDrafts.value.map {
+            if (it.id == materialId) it.copy(serverStatus = "PARSING", errorCode = null) else it
+        }
+    }
+
+    /**
+     * 完成导入（交接文档 决策④）：失败资料不再拦截——它们留在导入页供重试/删除，
+     * 确认后项目侧照常可用。创建流程把草稿并入向导；已有项目在自动识别时已逐份落地。
+     */
+    internal fun finishMaterialImport(projectId: String?, onDone: () -> Unit) {
         val staged = _materialImportDrafts.value
-        if (staged.isEmpty()) {
-            val message = "请先添加资料"
-            _uiMessage.value = message
-            onResult(false, message)
-            return
-        }
-        val badText = staged.firstOrNull { it.type == ProjectDraftMaterialType.TEXT && textContentError(it.content) != null }
-        if (badText != null) {
-            val message = textContentError(badText.content) ?: "文本资料内容无效"
-            _uiMessage.value = message
-            onResult(false, message)
-            return
-        }
         if (projectId == null) {
-            // Append, don't clobber: the wizard may already hold text drafts staged before
-            // the import screen was opened.
+            // Append, don't clobber: the wizard may already hold drafts staged earlier.
             _projectCreationMaterials.value =
                 (_projectCreationMaterials.value + staged).distinctBy { it.id }
-            _materialImportDrafts.value = emptyList()
-            onResult(true, null)
-            return
         }
-        commitStagedMaterials(projectId, staged) { success, message ->
-            if (success) _materialImportDrafts.value = emptyList()
-            else _uiMessage.value = message ?: "资料上传失败"
-            onResult(success, message)
+        _materialImportDrafts.value = emptyList()
+        onDone()
+    }
+
+    private fun updateImportDraftStatus(materialId: String, status: String) {
+        _materialImportDrafts.value = _materialImportDrafts.value.map {
+            if (it.id == materialId) it.copy(serverStatus = status) else it
         }
     }
 
@@ -988,27 +1030,7 @@ class AppViewModel(
             for (material in staged) {
                 val outcome = when (material.type) {
                     ProjectDraftMaterialType.FILE -> commitStagedPdf(projectId, material)
-                    ProjectDraftMaterialType.TEXT -> {
-                        val operation = "add_material_text:$projectId:${material.content.hashCode()}"
-                        val key = beginWrite(operation)
-                        if (key == null) {
-                            V25Result.Failure(ImportCoordinator.IN_FLIGHT_CODE, null, null)
-                        } else {
-                            var succeeded = false
-                            try {
-                                val result = v25Repository.addProjectMaterialText(
-                                    projectId,
-                                    material.title,
-                                    material.content,
-                                    key,
-                                )
-                                succeeded = result is V25Result.Success
-                                result
-                            } finally {
-                                finishWrite(operation, succeeded)
-                            }
-                        }
-                    }
+                    ProjectDraftMaterialType.TEXT -> commitStagedImportText(projectId, material)
                 }
                 if (outcome is V25Result.Failure) {
                     if (outcome.code != ImportCoordinator.IN_FLIGHT_CODE) handleFailure("commit_material", outcome, surface = false)
@@ -1018,6 +1040,26 @@ class AppViewModel(
             }
             refreshProjects()
             onResult(true, null)
+        }
+    }
+
+    /** One staged text → POST materials/text under the write-coordinator's idempotency guard. */
+    private suspend fun commitStagedImportText(projectId: String, material: ProjectDraftMaterial): V25Result<*> {
+        val operation = "add_material_text:$projectId:${material.content.hashCode()}"
+        val key = beginWrite(operation)
+            ?: return V25Result.Failure(ImportCoordinator.IN_FLIGHT_CODE, null, null)
+        var succeeded = false
+        try {
+            val result = v25Repository.addProjectMaterialText(
+                projectId,
+                material.title,
+                material.content,
+                key,
+            )
+            succeeded = result is V25Result.Success
+            return result
+        } finally {
+            finishWrite(operation, succeeded)
         }
     }
 
@@ -1322,10 +1364,11 @@ class AppViewModel(
     }
 
     /**
-     * Creates the destination deck (if necessary), then the task and persisted samples. No cards
-     * are visible until [startPdfTask] finishes its atomically published generation.
+     * Creates the destination deck (if necessary), then the task and fires the sample request.
+     * 返回即任务已在服务端推进（交接文档 4.6/4.7）：等待样卡由独立的样卡等待页观察
+     * Room 投影完成，本方法不阻塞等待。
      */
-    fun generatePdfSamples(
+    fun beginPdfSamples(
         existingDeckId: String?,
         deckName: String,
         chapterIds: List<String>,
@@ -1411,48 +1454,32 @@ class AppViewModel(
         }
         pdfTaskId.value = task.taskId
 
-        suspend fun deliverSamples() {
-            // The worker is server-owned; even an acknowledged POST may still have no cards.
-            when (val ready = awaitSampleCards(task.taskId)) {
-                is V25Result.Success -> {
-                    _pdfSamples.value = ready.value.map { sample -> CardDraft(sample.front, sample.back) }
-                    refreshDecks()
-                    onReady()
-                }
-                is V25Result.Failure -> {
-                    handleFailure("await_samples", ready, surface = false)
-                    onFailure(ready.code)
-                }
-            }
+        // The deck (and possibly the task) now exist server-side: re-project the deck list
+        // so 项目-卡组 shows the new tile no matter how the sample request ends.
+        val notifyReady = {
+            refreshDecks()
+            refreshProjects()
+            onReady()
         }
-
+        val notifyFailure: (String?) -> Unit = { code ->
+            refreshDecks()
+            refreshProjects()
+            onFailure(code)
+        }
         when (task.status) {
             V25TaskStatus.SAMPLE_GENERATING,
-            V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION -> deliverSamples()
+            V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION -> notifyReady()
             V25TaskStatus.DRAFT -> when (val samples = v25Repository.generateSamples(task.taskId)) {
-                is V25Result.Success -> deliverSamples()
+                is V25Result.Success -> notifyReady()
                 is V25Result.Failure -> {
                     // The request may have reached the server just before the response was
-                    // lost. Re-read once on a state conflict and continue waiting instead of
-                    // reporting a false failure or creating a duplicate task on retry.
+                    // lost. A state conflict means the worker already owns it — proceed to
+                    // the wait screen instead of reporting a false failure.
                     if (samples.code == "TASK_STATE_CONFLICT") {
-                        when (val refreshed = v25Repository.getTask(task.taskId)) {
-                            is V25Result.Success -> when (refreshed.value.status) {
-                                V25TaskStatus.SAMPLE_GENERATING,
-                                V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION -> deliverSamples()
-                                else -> {
-                                    handleFailure("generate_samples", samples, surface = false)
-                                    onFailure(samples.code)
-                                }
-                            }
-                            is V25Result.Failure -> {
-                                handleFailure("refresh_samples_task", refreshed, surface = false)
-                                onFailure(refreshed.code)
-                            }
-                        }
+                        notifyReady()
                     } else {
                         handleFailure("generate_samples", samples, surface = false)
-                        onFailure(samples.code)
+                        notifyFailure(samples.code)
                     }
                 }
             }
@@ -1462,7 +1489,7 @@ class AppViewModel(
                     V25Result.Failure(V25ErrorCodes.TASK_STATE_CONFLICT),
                     surface = false,
                 )
-                onFailure(V25ErrorCodes.TASK_STATE_CONFLICT)
+                notifyFailure(V25ErrorCodes.TASK_STATE_CONFLICT)
             }
         }
     }
@@ -1475,7 +1502,7 @@ class AppViewModel(
         onFailure: (String?) -> Unit = {},
     ) {
         val projectName = activePdfProject.value?.name.orEmpty()
-        generatePdfSamples(null, "${projectName.ifBlank { "PDF" }} 卡片组", chapterIds, config, onReady, onFailure)
+        beginPdfSamples(null, "${projectName.ifBlank { "PDF" }} 卡片组", chapterIds, config, onReady, onFailure)
     }
 
     /**
@@ -1523,6 +1550,127 @@ class AppViewModel(
                 onReady()
             }
             is V25Result.Failure -> handleFailure("retry_task", result)
+        }
+    }
+
+    /**
+     * 复审页「重新生成」（交接文档 §5.4(b)）：`AWAITING_CONFIRMATION` 任务被服务端废弃
+     * （STAGED 卡硬删）并返回不带样卡的新 DRAFT 任务——重走整个样卡流程，成功后落预览页。
+     */
+    fun regenerateFromTask(taskId: String, onReady: () -> Unit, onFailure: (String?) -> Unit = {}) =
+        viewModelScope.launch {
+            val task = when (val retried = v25Repository.retryTask(taskId)) {
+                is V25Result.Success -> retried.value
+                is V25Result.Failure -> {
+                    handleFailure("retry_task", retried, surface = true)
+                    onFailure(retried.code)
+                    return@launch
+                }
+            }
+            pdfTaskId.value = task.taskId
+            task.projectId?.let { activePdfProjectId.value = it }
+            when (task.status) {
+                V25TaskStatus.SAMPLE_GENERATING,
+                V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION -> deliverTaskSamples(task.taskId, onReady, onFailure)
+                V25TaskStatus.DRAFT -> when (val samples = v25Repository.generateSamples(task.taskId)) {
+                    is V25Result.Success -> deliverTaskSamples(task.taskId, onReady, onFailure)
+                    is V25Result.Failure -> {
+                        handleFailure("generate_samples", samples, surface = false)
+                        onFailure(samples.code)
+                    }
+                }
+                else -> onFailure(V25ErrorCodes.TASK_STATE_CONFLICT)
+            }
+        }
+
+    /** 卡组卡「点击重试」（FAILED）：服务端复用已确认样卡重建；成功后由调用方进样卡等待页。 */
+    fun retryGenerationTask(taskId: String, onReady: () -> Unit, onFailure: (String?) -> Unit = {}) =
+        viewModelScope.launch {
+            when (val result = v25Repository.retryTask(taskId)) {
+                is V25Result.Success -> {
+                    val task = result.value
+                    pdfTaskId.value = task.taskId
+                    task.projectId?.let { activePdfProjectId.value = it }
+                    onReady()
+                }
+                is V25Result.Failure -> {
+                    handleFailure("retry_task", result, surface = true)
+                    onFailure(result.code)
+                }
+            }
+        }
+
+    /** 复审页「完成设置」（交接文档 §5.4(a)）：确认后单事务发布全部 STAGED 卡并落 COMPLETED。 */
+    fun confirmGeneratedDeck(taskId: String, onSuccess: () -> Unit = {}, onFailure: (String?) -> Unit = {}) =
+        viewModelScope.launch {
+            when (val result = v25Repository.confirmTask(taskId)) {
+                is V25Result.Success -> {
+                    // Publication flips deck counts, today plan and dashboard in one transaction;
+                    // re-project all of them from the authoritative endpoints.
+                    refreshProjects()
+                    refreshDecks()
+                    refreshTodayPlan()
+                    refreshDashboard()
+                    onSuccess()
+                }
+                is V25Result.Failure -> {
+                    handleFailure("confirm_task", result, surface = true)
+                    onFailure(result.code)
+                }
+            }
+        }
+
+    /** 复审页数据源：确认前唯一的 STAGED 卡读出口（网络直读，不入 Room）。 */
+    fun loadTaskCards(taskId: String, onResult: (List<V25Card>, String?) -> Unit) = viewModelScope.launch {
+        when (val result = v25Repository.listTaskCards(taskId)) {
+            is V25Result.Success -> onResult(result.value, null)
+            is V25Result.Failure -> {
+                handleFailure("list_task_cards", result, surface = false)
+                onResult(emptyList(), result.code)
+            }
+        }
+    }
+
+    /** 样卡等待页驱动：DRAFT 任务还没有样卡请求，补发一次（幂等；其余状态是竞态，忽略）。 */
+    fun requestPdfSamples(onFailure: (String?) -> Unit = {}) = viewModelScope.launch {
+        val taskId = pdfTaskId.value ?: return@launch
+        val current = (v25Repository.getTask(taskId) as? V25Result.Success)?.value ?: return@launch
+        if (current.status != V25TaskStatus.DRAFT) return@launch
+        when (val samples = v25Repository.generateSamples(taskId)) {
+            is V25Result.Success -> Unit
+            is V25Result.Failure -> {
+                // A lost response re-enters here as a conflict while the server works on.
+                if (samples.code != "TASK_STATE_CONFLICT") {
+                    handleFailure("generate_samples", samples, surface = false)
+                    onFailure(samples.code)
+                }
+            }
+        }
+    }
+
+    /** 样卡等待页装载：任务到 `AWAITING_SAMPLE_CONFIRMATION` 后读一次完整样卡载荷。 */
+    fun loadPdfSamples(onLoaded: () -> Unit = {}) = viewModelScope.launch {
+        val taskId = pdfTaskId.value ?: return@launch
+        when (val full = v25Repository.getTask(taskId)) {
+            is V25Result.Success -> {
+                _pdfSamples.value = full.value.sampleCards.map { CardDraft(it.front, it.back) }
+                onLoaded()
+            }
+            is V25Result.Failure -> handleFailure("get_task", full)
+        }
+    }
+
+    private suspend fun deliverTaskSamples(taskId: String, onReady: () -> Unit, onFailure: (String?) -> Unit) {
+        when (val ready = awaitSampleCards(taskId)) {
+            is V25Result.Success -> {
+                _pdfSamples.value = ready.value.map { sample -> CardDraft(sample.front, sample.back) }
+                refreshDecks()
+                onReady()
+            }
+            is V25Result.Failure -> {
+                handleFailure("await_samples", ready, surface = false)
+                onFailure(ready.code)
+            }
         }
     }
 

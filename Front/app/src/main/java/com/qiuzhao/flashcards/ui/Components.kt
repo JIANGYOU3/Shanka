@@ -190,11 +190,12 @@ internal fun SecondaryHeaderActionBackgroundColor(theme: DeckTheme? = null): Col
 internal fun fixedSp(value: Float) = with(LocalDensity.current) { value.dp.toSp() }
 
 /**
- * The root navigation occupies 125dp at the device bottom (85dp bar, 16dp
- * outside inset and the system navigation inset). A 148dp scroll tail leaves
- * the Figma 16–24dp visual gap above it when a list reaches its final item.
+ * The root navigation occupies 109dp at the device bottom (68dp Figma 568:2326
+ * bar, 16dp outside inset and the system navigation inset). A 132dp scroll
+ * tail leaves the Figma 16–24dp visual gap above it when a list reaches its
+ * final item.
  */
-internal const val RootNavigationScrollTail = 148
+internal const val RootNavigationScrollTail = 132
 
 /**
  * Bottom spacing for a scrolling page which has no overlaying bottom control.

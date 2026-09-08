@@ -185,8 +185,20 @@ interface V25Repository {
     /** POST /tasks/{task_id}/abandon — end a pre-generation task; it stays in history. */
     suspend fun abandonTask(taskId: String): V25Result<V25GenerationTask>
 
-    /** POST /tasks/{task_id}/retry — link a new task to the failed one, reusing confirmed samples. */
+    /** POST /tasks/{task_id}/retry — FAILED 复用样卡重建；AWAITING_CONFIRMATION 废弃旧卡并新建 DRAFT 任务。 */
     suspend fun retryTask(taskId: String): V25Result<V25GenerationTask>
+
+    /**
+     * POST /tasks/{task_id}/confirm — 确认生成结果并发布（交接文档 §5.4(a)）：单事务把全部 STAGED
+     * 卡翻为 PUBLISHED，任务落 COMPLETED。仅 `AWAITING_CONFIRMATION` 可调用，否则 409。
+     */
+    suspend fun confirmTask(taskId: String): V25Result<V25GenerationTask>
+
+    /**
+     * GET /tasks/{task_id}/cards — 确认前只读复审数据源（交接文档 §5.4(c)）。纯网络直读：
+     * STAGED 卡绝不能写入 Room 的可见卡投影。
+     */
+    suspend fun listTaskCards(taskId: String): V25Result<List<V25Card>>
 
     /** DELETE /tasks/{task_id}?delete_generated_cards= — keep or delete the task's published cards. */
     suspend fun deleteTask(taskId: String, deleteGeneratedCards: Boolean): V25Result<Unit>

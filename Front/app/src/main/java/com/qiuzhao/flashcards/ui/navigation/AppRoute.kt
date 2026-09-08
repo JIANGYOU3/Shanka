@@ -22,10 +22,21 @@ sealed interface AppRoute : NavKey {
     @Serializable data class DeckGeneration(val projectId: String) : AppRoute
     /** Figma 836:5895 / 839:6220: pick the chapters parsed out of the files. */
     @Serializable data class SmartCardChapter(val projectId: String) : AppRoute
+    /** Figma 849:6541: sample-card wait — no bottom buttons; auto-advances on samples. */
+    @Serializable data class SmartCardSampleWait(val projectId: String) : AppRoute
     /** Figma 835:5784: preview the generated sample cards before committing. */
     @Serializable data class SmartCardPreview(val projectId: String) : AppRoute
     /** Figma 849:6541: in-progress AI card generation screen. */
     @Serializable data class SmartCardGenerating(val projectId: String) : AppRoute
+    /**
+     * Figma 849:6467: read-only review of a finished-but-unconfirmed task's cards.
+     * projectId/themeKey resolve the owning project family for 重新生成 navigation.
+     */
+    @Serializable data class SmartCardReview(
+        val taskId: String,
+        val projectId: String,
+        val themeKey: String = "azure"
+    ) : AppRoute
     /** Reuses the project form with a pre-existing project as its editing target. */
     @Serializable data class ProjectEdit(val id: String) : AppRoute
     @Serializable data class ProjectTextEditor(
@@ -49,8 +60,6 @@ sealed interface AppRoute : NavKey {
         val themeKey: String? = null,
         val projectCreation: Boolean = false
     ) : AppRoute
-    /** Figma 796:6935 / 796:6589: attach existing material to the project draft. */
-    @Serializable data class ProjectMaterialPicker(val themeKey: String) : AppRoute
     @Serializable data object TextImport : AppRoute
     /** Figma 977:4937: the one plan page — goal editing, plus project/deck picks for a first configuration. */
     @Serializable data object StudyGoal : AppRoute

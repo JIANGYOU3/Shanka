@@ -167,6 +167,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     val weeklyActivity by viewModel.weeklyActivity.collectAsState()
     val todayPlan by viewModel.todayPlan.collectAsState()
     val projectProgress by viewModel.projectProgress.collectAsState()
+    val tasks by viewModel.tasks.collectAsState()
     val accountBootstrap by viewModel.accountBootstrap.collectAsState()
     val account = accountBootstrap.account
     var projectSearchQuery by remember { mutableStateOf("") }
@@ -200,15 +201,10 @@ fun FlashcardsApp(viewModel: AppViewModel) {
         }
         entry<AppRoute.ProjectDetail> { route ->
             LaunchedEffect(route.id) {
-                viewModel.refreshProjectTasks(route.id)
                 viewModel.refreshProjectProgress(route.id)
             }
             val project = projects.firstOrNull { it.id == route.id }
             if (project == null) LoadingScreen() else {
-                // Live task statuses from the Room projection (V25-D-34): a generating task
-                // advances to its terminal state here without any screen-driven polling.
-                val tasks by viewModel.projectTasks(route.id)
-                    .collectAsState(initial = emptyList())
                 ProjectDetailScreen(
                     project,
                     decks.filter { it.projectId == project.id },
@@ -220,28 +216,17 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                             onFailure = { onResult(false) },
                         )
                     },
-                    onDeleteProject = { retainDecks, onResult ->
-                        viewModel.deleteProject(project.id, retainDecks, onResult)
-                    },
-                    tasks = tasks,
                     progress = projectProgress[route.id],
-                // Contract 3.16: status EMPTY means no materials yet — the guide replaces the
-                // generation surface until the first PDF/text material lands.
-                isEmptyProject = project.status == "EMPTY",
-                onAddPdfMaterial = {
-                    viewModel.beginMaterialImport()
-                    navigator.navigate(AppRoute.MaterialImport(projectId = project.id))
-                },
-                onAddTextMaterial = {
-                    navigator.navigate(
-                        AppRoute.ProjectTextEditor(
-                            materialId = null,
-                            themeKey = project.themeKey,
-                            projectId = project.id,
-                            editorTitle = "导入文本",
+                    // Contract 3.16: status EMPTY means no materials yet — the
+                    // 卡组管理 pane shows the notice until the first material lands.
+                    isEmptyProject = project.status == "EMPTY",
+                    tasks = tasks,
+                    onRetryDeckTask = { taskId ->
+                        viewModel.retryGenerationTask(
+                            taskId,
+                            onReady = { navigator.navigate(AppRoute.SmartCardSampleWait(project.id)) },
                         )
-                    )
-                },
+                    },
                 )
             }
         }
@@ -253,6 +238,10 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else SmartCardChapterScreen(project, navigator, viewModel)
         }
+        entry<AppRoute.SmartCardSampleWait> { route ->
+            val project = projects.firstOrNull { it.id == route.projectId }
+            if (project == null) LoadingScreen() else SmartCardSampleWaitScreen(project, navigator, viewModel)
+        }
         entry<AppRoute.SmartCardPreview> { route ->
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else SmartCardPreviewScreen(project, navigator, viewModel)
@@ -261,13 +250,15 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else SmartCardGeneratingScreen(project, navigator, viewModel)
         }
+        entry<AppRoute.SmartCardReview> { route ->
+            SmartCardReviewScreen(route, navigator, viewModel)
+        }
         entry<AppRoute.MaterialManagement> { MaterialManagementScreen(project = null, viewModel, navigator) }
         entry<AppRoute.ProjectMaterialManagement> { route ->
             val project = projects.firstOrNull { it.id == route.projectId }
             if (project == null) LoadingScreen() else MaterialManagementScreen(project, viewModel, navigator)
         }
         entry<AppRoute.MaterialImport> { route -> MaterialImportScreen(route, viewModel, navigator) }
-        entry<AppRoute.ProjectMaterialPicker> { route -> ProjectMaterialPickerScreen(route, viewModel, navigator) }
         entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
         entry<AppRoute.Deck> { route ->
             val deck = decks.firstOrNull { it.id == route.id }
@@ -341,6 +332,10 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                     onHome = { navigator.navigate(AppRoute.Home) },
                     onProject = { navigator.navigate(AppRoute.Project) },
                     onData = { navigator.navigate(AppRoute.Data) },
+                    onAddProject = {
+                        viewModel.resetProjectCreationDraft()
+                        navigator.navigate(AppRoute.ProjectCreate)
+                    },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
@@ -406,6 +401,7 @@ internal fun ScreenTopInformationBar(
     secondaryTrailingActionDescription: String = "删除",
     secondaryTrailingActionContainer: Color = AppColors.WarningStrong,
     secondaryTrailingActionColor: Color = AppColors.TextIconLight,
+    titleAlignedStart: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -427,6 +423,7 @@ internal fun ScreenTopInformationBar(
         secondaryTrailingActionDescription = secondaryTrailingActionDescription,
         secondaryTrailingActionContainer = secondaryTrailingActionContainer,
         secondaryTrailingActionColor = secondaryTrailingActionColor,
+        titleAlignedStart = titleAlignedStart,
         modifier = modifier.fillMaxWidth().statusBarsPadding()
             .padding(start = (16 * scale).dp, top = (16 * scale).dp, end = (16 * scale).dp)
     )
@@ -451,6 +448,7 @@ private fun TopInformationBarContent(
     secondaryTrailingActionDescription: String,
     secondaryTrailingActionContainer: Color,
     secondaryTrailingActionColor: Color,
+    titleAlignedStart: Boolean,
     modifier: Modifier = Modifier
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
@@ -470,21 +468,41 @@ private fun TopInformationBarContent(
                     MaterialSymbol("arrow_back", "返回", tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
                 }
             }
-            Row(
-                modifier = Modifier.align(Alignment.Center).padding(
-                    start = (60 * scale).dp,
-                    end = (if (onSecondaryTrailingAction == null) 60 * scale else 124 * scale).dp
-                ),
-                horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AppText(
-                    text = title.orEmpty(), role = AppTextRole.PageTitle,
-                    color = titleColor ?: PageForegroundColor(), designScale = scale,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-                subtitle?.let {
-                    AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
+            if (titleAlignedStart) {
+                // Figma 540:3778 #1014:5163: the hand-built statistics header
+                // starts its title flush after the 56dp back circle instead of
+                // centering it like the shared 209:2733 component.
+                Row(
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = (56 * scale).dp),
+                    horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppText(
+                        text = title.orEmpty(), role = AppTextRole.PageTitle,
+                        color = titleColor ?: PageForegroundColor(), designScale = scale,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    subtitle?.let {
+                        AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.align(Alignment.Center).padding(
+                        start = (60 * scale).dp,
+                        end = (if (onSecondaryTrailingAction == null) 60 * scale else 124 * scale).dp
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy((16 * scale).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppText(
+                        text = title.orEmpty(), role = AppTextRole.PageTitle,
+                        color = titleColor ?: PageForegroundColor(), designScale = scale,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    subtitle?.let {
+                        AppText(it, AppTextRole.PageTitle, color = titleColor ?: PageForegroundColor(), designScale = scale, maxLines = 1)
+                    }
                 }
             }
             onTrailingAction?.let { action ->
@@ -540,6 +558,7 @@ private fun BottomNavBar(
     onHome: () -> Unit,
     onProject: () -> Unit,
     onData: () -> Unit,
+    onAddProject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selectedIndex = when (selected) {
@@ -555,6 +574,7 @@ private fun BottomNavBar(
             AppBottomNavigationItem("数据", "query_stats", onData)
         ),
         hazeState = hazeState,
+        onAddClick = onAddProject,
         modifier = modifier
     )
 }

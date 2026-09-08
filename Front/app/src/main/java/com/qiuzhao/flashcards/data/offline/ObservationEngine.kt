@@ -5,6 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import com.qiuzhao.flashcards.domain.v25.isTerminal
 import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
+import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,7 +51,10 @@ class ObservationEngine(
             }
             launch {
                 repository.observeAllTasks().collect { tasks ->
-                    val active = tasks.filterNot { it.status.isTerminal }
+                    // Quiescent set: terminal tasks are done, and AWAITING_CONFIRMATION has no
+                    // server-side work either — it leaves that state only through a user action
+                    // (confirm/retry), so polling it would burn requests without any change.
+                    val active = tasks.filterNot { it.status.isTerminal || it.status == V25TaskStatus.AWAITING_CONFIRMATION }
                     val seen = active.mapTo(mutableSetOf()) { "task:${it.taskId}" }
                     active.forEach { task ->
                         ensurePoll("task:${task.taskId}") { pollTask(task.taskId) }
