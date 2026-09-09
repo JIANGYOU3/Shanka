@@ -18,3 +18,9 @@ Thumbs.db
 # Release signing credentials (local only, never commit)
 Front/keystore.properties
 Front/release.keystore
+
+# Local dev/debug artifacts (screenshots, APK builds, tool state)
+/.zcode/
+/*.apk
+/*.png
+/figma_494_1114_540/
