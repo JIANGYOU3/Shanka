@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
+import com.qiuzhao.flashcards.domain.v25.V25ErrorCodes
 import com.qiuzhao.flashcards.domain.v25.V25InternalStage
 import com.qiuzhao.flashcards.domain.v25.V25MaterialStatus
 import com.qiuzhao.flashcards.domain.v25.V25MaterialType
@@ -462,11 +463,15 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
     val remoteSamples by viewModel.pdfSamples.collectAsState()
+    val task by viewModel.pdfTask.collectAsState()
     var starting by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
     val samples = remoteSamples.mapIndexed { index, sample ->
         SmartPreviewSample(sample.front, sample.back, "样卡 ${index + 1}")
     }
+    // 开始按钮只认任务投影里的「样卡已确认」状态：内存里的样卡可能来自上一个
+    // 任务（bindPdfTask 已清槽，但恢复路径仍可能短暂滞后），状态未到就不可开始。
+    val sampleConfirmed = task?.status == V25TaskStatus.AWAITING_SAMPLE_CONFIRMATION
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
             title = "卡片预览", subtitle = null, onBack = nav::goBack,
@@ -510,7 +515,7 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
                 nav.popUntil(AppRoute.DeckGeneration(project.id))
             })
             CardListActionButton(if (starting) "正在开始" else "开始生成", "play_circle", true, Modifier.weight(1f), scale, theme) {
-                if (samples.isNotEmpty() && !starting) {
+                if (sampleConfirmed && samples.isNotEmpty() && !starting) {
                     starting = true
                     startError = null
                     viewModel.startPdfTask(
@@ -520,7 +525,13 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
                         },
                         onFailure = { code ->
                             starting = false
-                            startError = code ?: "GENERATION_FAILED"
+                            if (code == V25ErrorCodes.TASK_STATE_CONFLICT) {
+                                // 样卡尚未就绪（如执行器正被其他任务的生成批次占用）：
+                                // 不算失败，回等待页——样卡落地后自动推进回预览。
+                                nav.replaceTop(AppRoute.SmartCardSampleWait(project.id))
+                            } else {
+                                startError = code ?: "GENERATION_FAILED"
+                            }
                         },
                     )
                 }

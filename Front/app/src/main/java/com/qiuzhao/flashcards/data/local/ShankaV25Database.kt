@@ -31,6 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CacheMetadataEntity::class,
         ReviewOutboxEntity::class,
         DeletionOutboxEntity::class,
+        DeckStudySecondsEntity::class,
     ],
     version = ShankaV25Database.VERSION,
     exportSchema = true,
@@ -48,10 +49,11 @@ abstract class ShankaV25Database : RoomDatabase() {
     abstract fun cacheMetadataDao(): CacheMetadataDao
     abstract fun reviewOutboxDao(): ReviewOutboxDao
     abstract fun deletionOutboxDao(): DeletionOutboxDao
+    abstract fun localUsageDao(): LocalUsageDao
 
     companion object {
         const val NAME = "shanka-v25.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         /** Projection schema version written into cache metadata rows. */
         const val CACHE_SCHEMA_VERSION = 3
@@ -128,6 +130,19 @@ abstract class ShankaV25Database : RoomDatabase() {
                     db.execSQL(
                         "CREATE UNIQUE INDEX IF NOT EXISTS `index_deletion_outbox_user_id_idempotency_key` " +
                             "ON `deletion_outbox` (`user_id`, `idempotency_key`)",
+                    )
+                }
+            },
+            // v4 → v5 (device-local usage stats): `deck_study_seconds` accumulates the study
+            // screen's foreground seconds per deck. A brand-new device-owned table with no
+            // server counterpart — nothing to rebuild; every other cached fact keeps its rows.
+            object : Migration(4, 5) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `deck_study_seconds` (" +
+                            "`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, " +
+                            "`total_seconds` INTEGER NOT NULL, `updated_at_epoch_ms` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`user_id`, `deck_id`))",
                     )
                 }
             },

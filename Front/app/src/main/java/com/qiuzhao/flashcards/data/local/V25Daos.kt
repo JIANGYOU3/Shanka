@@ -250,6 +250,10 @@ interface TodayPlanDao {
     @Query("DELETE FROM today_plan_cards WHERE user_id = :userId AND study_date != :studyDate")
     suspend fun deleteOtherDateCards(userId: String, studyDate: String)
 
+    /** Same-date rewrite: the server plan only shrinks during the day, so old rows must not survive. */
+    @Query("DELETE FROM today_plan_cards WHERE user_id = :userId AND study_date = :studyDate")
+    suspend fun deleteTodayCards(userId: String, studyDate: String)
+
 }
 
 @Dao
@@ -394,3 +398,36 @@ data class DeckQueueCardProjection(
     @Embedded(prefix = "card_") val card: CardEntity?,
     @Embedded(prefix = "state_") val reviewState: ReviewStateEntity?,
 )
+
+// --- device-local usage facts -----------------------------------------------------------------------
+
+/** One aggregated difficulty bucket of a deck's card projection. */
+data class DeckDifficultyCountRow(
+    val targetDifficulty: String?,
+    val cardCount: Int,
+)
+
+/** Device-owned usage facts: study seconds and the deck difficulty mix. Never synced. */
+@Dao
+interface LocalUsageDao {
+    /** Atomic accumulate-upsert: settled session deltas land even when a row already exists. */
+    @Query(
+        "INSERT INTO deck_study_seconds (user_id, deck_id, total_seconds, updated_at_epoch_ms) " +
+            "VALUES (:userId, :deckId, :seconds, :nowMs) " +
+            "ON CONFLICT(user_id, deck_id) DO UPDATE SET " +
+            "total_seconds = total_seconds + excluded.total_seconds, " +
+            "updated_at_epoch_ms = excluded.updated_at_epoch_ms",
+    )
+    suspend fun addStudySeconds(userId: String, deckId: String, seconds: Long, nowMs: Long)
+
+    @Query("SELECT * FROM deck_study_seconds WHERE user_id = :userId")
+    fun observeStudySeconds(userId: String): Flow<List<DeckStudySecondsEntity>>
+
+    /** Unlabeled cards (NULL target_difficulty, e.g. hand-written imports) stay uncounted. */
+    @Query(
+        "SELECT target_difficulty AS targetDifficulty, COUNT(*) AS cardCount " +
+            "FROM cards WHERE user_id = :userId AND deck_id = :deckId AND target_difficulty IS NOT NULL " +
+            "GROUP BY target_difficulty",
+    )
+    fun observeDeckDifficultyCounts(userId: String, deckId: String): Flow<List<DeckDifficultyCountRow>>
+}

@@ -16,6 +16,17 @@ internal fun honestCount(value: Int?): String = value?.toString() ?: "—"
 internal fun honestPercent(value: Int?): String = value?.let { "$it%" } ?: "—"
 
 /**
+ * Renders device-measured study seconds: below one hour as whole minutes (zero included — it
+ * is a real measurement), from one hour as hours with one decimal digit. Arithmetic string
+ * building avoids locale-dependent decimal separators.
+ */
+internal fun honestStudyDuration(totalSeconds: Long): String = when {
+    totalSeconds < 3_600L -> "${totalSeconds / 60} 分钟"
+    totalSeconds < 360_000L -> "${totalSeconds / 3_600L}.${(totalSeconds % 3_600L) / 360} 小时"
+    else -> "${totalSeconds / 3_600L} 小时"
+}
+
+/**
  * Real project aggregates derived only from its decks. There is no project-statistics endpoint,
  * so every project metric must be the sum of the project's decks — whose counts all come from
  * `GET /decks`. Nothing here is invented; an empty project aggregates to zeros.

@@ -2,6 +2,7 @@ package com.qiuzhao.flashcards
 
 import android.app.Application
 import android.content.Context
+import com.qiuzhao.flashcards.data.local.LocalUsageStore
 import com.qiuzhao.flashcards.data.local.ShankaV25Database
 import com.qiuzhao.flashcards.data.local.V25CacheStore
 import com.qiuzhao.flashcards.data.offline.DeletionSyncCoordinator
@@ -56,6 +57,9 @@ class AppContainer(context: Context) {
     val database: ShankaV25Database = ShankaV25Database.build(appContext)
 
     val cache: V25CacheStore = V25CacheStore(database)
+
+    /** Device-local usage facts (study seconds, difficulty mix); never synced. */
+    val localUsage: LocalUsageStore = LocalUsageStore(database) { sessionStore.loadQuietly()?.user?.userId }
 
     val lanes: RequestLanes = RequestLanes(applicationScope)
 

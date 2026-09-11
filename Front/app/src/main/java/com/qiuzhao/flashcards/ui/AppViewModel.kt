@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qiuzhao.flashcards.BuildConfig
 import com.qiuzhao.flashcards.data.CardDraft
+import com.qiuzhao.flashcards.data.local.LocalUsageStore
 import com.qiuzhao.flashcards.data.offline.ObservationEngine
 import com.qiuzhao.flashcards.data.offline.OfflineFirstV25Repository
 import com.qiuzhao.flashcards.data.remote.ApiKeyStatus
@@ -29,6 +30,7 @@ import com.qiuzhao.flashcards.domain.v25.V25CardDraft
 import com.qiuzhao.flashcards.domain.v25.V25CoverageMode
 import com.qiuzhao.flashcards.domain.v25.V25Deck
 import com.qiuzhao.flashcards.domain.v25.V25DeletionPreflight
+import com.qiuzhao.flashcards.domain.v25.V25Difficulty
 import com.qiuzhao.flashcards.domain.v25.V25DifficultyRatio
 import com.qiuzhao.flashcards.domain.v25.V25ErrorCodes
 import com.qiuzhao.flashcards.domain.v25.V25GenerationConfig
@@ -259,6 +261,8 @@ class AppViewModel(
     private val onSignedOut: () -> Unit = {},
     /** Hosts the per-resource pollers; the Activity lifecycle attaches through it (V25-D-34). */
     internal val observationEngine: ObservationEngine,
+    /** Device-local usage facts (study seconds, difficulty mix); never synced. */
+    private val localUsage: LocalUsageStore,
 ) : AndroidViewModel(application) {
     private val v25Repository: OfflineFirstV25Repository = v25
     companion object {
@@ -276,6 +280,7 @@ class AppViewModel(
                     onSignedIn = container::onUserSignedIn,
                     onSignedOut = container::onUserSignedOut,
                     observationEngine = container.observationEngine,
+                    localUsage = container.localUsage,
                 )
             }
         }
@@ -308,6 +313,38 @@ class AppViewModel(
     val dueCount: StateFlow<Int> = _decks
         .map { values -> values.sumOf { it.dueCount } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /**
+     * Account-wide accumulated reviews: every rated card is one server review event, summed
+     * across the deck projections. This is the review-count metric the global data page shows.
+     */
+    val totalReviewCount: StateFlow<Int> = _decks
+        .map { values -> values.sumOf { it.reviewEventCount } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** Device-measured study seconds per deck (deckId → seconds); local-only, never synced. */
+    val deckStudySeconds: StateFlow<Map<String, Long>> = localUsage.observeStudySeconds()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    private val deckDifficultyFlows = mutableMapOf<String, Flow<Map<V25Difficulty, Int>>>()
+
+    /** Per-tier card counts of one deck off the local card projection (卡组页题型分布). */
+    internal fun deckDifficultyCounts(deckId: String): Flow<Map<V25Difficulty, Int>> =
+        deckDifficultyFlows.getOrPut(deckId) {
+            localUsage.observeDeckDifficultyCounts(deckId).map { raw ->
+                raw.entries.mapNotNull { (name, count) ->
+                    V25Difficulty.values().firstOrNull { it.name == name }?.let { it to count }
+                }.toMap()
+            }
+        }
+
+    /** Persists one settled study-session delta from the study screen's timer. */
+    fun recordStudySeconds(perDeckSeconds: Map<String, Long>) {
+        if (perDeckSeconds.isEmpty()) return
+        viewModelScope.launch {
+            localUsage.addStudySeconds(perDeckSeconds, System.currentTimeMillis())
+        }
+    }
 
     private val cardFlows = mutableMapOf<String, MutableStateFlow<List<FlashcardEntity>>>()
     private val _studyCards = MutableStateFlow<List<FlashcardEntity>>(emptyList())
@@ -1452,7 +1489,7 @@ class AppViewModel(
             }
             is V25Result.Success -> created.value
         }
-        pdfTaskId.value = task.taskId
+        bindPdfTask(task.taskId)
 
         // The deck (and possibly the task) now exist server-side: re-project the deck list
         // so 项目-卡组 shows the new tile no matter how the sample request ends.
@@ -1567,7 +1604,7 @@ class AppViewModel(
                     return@launch
                 }
             }
-            pdfTaskId.value = task.taskId
+            bindPdfTask(task.taskId)
             task.projectId?.let { activePdfProjectId.value = it }
             when (task.status) {
                 V25TaskStatus.SAMPLE_GENERATING,
@@ -1589,7 +1626,7 @@ class AppViewModel(
             when (val result = v25Repository.retryTask(taskId)) {
                 is V25Result.Success -> {
                     val task = result.value
-                    pdfTaskId.value = task.taskId
+                    bindPdfTask(task.taskId)
                     task.projectId?.let { activePdfProjectId.value = it }
                     onReady()
                 }
@@ -2093,6 +2130,17 @@ class AppViewModel(
         _pdfSamples.value = emptyList()
     }
 
+    /**
+     * Binds the smart-card flow to [taskId] with an empty sample slot. The sample slot is a
+     * single shared piece of state: a newly bound task's samples have not arrived yet, and the
+     * sample-wait screen jumps straight to the preview on a non-empty slot — leaving the
+     * previous task's samples behind would render them as this task's preview.
+     */
+    private fun bindPdfTask(taskId: String) {
+        pdfTaskId.value = taskId
+        _pdfSamples.value = emptyList()
+    }
+
     private fun handleFailure(operation: String, result: V25Result.Failure, surface: Boolean = true) {
         if (result.isAuthFailure) {
             sessionStore.clear()
@@ -2159,6 +2207,7 @@ class AppViewModel(
         position = card.position,
         source = "V25",
         version = card.version,
+        targetDifficulty = card.targetDifficulty,
     )
 
     private fun com.qiuzhao.flashcards.domain.v25.V25ApiKeyStatus.toLegacyApiKeyStatus() = ApiKeyStatus(

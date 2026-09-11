@@ -358,6 +358,9 @@ class V25CacheStore(private val db: ShankaV25Database) {
         db.withTransaction {
             todayPlanDao.deleteOtherDates(userId, studyDate)
             todayPlanDao.deleteOtherDateCards(userId, studyDate)
+            // The mid-day plan only shrinks (rated cards leave); position-keyed REPLACE
+            // would leave the shrunken tail behind, so the same date is cleared first.
+            todayPlanDao.deleteTodayCards(userId, studyDate)
             todayPlanDao.insertPlan(plan.toEntity(userId))
             todayPlanDao.insertCards(plan.cards.mapIndexed { index, pc -> pc.toEntity(userId, studyDate, index) })
             cardDao.insertCards(plan.cards.map { it.card.toEntity(userId) })
@@ -415,7 +418,9 @@ class V25CacheStore(private val db: ShankaV25Database) {
 
     /**
      * The swipe transaction: the outbox row lands first; only after that commit does the card
-     * disappear from its queues. A transaction failure leaves both untouched.
+     * disappear from its queues. A transaction failure leaves both untouched. AGAIN keeps the
+     * card visible: the server FSRS relearning step brings it back within minutes, so the
+     * cached projection still lists it for browsing and re-entry.
      */
     suspend fun enqueueReview(
         userId: String,
@@ -440,8 +445,10 @@ class V25CacheStore(private val db: ShankaV25Database) {
                     lastErrorCode = null,
                 ),
             )
-            queueDao.removeFromQueue(userId, cardId)
-            queueDao.hideFromTodayPlan(userId, cardId)
+            if (rating != V25Rating.AGAIN) {
+                queueDao.removeFromQueue(userId, cardId)
+                queueDao.hideFromTodayPlan(userId, cardId)
+            }
         }
     }
 

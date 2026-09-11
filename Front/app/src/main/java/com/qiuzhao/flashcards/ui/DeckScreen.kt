@@ -142,6 +142,7 @@ import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
+import com.qiuzhao.flashcards.domain.v25.V25Difficulty
 import com.qiuzhao.flashcards.R
 import com.qiuzhao.flashcards.ui.motion.AppMotion
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
@@ -158,6 +159,11 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
     val progress by viewModel.deckProgress(deck.id).collectAsState(
         initial = DeckProgress(deck.cardCount, deck.dueCount, masteredCards = 0, reviewCount = 0)
     )
+    // 设备本地实测的学习秒数与题型分布（难度分层投影聚合），随 Room 投影实时刷新。
+    val studySeconds by viewModel.deckStudySeconds.collectAsState()
+    val difficultyCounts by viewModel.deckDifficultyCounts(deck.id).collectAsState(initial = emptyMap())
+    // 卡片投影按需缓存：进页刷新一次，题型分布（及浏览/学习）才有本地事实可读。
+    LaunchedEffect(deck.id) { viewModel.refreshCards(deck.id) }
     val projects by viewModel.projects.collectAsState()
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     // A deck belongs visually to its project. Legacy, unassigned decks retain
@@ -180,11 +186,25 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                     // Today's reviewed count and a deck-level daily goal are not exposed by the
                     // server; the card keeps its Figma layout and shows honest dashes.
                     item { DeckLearningDataCard(reviewedToday = null, dailyGoal = null, theme = theme, designScale = designScale) }
-                    // The server exposes no per-deck question-type distribution; keep the slots.
-                    item { DeckQuestionTypesCard(null, null, null, theme, designScale) }
+                    // 题型分布 = 本地卡片投影按难度分层聚合；未标注难度的卡（如手写导入）不计入。
+                    item {
+                        DeckQuestionTypesCard(
+                            difficultyCounts[V25Difficulty.BASIC],
+                            difficultyCounts[V25Difficulty.UNDERSTANDING],
+                            difficultyCounts[V25Difficulty.DEEP_QUESTION],
+                            theme,
+                            designScale,
+                        )
+                    }
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
-                            StatisticsMetricCard("—", StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
+                            StatisticsMetricCard(
+                                honestStudyDuration(studySeconds[deck.id] ?: 0L),
+                                StatisticsMetricKind.LearningTime,
+                                StatisticsMetricSurface.White,
+                                designScale,
+                                Modifier.weight(1f),
+                            )
                             StatisticsMetricCard(honestCount(progress.masteredCards), StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.White, designScale, Modifier.weight(1f))
                         }
                     }

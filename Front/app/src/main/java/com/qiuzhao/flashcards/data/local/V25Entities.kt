@@ -308,3 +308,17 @@ data class DeletionOutboxEntity(
     @ColumnInfo(name = "next_attempt_at") val nextAttemptAt: Long,
     @ColumnInfo(name = "last_error_code") val lastErrorCode: String?,
 )
+
+/**
+ * Device-owned study-time accumulator: the study screen's foreground seconds per deck
+ * (card-shown → leave, Anki-style). V2.5 collects no timing server-side, so these rows are
+ * this device's measurement only — they never sync and survive re-projections of every
+ * server-backed table.
+ */
+@Entity(tableName = "deck_study_seconds", primaryKeys = ["user_id", "deck_id"])
+data class DeckStudySecondsEntity(
+    @ColumnInfo(name = "user_id") val userId: String,
+    @ColumnInfo(name = "deck_id") val deckId: String,
+    @ColumnInfo(name = "total_seconds") val totalSeconds: Long,
+    @ColumnInfo(name = "updated_at_epoch_ms") val updatedAtEpochMs: Long,
+)

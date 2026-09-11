@@ -78,8 +78,7 @@ class AppColorSystemTest {
         assertEquals(AppColors.Purple.primary, theme.primary)
         assertEquals(AppColors.Purple.background, basePagePalette.background)
         assertEquals(AppColors.Purple.surface, basePagePalette.panel)
-        assertEquals(AppColors.Purple.surface, basePagePalette.badge)
-        assertEquals(AppColors.Purple.background, basePagePalette.progressTrack)
+        assertEquals(AppColors.Purple.primarySecondary, basePagePalette.progressTrack)
         assertEquals(AppColors.Purple.surface, themePagePalette.background)
         assertEquals(AppColors.Purple.background, themePagePalette.panel)
         assertEquals(AppColors.Purple.primarySecondary, themePagePalette.progressTrack)
@@ -108,7 +107,7 @@ class AppColorSystemTest {
     fun statisticsCardsUseSurfaceOnWhiteDataAndWhiteOnThemeBackgrounds() {
         assertEquals(AppColors.Orange.surface, statisticsMetricContainerColor(StatisticsMetricKind.LearningTime, StatisticsMetricSurface.Tinted))
         assertEquals(AppColors.Pink.surface, statisticsMetricContainerColor(StatisticsMetricKind.LongestStreak, StatisticsMetricSurface.Tinted))
-        assertEquals(AppColors.Purple.surface, statisticsMetricContainerColor(StatisticsMetricKind.OpenCount, StatisticsMetricSurface.Tinted))
+        assertEquals(AppColors.Purple.surface, statisticsMetricContainerColor(StatisticsMetricKind.ReviewCount, StatisticsMetricSurface.Tinted))
         assertEquals(AppColors.Green.surface, statisticsMetricContainerColor(StatisticsMetricKind.MasteredCards, StatisticsMetricSurface.Tinted))
         assertEquals(AppColors.Card, statisticsMetricContainerColor(StatisticsMetricKind.LearningTime, StatisticsMetricSurface.White))
     }

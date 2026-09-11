@@ -75,6 +75,8 @@ internal fun ProjectDetailScreen(
     tasks: List<V25ObservedTask> = emptyList(),
     /** 卡组二「点击重试」：owner 页面负责 retry + 导航到样卡等待页。 */
     onRetryDeckTask: (String) -> Unit = {},
+    /** 设备本地实测的学习秒数（deckId → seconds），项目页按项目内卡组求和展示。 */
+    deckStudySeconds: Map<String, Long> = emptyMap(),
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
@@ -105,6 +107,8 @@ internal fun ProjectDetailScreen(
                     theme,
                     scale,
                     Modifier.weight(1f),
+                    decks,
+                    deckStudySeconds,
                 )
                 ProjectDetailSection.DECKS -> if (isEmptyProject) {
                     ProjectEmptyDecksNotice(
@@ -201,6 +205,8 @@ private fun ProjectStatisticsContent(
     theme: DeckTheme,
     scale: Float,
     modifier: Modifier,
+    decks: List<DeckSummary>,
+    deckStudySeconds: Map<String, Long>,
 ) {
     var showToday by rememberSaveable { mutableStateOf(true) }
     // The project endpoint is the source of truth.  Until it returns, every metric stays an
@@ -229,8 +235,9 @@ private fun ProjectStatisticsContent(
             )
         }
         // Figma 540:3778 order: 已掌握卡片 / 学习时长, then the review-progress
-        // chart, then 打开次数 / 单次最大连胜. Learning time and app-open counts
-        // have no per-project source, so those slots stay honest dashes.
+        // chart, then 复习次数 / 单次最大连胜. Review count comes from the project
+        // progress endpoint; per-project learning time is locally accumulated (deck sum)
+        // and streak has no per-project source, so that slot stays an honest dash.
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)) {
                 StatisticsMetricCard(
@@ -241,7 +248,8 @@ private fun ProjectStatisticsContent(
                     modifier = Modifier.weight(1f)
                 )
                 StatisticsMetricCard(
-                    value = "—",
+                    // 项目学习时长 = 项目内卡组的设备本地实测秒数之和（无项目级服务端口径）。
+                    value = honestStudyDuration(decks.sumOf { deckStudySeconds[it.id] ?: 0L }),
                     kind = StatisticsMetricKind.LearningTime,
                     surface = StatisticsMetricSurface.White,
                     designScale = scale,
@@ -250,7 +258,7 @@ private fun ProjectStatisticsContent(
             }
         }
         item { ProjectProgressDistribution(scale, progress) }
-        item { ProjectStreakMetrics(scale) }
+        item { ProjectStreakMetrics(scale, progress) }
     }
 }
 
@@ -282,17 +290,18 @@ private fun ProjectProgressDistribution(scale: Float, progress: V25ProgressSumma
 
 /** Figma 540:3778, the lower pair of project-only summary cards. */
 @Composable
-private fun ProjectStreakMetrics(scale: Float) = Row(
+private fun ProjectStreakMetrics(scale: Float, progress: V25ProgressSummary?) = Row(
     Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp)
 ) {
-    // No per-project streak or app-open source exists; keep the slots and show dashes.
     StatisticsMetricCard(
-        value = "—",
-        kind = StatisticsMetricKind.OpenCount,
+        // Every rated card of the project's decks is one server review event.
+        value = progress?.reviewEventCount?.toString() ?: "—",
+        kind = StatisticsMetricKind.ReviewCount,
         surface = StatisticsMetricSurface.White,
         designScale = scale,
         modifier = Modifier.weight(1f)
     )
+    // No per-project streak source exists; keep the slot and show a dash.
     StatisticsMetricCard(
         value = "—",
         kind = StatisticsMetricKind.LongestStreak,

@@ -24,7 +24,8 @@ internal enum class StatisticsMetricKind {
     DueCards,
     LearningTime,
     LongestStreak,
-    OpenCount,
+    /** The former app-open slot now carries the server-derived review count. */
+    ReviewCount,
     MasteredCards
 }
 
@@ -142,8 +143,8 @@ private fun statisticsMetricAppearance(kind: StatisticsMetricKind): StatisticsMe
         whiteIconBackground = Color(0xFFD94C3D), tintedIconBackground = AppColors.WarningStrong,
         tintedBackground = AppColors.Pink.surface
     )
-    StatisticsMetricKind.OpenCount -> StatisticsMetricAppearance(
-        symbol = "coffee", label = "打开次数", labelColor = Color(0xFF36002E),
+    StatisticsMetricKind.ReviewCount -> StatisticsMetricAppearance(
+        symbol = "history_edu", label = "复习次数", labelColor = Color(0xFF36002E),
         whiteIconBackground = Color(0xFFA63E97), tintedIconBackground = Color(0xFFA63E97),
         tintedBackground = AppColors.Purple.surface
     )

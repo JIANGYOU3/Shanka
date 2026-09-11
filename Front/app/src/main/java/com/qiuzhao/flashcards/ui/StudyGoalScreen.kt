@@ -191,10 +191,17 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                                 expandedProjectIds -= project.id
                                             } else {
                                                 expandedProjectIds += project.id
-                                                // Opening the drawer switches the project to
-                                                // manual mode: every deck starts unselected.
-                                                wholeProjectIds -= project.id
-                                                selectedDeckIds -= projectDecks.map { it.id }.toSet()
+                                                // 展开抽屉保留既有选中：整项目勾选迁移为
+                                                // 逐卡组勾选（视觉等价、单行可反选），来自
+                                                // 现有计划的回填选中原样保留。
+                                                val (whole, picked) = drawerOpenSelection(
+                                                    projectId = project.id,
+                                                    projectDeckIds = projectDecks.map { it.id }.toSet(),
+                                                    wholeProjectIds = wholeProjectIds,
+                                                    selectedDeckIds = selectedDeckIds,
+                                                )
+                                                wholeProjectIds = whole
+                                                selectedDeckIds = picked
                                             }
                                         },
                                         onToggleDeck = { deck ->
@@ -268,6 +275,24 @@ internal fun studyGoalCanSave(
     hasProject: Boolean,
     hasLearnableSelection: Boolean,
 ): Boolean = seeded && !saving && validGoals && hasProject && hasLearnableSelection
+
+/**
+ * 展开卡组抽屉时的选中迁移（[StudyGoalScreen] 范围区）：整项目勾选迁出
+ * [wholeProjectIds]、其全部可学卡组逐个进入 [selectedDeckIds]——勾选面不变，
+ * 抽屉里的单行从此可单独反选；其余情况（未整选/无可学卡组）原样返回，已
+ * 回填的计划选中永不被展开动作清除。返回 (wholeProjectIds', selectedDeckIds')。
+ */
+internal fun drawerOpenSelection(
+    projectId: String,
+    projectDeckIds: Set<String>,
+    wholeProjectIds: Set<String>,
+    selectedDeckIds: Set<String>,
+): Pair<Set<String>, Set<String>> {
+    if (projectId !in wholeProjectIds || projectDeckIds.isEmpty()) {
+        return wholeProjectIds to selectedDeckIds
+    }
+    return (wholeProjectIds - projectId) to (selectedDeckIds + projectDeckIds)
+}
 
 /** Figma 977:4937 card language: #EEF4FA r36, 20dp padding, 16dp item gap. */
 @Composable

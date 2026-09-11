@@ -163,10 +163,12 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     val decks by viewModel.decks.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val dueCount by viewModel.dueCount.collectAsState()
+    val totalReviewCount by viewModel.totalReviewCount.collectAsState()
     val dashboard by viewModel.dashboard.collectAsState()
     val weeklyActivity by viewModel.weeklyActivity.collectAsState()
     val todayPlan by viewModel.todayPlan.collectAsState()
     val projectProgress by viewModel.projectProgress.collectAsState()
+    val deckStudySeconds by viewModel.deckStudySeconds.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
     val accountBootstrap by viewModel.accountBootstrap.collectAsState()
     val account = accountBootstrap.account
@@ -227,6 +229,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                             onReady = { navigator.navigate(AppRoute.SmartCardSampleWait(project.id)) },
                         )
                     },
+                    deckStudySeconds = deckStudySeconds,
                 )
             }
         }
@@ -259,7 +262,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
             if (project == null) LoadingScreen() else MaterialManagementScreen(project, viewModel, navigator)
         }
         entry<AppRoute.MaterialImport> { route -> MaterialImportScreen(route, viewModel, navigator) }
-        entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, navigator) }
+        entry<AppRoute.Data> { DataScreen(dueCount, dashboard, weeklyActivity, totalReviewCount, navigator) }
         entry<AppRoute.Deck> { route ->
             val deck = decks.firstOrNull { it.id == route.id }
             if (deck == null) LoadingScreen() else DeckScreen(deck, viewModel, navigator)

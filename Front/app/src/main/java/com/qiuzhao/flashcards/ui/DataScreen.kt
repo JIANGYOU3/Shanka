@@ -154,7 +154,7 @@ import kotlinx.coroutines.delay
 
 
 @Composable
-internal fun DataScreen(dueCount: Int, dashboard: DashboardUiState?, weeklyActivity: WeeklyActivityData, nav: ScreenNavigator) {
+internal fun DataScreen(dueCount: Int, dashboard: DashboardUiState?, weeklyActivity: WeeklyActivityData, totalReviewCount: Int, nav: ScreenNavigator) {
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     val sideInset = 16 * designScale
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground).statusBarsPadding()) {
@@ -168,7 +168,7 @@ internal fun DataScreen(dueCount: Int, dashboard: DashboardUiState?, weeklyActiv
                     // the floating navigation instead of leaving an oversized blank area.
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = (RootNavigationScrollTail * designScale).dp), verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
                         item { WeeklyActivityCard(designScale, weeklyActivity) }
-                        item { DataStreakCards(designScale, dashboard) }
+                        item { DataStreakCards(designScale, dashboard, totalReviewCount) }
                         item { DataLearningCards(designScale, dashboard, dueCount) }
                         item { MasteryCard(designScale, dashboard) }
                     }
@@ -368,7 +368,7 @@ private fun DataMetricRow(symbol: String, label: String, value: String, designSc
 private fun DashboardUiState?.percent(value: Float?): String = value?.let { "${(it * 100).roundToInt()}%" } ?: "—"
 
 @Composable
-private fun DataStreakCards(designScale: Float, dashboard: DashboardUiState?) {
+private fun DataStreakCards(designScale: Float, dashboard: DashboardUiState?, totalReviewCount: Int) {
     val longestStreak = dashboard?.streakDays
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
         StatisticsMetricCard(
@@ -380,9 +380,10 @@ private fun DataStreakCards(designScale: Float, dashboard: DashboardUiState?) {
         )
         StatisticsMetricCard(
             modifier = Modifier.weight(1f),
-            // V2.5 has no app-open metric. Preserve the visual slot without inventing a value.
-            value = "—",
-            kind = StatisticsMetricKind.OpenCount,
+            // Every rated card is one server review event; the sum across deck projections
+            // is the account-wide review count (the metric slot's former app-open semantics).
+            value = totalReviewCount.toString(),
+            kind = StatisticsMetricKind.ReviewCount,
             surface = StatisticsMetricSurface.Tinted,
             designScale = designScale
         )

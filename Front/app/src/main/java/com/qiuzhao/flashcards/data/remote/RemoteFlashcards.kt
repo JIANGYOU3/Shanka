@@ -1,5 +1,7 @@
 package com.qiuzhao.flashcards.data.remote
 
+import com.qiuzhao.flashcards.domain.v25.V25Difficulty
+
 /**
  * Server-facing UI presentation models shared by the Compose screens. They are the stable
  * visual projection of the typed V2.5 domain models: the repositories map network payloads
@@ -60,7 +62,9 @@ data class FlashcardEntity(
     val source: String = "MANUAL",
     val version: Int = 0,
     val sourceMaterialId: String? = null,
-    val sourceLocator: String? = null
+    val sourceLocator: String? = null,
+    /** Server-owned difficulty tier; null on manual/imported cards renders without a type pill. */
+    val targetDifficulty: V25Difficulty? = null
 )
 
 enum class Rating { AGAIN, HARD, GOOD, EASY }

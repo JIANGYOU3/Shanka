@@ -16,6 +16,7 @@ import com.qiuzhao.flashcards.domain.v25.V25InternalStage
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -231,6 +232,72 @@ class ShankaV25MigrationTest {
         cache.completeDeletion("u-1", pending.operationId)
         assertTrue(cache.allPendingDeletions("u-1").isEmpty())
         migrated.close()
+    }
+
+    @Test
+    fun test_migration_v4_to_v5_creates_deck_study_seconds_and_preserves_facts() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = File(context.cacheDir, "migration-v4-v5-${System.nanoTime()}.db")
+
+        // A v4 database with one cached deck: opening through the production builder must run
+        // MIGRATIONS(4→5) and validate the resulting schema against the exported entities.
+        createV4Database(dbFile)
+        insertV4Fact(dbFile)
+
+        val migrated = ShankaV25Database.buildOnFile(context, dbFile.absolutePath)
+        val cache = V25CacheStore(migrated)
+        assertEquals("the pre-existing deck survives the migration", "d-old", cache.readDecks("u-1").single().deckId)
+
+        // The brand-new device-owned accumulator accepts deltas and re-emits the accumulated total.
+        val usage = LocalUsageStore(migrated) { "u-1" }
+        usage.addStudySeconds(mapOf("d-old" to 90L), nowMs = 1_000)
+        usage.addStudySeconds(mapOf("d-old" to 30L), nowMs = 2_000)
+        assertEquals(mapOf("d-old" to 120L), usage.observeStudySeconds().first())
+        migrated.close()
+    }
+
+    /** The v4 schema is the v3 projection plus the `deletion_outbox` tombstone table. */
+    private fun createV4Database(dbFile: File) {
+        createV3Database(dbFile)
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(4))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `deletion_outbox` (" +
+                "`user_id` TEXT NOT NULL, `operation_id` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, `project_id` TEXT NOT NULL, " +
+                "`material_id` TEXT, `retain` INTEGER NOT NULL, " +
+                "`idempotency_key` TEXT NOT NULL, `created_at` INTEGER NOT NULL, " +
+                "`status` TEXT NOT NULL, `attempt_count` INTEGER NOT NULL, " +
+                "`next_attempt_at` INTEGER NOT NULL, `last_error_code` TEXT, " +
+                "PRIMARY KEY(`user_id`, `operation_id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_deletion_outbox_user_id_idempotency_key` " +
+                "ON `deletion_outbox` (`user_id`, `idempotency_key`)",
+        )
+        db.version = 4
+        db.close()
+    }
+
+    private fun insertV4Fact(dbFile: File) {
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(4))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "INSERT INTO decks VALUES ('u-1', 'd-old', 'v4 卡组', 'p-1', 3, 1, 0, 5, NULL, 3, 0, 0, 0, 0, 0, NULL)",
+        )
+        db.close()
     }
 
     /**

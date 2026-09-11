@@ -30,4 +30,15 @@ class HonestMetricsTest {
         assertEquals("100%", honestPercent(100))
         assertEquals("—", honestPercent(null))
     }
+
+    @Test
+    fun `study duration renders minutes below an hour and one-decimal hours above`() {
+        assertEquals("0 分钟", honestStudyDuration(0))
+        assertEquals("0 分钟", honestStudyDuration(59)) // a real measurement, not a dash
+        assertEquals("59 分钟", honestStudyDuration(3_599))
+        assertEquals("1.0 小时", honestStudyDuration(3_600))
+        assertEquals("1.5 小时", honestStudyDuration(5_400))
+        assertEquals("2.7 小时", honestStudyDuration(9_720))
+        assertEquals("100 小时", honestStudyDuration(360_000))
+    }
 }

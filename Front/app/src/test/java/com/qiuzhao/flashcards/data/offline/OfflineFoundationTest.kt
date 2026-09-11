@@ -250,14 +250,19 @@ class OfflineFoundationTest {
             assertTrue(result is com.qiuzhao.flashcards.domain.v25.V25Result.Success)
         }
 
-        // Persisted DB (re-read through a fresh query): 3 pending rows, all queue cards hidden.
+        // Persisted DB (re-read through a fresh query): 3 pending rows. GOOD/HARD
+        // leave the cached plan, but the AGAIN card stays visible — the server
+        // FSRS relearning step returns it within minutes, so the projection
+        // keeps listing it.
         val rows = V25CacheStore(db).allOutbox("u-1")
         assertEquals(3, rows.size)
         assertTrue(rows.all { it.status == "PENDING" })
         assertTrue(rows.all { it.lastErrorCode == null })
         val state = repo.todayPlanState()
         assertTrue(state is TodayPlanState.Fresh)
-        assertEquals(0, (state as TodayPlanState.Fresh).plan.cards.size)
+        val remaining = (state as TodayPlanState.Fresh).plan.cards
+        assertEquals(1, remaining.size)
+        assertEquals("c-3", remaining.single().card.cardId)
         db.close()
     }
 
@@ -288,6 +293,34 @@ class OfflineFoundationTest {
         assertTrue(next is com.qiuzhao.flashcards.domain.v25.V25Result.Success)
         assertEquals(3, (next as com.qiuzhao.flashcards.domain.v25.V25Result.Success).value.planRemaining)
         assertEquals(3, cache.readTodayPlan(user, today)!!.planRemaining)
+        db.close()
+    }
+
+    /**
+     * Mid-day the server plan only shrinks (rated cards leave). A same-date rewrite that kept
+     * the old position-keyed rows would resurrect the shrunken tail as visible ghost cards,
+     * and the study screen's x/total counter would stay pinned to the morning size.
+     */
+    @Test
+    fun `a same-date plan rewrite replaces instead of appending`() = runBlocking {
+        val db = openDatabase()
+        val repo = buildStack(db, scope())
+        val cache = V25CacheStore(db)
+        val user = user1.userId
+        val today = LocalDate.now(clock)
+
+        assertTrue(repo.todayPlan() is com.qiuzhao.flashcards.domain.v25.V25Result.Success)
+        val cached = cache.readTodayPlan(user, today)!!
+        assertEquals(3, cached.cards.size)
+
+        // Two of three studied: the refreshed plan holds one remaining card.
+        val remainder = cached.copy(cards = cached.cards.take(1), planRemaining = 1)
+        cache.replaceTodayPlan(user, remainder, clock.nowMs + 1_000)
+
+        val reread = cache.readTodayPlan(user, today)!!
+        assertEquals(1, reread.cards.size)
+        assertEquals(cached.cards.first().card.cardId, reread.cards.single().card.cardId)
+        assertEquals(1, reread.planRemaining)
         db.close()
     }
 

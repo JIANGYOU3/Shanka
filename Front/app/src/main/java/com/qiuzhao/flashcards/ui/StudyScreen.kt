@@ -5,14 +5,9 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -21,15 +16,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +38,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -61,6 +51,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
@@ -88,11 +79,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,8 +97,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -114,7 +106,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -128,7 +123,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -142,15 +136,51 @@ import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
+import com.qiuzhao.flashcards.domain.v25.V25Difficulty
 import com.qiuzhao.flashcards.R
 import com.qiuzhao.flashcards.ui.motion.AppMotion
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import com.qiuzhao.flashcards.ui.navigation.rememberAppNavigationState
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/** How long an AGAIN card stays out of the session before its relearn visit. Matches the server FSRS relearning step (main/services/scheduling/scheduler.py). */
+private const val RELEARN_DELAY_MS = 10 * 60 * 1000L
+
+/** One slot in the review session queue. [relearn] entries are AGAIN cards returning for their same-day second pass. */
+internal data class StudyQueueEntry(val cardId: String, val relearn: Boolean = false)
+
+/** A card scheduled to come back after the FSRS relearning step, as (cardId, dueAtEpochMs). */
+private data class ScheduledRequeue(val cardId: String, val dueAtMs: Long)
+
+/** Position / total / completed shown by the review session's top bar. */
+internal data class TodaySessionCounter(val position: Int, val total: Int, val completed: Int)
+
+/**
+ * Today's core plan re-derives its queue on every visit and only holds the cards still
+ * remaining for the day, so its session-local numbers are offset by [baseCompleted]
+ * (already completed earlier today) to keep "position/total" a day-wide progress.
+ * Deck reviews and the backlog overflow have no day-wide baseline and count from 1.
+ */
+internal fun todaySessionCounter(
+    baseCompleted: Int,
+    queue: List<StudyQueueEntry>,
+    entry: StudyQueueEntry,
+    latestRatings: Map<String, Rating>,
+): TodaySessionCounter {
+    val sessionTotal = queue.count { !it.relearn }
+    val sessionPosition = queue.indexOfFirst { !it.relearn && it.cardId == entry.cardId } + 1
+    val sessionCompleted = queue.filter { !it.relearn }
+        .map { it.cardId }
+        .distinct()
+        .count { cardId -> latestRatings[cardId] != null && latestRatings[cardId] != Rating.AGAIN }
+    return TodaySessionCounter(
+        position = baseCompleted + sessionPosition,
+        total = baseCompleted + sessionTotal,
+        completed = baseCompleted + sessionCompleted,
+    )
+}
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -171,21 +201,35 @@ internal fun StudyScreen(
     // colour semantics), falling back to the deck's stored family.
     val themeDeckId = if (todayMode) cards.firstOrNull()?.deckId else deckId
     val theme = decks.firstOrNull { it.id == themeDeckId }?.let { deck -> deckTheme(deck, projects) } ?: DeckThemes.first()
-    // Keep a local queue for this session. A card disappears from it immediately
-    // after it is rated, so the previous/next controls can never reopen a card
-    // that has already been swiped away.
+    // The session queue never shrinks: rated cards stay browsable via the
+    // previous/next arrows (the x/total counter keeps the initial total), and
+    // AGAIN cards return as relearn entries after the server FSRS relearning
+    // step, so a miss costs the learner an extra pass within this session.
     val studyKey = if (todayMode) "today" else deckId
-    var remainingCardIds by remember(studyKey, reviewMode) { mutableStateOf<List<String>?>(null) }
+    var sessionQueue by remember(studyKey, reviewMode) { mutableStateOf<List<StudyQueueEntry>?>(null) }
     var currentIndex by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
+    var latestRatings by remember(studyKey, reviewMode) { mutableStateOf<Map<String, Rating>>(emptyMap()) }
+    var scheduledRequeues by remember(studyKey, reviewMode) { mutableStateOf<List<ScheduledRequeue>>(emptyList()) }
+    var sessionFinished by remember(studyKey, reviewMode) { mutableStateOf(false) }
     var rememberedCount by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
     var forgottenCount by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
     var loadingStudy by remember(studyKey, reviewMode) { mutableStateOf(false) }
+    // Today's queue holds only the cards still remaining, so the counter continues the
+    // day-wide count from a snapshot taken when the session was built. Backlog overflow
+    // (beyond the core target) counts on its own.
+    var baseCompleted by remember(studyKey, reviewMode) { mutableIntStateOf(0) }
+    var backlogSession by remember(studyKey, reviewMode) { mutableStateOf(false) }
     LaunchedEffect(studyKey, reviewMode, todayMode) {
-        remainingCardIds = null
+        sessionQueue = null
         currentIndex = 0
+        latestRatings = emptyMap()
+        scheduledRequeues = emptyList()
+        sessionFinished = false
         rememberedCount = 0
         forgottenCount = 0
         loadingStudy = true
+        baseCompleted = 0
+        backlogSession = false
         try {
             val load = if (todayMode) viewModel.startTodayStudy() else viewModel.startStudy(deckId, reviewMode)
             load.join()
@@ -195,46 +239,175 @@ internal fun StudyScreen(
     }
 
     LaunchedEffect(cards) {
-        if (!loadingStudy && remainingCardIds == null && cards.isNotEmpty()) {
-            remainingCardIds = cards.map { it.id }
+        if (!loadingStudy && sessionQueue == null && cards.isNotEmpty()) {
+            baseCompleted = if (todayMode && !backlogSession) todayPlan.completedCount else 0
+            sessionQueue = cards.map { StudyQueueEntry(it.id) }
         }
     }
 
-    val initialCardIds = remainingCardIds
-    val cardsById = cards.associateBy { it.id }
-    val remainingCards = initialCardIds.orEmpty().mapNotNull(cardsById::get)
-    if (reviewMode && remainingCards.isNotEmpty()) {
-        val safeIndex = currentIndex.coerceIn(0, remainingCards.lastIndex)
-        val card = remainingCards[safeIndex]
-        ReviewStudy(
-            card = card,
-            position = initialCardIds.orEmpty().indexOf(card.id) + 1,
-            total = initialCardIds.orEmpty().size,
-            theme = theme,
-            canGoPrevious = safeIndex > 0,
-            canGoNext = safeIndex < remainingCards.lastIndex,
-            rememberedCount = rememberedCount,
-            forgottenCount = forgottenCount,
-            submitting = reviewSubmitting,
-            modifier = Modifier.fillMaxSize(),
-            onBack = nav::popBackStack,
-            onEdit = viewModel::updateCard,
-            onPrevious = { currentIndex = (safeIndex - 1).coerceAtLeast(0) },
-            onNext = { currentIndex = (safeIndex + 1).coerceAtMost(remainingCards.lastIndex) },
-            onRate = { rating ->
-                // The card leaves the queue only after the server committed the event; a failure
-                // keeps the card on screen and the retry replays the same event identifiers.
-                viewModel.rate(card.id, rating) {
-                    // HARD still means the learner recalled the answer (just with effort); only
-                    // AGAIN represents a miss in the compact two-counter footer.
-                    if (rating == Rating.AGAIN) forgottenCount++ else rememberedCount++
-                    val updatedIds = initialCardIds.orEmpty().filterNot { it == card.id }
-                    remainingCardIds = updatedIds
-                    currentIndex = safeIndex.coerceAtMost((updatedIds.size - 1).coerceAtLeast(0))
-                }
+    // 学习时长（设备本地实测，Anki 口径）：前台计时，今日模式的时段归属当前卡片的卡组，
+    // 切卡即切换归属；会话结束页不再计时。自由刷题不走本屏，与统计口径一致不计时。
+    val studyTimer = remember(studyKey, reviewMode) { StudyTimeAccumulator() }
+    fun timingDeckId(): String? = if (todayMode) {
+        val entry = sessionQueue?.getOrNull(currentIndex)
+        entry?.let { queued -> cards.firstOrNull { it.id == queued.cardId }?.deckId }
+    } else {
+        deckId
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, studyKey, reviewMode) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME ->
+                    if (!sessionFinished) timingDeckId()?.let { studyTimer.resume(it, System.currentTimeMillis()) }
+                Lifecycle.Event.ON_PAUSE ->
+                    viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+                else -> {}
             }
-        )
-        return
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    LaunchedEffect(currentIndex, sessionQueue, sessionFinished) {
+        if (sessionFinished) {
+            viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+        } else {
+            timingDeckId()?.let { studyTimer.resume(it, System.currentTimeMillis()) }
+        }
+    }
+
+    fun insertDueRequeues(nowMs: Long) {
+        val queue = sessionQueue ?: return
+        val due = scheduledRequeues.filter { it.dueAtMs <= nowMs }
+        if (due.isEmpty()) return
+        scheduledRequeues = scheduledRequeues.filter { it.dueAtMs > nowMs }
+        val at = (currentIndex + 1).coerceIn(0, queue.size)
+        sessionQueue = queue.subList(0, at) +
+            due.sortedBy { it.dueAtMs }.map { StudyQueueEntry(it.cardId, relearn = true) } +
+            queue.subList(at, queue.size)
+    }
+
+    fun handleRated(entryIndex: Int, cardId: String, rating: Rating) {
+        val queue = sessionQueue ?: return
+        latestRatings = latestRatings + (cardId to rating)
+        if (rating == Rating.AGAIN) forgottenCount++ else rememberedCount++
+        if (rating == Rating.AGAIN) {
+            // Schedule a same-session return unless one is already waiting
+            // further ahead in the queue (re-rating behind an existing entry
+            // must not duplicate it).
+            val relearnAhead = queue.withIndex().any { (index, entry) ->
+                index > entryIndex && entry.relearn && entry.cardId == cardId
+            }
+            if (!relearnAhead) {
+                scheduledRequeues = (
+                    scheduledRequeues.filterNot { it.cardId == cardId } +
+                        ScheduledRequeue(cardId, System.currentTimeMillis() + RELEARN_DELAY_MS)
+                    ).sortedBy { it.dueAtMs }
+            }
+        } else {
+            // A non-AGAIN rating settles the card for today: drop any pending
+            // return visit, both scheduled and already queued ahead.
+            scheduledRequeues = scheduledRequeues.filterNot { it.cardId == cardId }
+            sessionQueue = queue.withIndex()
+                .filterNot { (index, entry) -> index > entryIndex && entry.relearn && entry.cardId == cardId }
+                .map { it.value }
+        }
+        insertDueRequeues(System.currentTimeMillis())
+        val grownQueue = sessionQueue.orEmpty()
+        if (entryIndex + 1 > grownQueue.lastIndex) {
+            // The plan is exhausted: bring the pending relearn entries back
+            // right away instead of parking the learner on a wait screen —
+            // the FSRS step only matters while there are other cards left.
+            if (scheduledRequeues.isNotEmpty()) {
+                val entries = scheduledRequeues
+                    .sortedBy { it.dueAtMs }
+                    .map { StudyQueueEntry(it.cardId, relearn = true) }
+                scheduledRequeues = emptyList()
+                sessionQueue = grownQueue + entries
+                currentIndex = grownQueue.size
+                return
+            }
+            sessionFinished = true
+            return
+        }
+        currentIndex = entryIndex + 1
+    }
+
+    val queue = sessionQueue
+    val cardsById = cards.associateBy { it.id }
+    if (reviewMode && !queue.isNullOrEmpty()) {
+        if (sessionFinished) {
+            CompleteStudy(
+                modifier = Modifier.fillMaxSize(),
+                nav = nav,
+                hasBacklog = todayMode && todayPlan.backlogCount > 0,
+                onContinueBacklog = {
+                    sessionQueue = null
+                    currentIndex = 0
+                    latestRatings = emptyMap()
+                    scheduledRequeues = emptyList()
+                    sessionFinished = false
+                    rememberedCount = 0
+                    forgottenCount = 0
+                    loadingStudy = true
+                    backlogSession = true
+                    viewModel.startTodayBacklogStudy { succeeded ->
+                        loadingStudy = false
+                        if (!succeeded) sessionQueue = emptyList()
+                    }
+                },
+            )
+            return
+        }
+        val safeIndex = currentIndex.coerceIn(0, queue.lastIndex)
+        val entry = queue[safeIndex]
+        val card = cardsById[entry.cardId]
+        if (card != null) {
+            val counter = todaySessionCounter(baseCompleted, queue, entry, latestRatings)
+            var showAnswer by remember(entry.cardId, entry.relearn) { mutableStateOf(false) }
+            ReviewStudy(
+                card = card,
+                isRelearnVisit = entry.relearn,
+                position = counter.position,
+                total = counter.total,
+                progress = if (counter.total == 0) 0f else counter.completed.toFloat() / counter.total,
+                theme = theme,
+                showAnswer = showAnswer,
+                canGoPrevious = safeIndex > 0,
+                canGoNext = safeIndex < queue.lastIndex,
+                rememberedCount = rememberedCount,
+                forgottenCount = forgottenCount,
+                submitting = reviewSubmitting,
+                selectedRating = latestRatings[card.id],
+                modifier = Modifier.fillMaxSize(),
+                onBack = nav::popBackStack,
+                onEdit = viewModel::updateCard,
+                onToggleAnswer = { showAnswer = !showAnswer },
+                onPrevious = {
+                    insertDueRequeues(System.currentTimeMillis())
+                    currentIndex = (safeIndex - 1).coerceAtLeast(0)
+                },
+                onNext = {
+                    insertDueRequeues(System.currentTimeMillis())
+                    val grownQueue = sessionQueue.orEmpty()
+                    currentIndex = (safeIndex + 1).coerceAtMost(grownQueue.lastIndex)
+                },
+                onRate = { rating ->
+                    val ratedIndex = safeIndex
+                    // The rating lands in the outbox first; the session-level
+                    // bookkeeping (relearn schedule, advance) happens in the
+                    // completion callback, and a failure keeps the card on
+                    // screen for a retry that replays the same event identifiers.
+                    viewModel.rate(card.id, rating) {
+                        handleRated(ratedIndex, card.id, rating)
+                    }
+                }
+            )
+            return
+        }
     }
     if (!reviewMode && cards.isNotEmpty()) {
         FreeStudy(cards = cards, theme = theme, onBack = nav::popBackStack, onUpdateCard = viewModel::updateCard)
@@ -242,19 +415,23 @@ internal fun StudyScreen(
     }
     Scaffold(topBar = { AppBar(if (reviewMode) "记忆巩固" else "自由刷题", nav::popBackStack) }) { padding ->
         when {
-            reviewMode && remainingCardIds?.isEmpty() == true -> CompleteStudy(
+            reviewMode && sessionQueue?.isEmpty() == true -> CompleteStudy(
                 modifier = Modifier.padding(padding),
                 nav = nav,
                 hasBacklog = todayMode && todayPlan.backlogCount > 0,
                 onContinueBacklog = {
-                    remainingCardIds = null
+                    sessionQueue = null
                     currentIndex = 0
+                    latestRatings = emptyMap()
+                    scheduledRequeues = emptyList()
+                    sessionFinished = false
                     rememberedCount = 0
                     forgottenCount = 0
                     loadingStudy = true
+                    backlogSession = true
                     viewModel.startTodayBacklogStudy { succeeded ->
                         loadingStudy = false
-                        if (!succeeded) remainingCardIds = emptyList()
+                        if (!succeeded) sessionQueue = emptyList()
                     }
                 },
             )
@@ -300,32 +477,38 @@ private fun CompleteStudy(
 @Composable
 private fun ReviewStudy(
     card: FlashcardEntity,
+    isRelearnVisit: Boolean,
     position: Int,
     total: Int,
+    progress: Float,
     theme: DeckTheme,
+    showAnswer: Boolean,
     canGoPrevious: Boolean,
     canGoNext: Boolean,
     rememberedCount: Int,
     forgottenCount: Int,
     submitting: Boolean,
+    selectedRating: Rating?,
     modifier: Modifier,
     onBack: () -> Unit,
     onEdit: (FlashcardEntity) -> Unit,
+    onToggleAnswer: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onRate: (Rating) -> Unit
 ) {
-    var flipped by remember(card.id) { mutableStateOf(false) }
     var editingCard by remember(card.id) { mutableStateOf<FlashcardEntity?>(null) }
     val designScale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(0.75f, 1f)
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ScreenTopInformationBar(
-            title = "记忆巩固", subtitle = "$position/$total", onBack = onBack,
+            title = "记忆巩固",
+            subtitle = if (isRelearnVisit) "$position/$total · 复练" else "$position/$total",
+            onBack = onBack,
             backContainer = theme.cardPanel, titleColor = theme.text,
             modifier = Modifier.zIndex(1f)
         )
         LinearProgressIndicator(
-            progress = { position.toFloat() / total },
+            progress = { progress },
             color = theme.primary, trackColor = theme.secondary,
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = (16 * designScale).dp)
                 .padding(top = (88 * designScale).dp).height((4 * designScale).dp)
@@ -335,38 +518,31 @@ private fun ReviewStudy(
                 .padding(top = (132 * designScale).dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Figma 41:1853 / 44:2464: the big flip card is a fixed 370x524 frame.
+            // Figma 41:1853 / 44:2464: the big card is a fixed 370x524 frame.
             Box(Modifier.fillMaxWidth().height((524 * designScale).dp)) {
-                FigmaReviewCard(
+                ReviewFlipCard(
                     card = card,
-                    flipped = flipped,
-                    onFlip = { flipped = !flipped },
-                    onRate = onRate,
-                    canRate = !submitting,
+                    showAnswer = showAnswer,
+                    relearn = isRelearnVisit,
+                    onClick = onToggleAnswer,
                     modifier = Modifier.fillMaxSize(),
                     designScale = designScale,
                     theme = theme
                 )
             }
-            Spacer(Modifier.height((16 * designScale).dp))
-            if (flipped) ReviewAnswerControls(
+            Spacer(Modifier.height((12 * designScale).dp))
+            // The four rating buttons are always on screen: tapping the card
+            // only reveals the answer, ratings never depend on flipping first.
+            // The session's latest rating for this card stays outlined, so coming
+            // back through the previous/next arrows still shows how it was graded.
+            ReviewRatingControls(
                 enabled = !submitting,
-                onHard = { onRate(Rating.HARD) },
-                onGood = { onRate(Rating.GOOD) },
+                selected = selectedRating,
+                onRate = onRate,
             )
-            else ReviewQuestionControls(theme, canGoPrevious, canGoNext, rememberedCount, forgottenCount, onPrevious, onNext)
+            Spacer(Modifier.height((8 * designScale).dp))
+            ReviewQuestionControls(theme, canGoPrevious, canGoNext, rememberedCount, forgottenCount, onPrevious, onNext)
         }
-        if (flipped) ReviewSwipeHint(
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = (756 * designScale).dp),
-            scale = designScale,
-            enabled = !submitting,
-            onRate = onRate,
-        ) else Text(
-            "点击卡片查看答案",
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = (769 * designScale).dp),
-            color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal,
-            fontSize = fixedSp(18 * designScale), lineHeight = fixedSp(24 * designScale), textAlign = TextAlign.Center
-        )
     }
     editingCard?.let { editableCard ->
         CardEditDialog(
@@ -402,26 +578,48 @@ private fun ReviewQuestionControls(
 }
 
 @Composable
-private fun ReviewAnswerControls(enabled: Boolean, onHard: () -> Unit, onGood: () -> Unit) {
+private fun ReviewRatingControls(enabled: Boolean, selected: Rating?, onRate: (Rating) -> Unit) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
-    Row(Modifier.fillMaxWidth().height((72 * scale).dp), horizontalArrangement = Arrangement.spacedBy((16 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height((56 * scale).dp), horizontalArrangement = Arrangement.spacedBy((8 * scale).dp), verticalAlignment = Alignment.CenterVertically) {
+        ReviewRatingButton(
+            label = "没想起来",
+            color = Color(0xFFF4D1CE),
+            contentColor = AppColors.Warning,
+            enabled = enabled,
+            selected = selected == Rating.AGAIN,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            scale = scale,
+            onClick = { onRate(Rating.AGAIN) },
+        )
         ReviewRatingButton(
             label = "勉强想起",
             color = AppColors.Orange.surface,
             contentColor = AppColors.Orange.ink,
             enabled = enabled,
+            selected = selected == Rating.HARD,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             scale = scale,
-            onClick = onHard,
+            onClick = { onRate(Rating.HARD) },
         )
         ReviewRatingButton(
             label = "正常想起",
             color = AppColors.Green.background,
             contentColor = AppColors.Green.primaryStrong,
             enabled = enabled,
+            selected = selected == Rating.GOOD,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             scale = scale,
-            onClick = onGood,
+            onClick = { onRate(Rating.GOOD) },
+        )
+        ReviewRatingButton(
+            label = "轻松想起",
+            color = AppColors.Blue.background,
+            contentColor = AppColors.Blue.primaryStrong,
+            enabled = enabled,
+            selected = selected == Rating.EASY,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            scale = scale,
+            onClick = { onRate(Rating.EASY) },
         )
     }
 }
@@ -432,6 +630,7 @@ private fun ReviewRatingButton(
     color: Color,
     contentColor: Color,
     enabled: Boolean,
+    selected: Boolean,
     modifier: Modifier,
     scale: Float,
     onClick: () -> Unit,
@@ -441,6 +640,9 @@ private fun ReviewRatingButton(
         enabled = enabled,
         color = color,
         contentColor = contentColor,
+        // A selected card keeps a dark outline in the button's own ink colour so a
+        // revisit via the previous/next arrows still shows how it was graded.
+        border = if (selected) androidx.compose.foundation.BorderStroke((3 * scale).dp, contentColor) else null,
         shape = RoundedCornerShape((32 * scale).dp),
         modifier = modifier,
     ) {
@@ -461,7 +663,7 @@ private fun ReviewNavigationButton(symbol: String, enabled: Boolean, modifier: M
         modifier = modifier.fillMaxHeight()
     ) {
         Box(contentAlignment = Alignment.Center) {
-            MaterialSymbol(symbol, if (symbol == "arrow_back") "上一张未完成卡片" else "下一张未完成卡片", tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
+            MaterialSymbol(symbol, if (symbol == "arrow_back") "上一张卡片" else "下一张卡片", tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
         }
     }
 }
@@ -484,100 +686,77 @@ private fun ReviewCountBadge(symbol: String, count: Int, color: Color, contentCo
     }
 }
 
-@Composable
-private fun ReviewSwipeHint(
-    modifier: Modifier,
-    scale: Float,
-    enabled: Boolean,
-    onRate: (Rating) -> Unit,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ReviewSwipeHintGroup("swipe_left", "轻松想起", scale, enabled) { onRate(Rating.EASY) }
-        ReviewSwipeHintGroup("swipe_right", "没想起来", scale, enabled) { onRate(Rating.AGAIN) }
-    }
-}
-
-@Composable
-private fun ReviewSwipeHintGroup(symbol: String, text: String, scale: Float, enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = Arrangement.spacedBy((8 * scale).dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MaterialSymbol(symbol, null, tint = PageForegroundColor(), size = fixedSp(24 * scale), filled = true)
-        Text(text, color = PageForegroundColor(), fontFamily = AppFonts.MiSansMedium, fontWeight = FontWeight.Normal, fontSize = fixedSp(18 * scale), lineHeight = fixedSp(24 * scale))
-    }
-}
-
 /**
- * Figma 41:1853, 755:4354 and 44:2464 use the card-type semantic blue even
- * when the surrounding learning screen inherits a non-blue project theme.
+ * The card-type pill follows the card's server-owned difficulty tier. BASIC keeps the
+ * card-type semantic blue from Figma 41:1853, 755:4354 and 44:2464 even when the
+ * surrounding learning screen inherits a non-blue project theme; cards without a
+ * tier (manual/import) render no pill.
  */
-private fun reviewCardTagStyle() = CardListTagStyle(
-    label = "基础记忆",
-    container = AppColors.Blue.primary,
-    content = AppColors.Blue.ink
+private fun cardDifficultyTagStyle(difficulty: V25Difficulty?): CardListTagStyle? = when (difficulty) {
+    V25Difficulty.BASIC -> CardListTagStyle(
+        label = "基础记忆",
+        container = AppColors.Blue.primary,
+        content = AppColors.Blue.ink
+    )
+    V25Difficulty.UNDERSTANDING -> CardListTagStyle(
+        label = "理解分析",
+        container = AppColors.Green.primarySecondary,
+        content = AppColors.Green.ink
+    )
+    V25Difficulty.DEEP_QUESTION -> CardListTagStyle(
+        label = "综合应用",
+        container = AppColors.Pink.primarySecondary,
+        content = AppColors.Pink.ink
+    )
+    null -> null
+}
+
+/** Relearn visits carry a warning-red tag so a returning AGAIN card reads at a glance. */
+private fun relearnCardTagStyle() = CardListTagStyle(
+    label = "复练",
+    container = Color(0xFFF4D1CE),
+    content = AppColors.Warning
 )
 
+/**
+ * The review card flips in 3D between the question and the answer. Tapping the
+ * card only reveals the answer — the four always-visible rating buttons below
+ * the card are the only way to grade a card.
+ */
 @Composable
-private fun FigmaReviewCard(
+private fun ReviewFlipCard(
     card: FlashcardEntity,
-    flipped: Boolean,
-    onFlip: () -> Unit,
-    onRate: (Rating) -> Unit,
-    canRate: Boolean,
-    modifier: Modifier,
+    showAnswer: Boolean,
+    relearn: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     designScale: Float,
-    theme: DeckTheme
+    theme: DeckTheme,
 ) {
-    var offsetX by remember(card.id) { mutableFloatStateOf(0f) }
-    val scope = rememberCoroutineScope()
-    val draggable = rememberDraggableState { offsetX += it }
     val rotation by animateFloatAsState(
-        targetValue = if (flipped) 180f else 0f,
+        targetValue = if (showAnswer) 180f else 0f,
         animationSpec = AppMotion.emphasisSpring(),
-        label = "figma review flip"
+        label = "review card flip"
     )
     val frontAlpha = if (rotation <= 90f) 1f else 0f
     val backAlpha = if (rotation > 90f) 1f else 0f
     val faceShape = RoundedCornerShape((AppShapeRadius * designScale).dp)
-    // A swipe that triggered a rating leaves the card shifted; snap it back while the
-    // submission is in flight so a failure shows the card centred and ready to retry.
-    LaunchedEffect(canRate) {
-        if (!canRate) offsetX = 0f
-    }
+    val tag = if (relearn) relearnCardTagStyle() else cardDifficultyTagStyle(card.targetDifficulty)
     Box(
         modifier = modifier
-            .offset { IntOffset(offsetX.roundToInt(), 0) }
-            .graphicsLayer(rotationZ = offsetX / 55f)
             .clip(faceShape)
             // Use the Material ripple that homepage cards use. Clipping first keeps
             // the native press state within the same 32dp container shape.
-            .clickable(onClick = onFlip)
-            .draggable(
-                state = draggable,
-                orientation = Orientation.Horizontal,
-                enabled = flipped && canRate,
-                onDragStopped = {
-                    when {
-                        // Left swipe = EASY; right swipe = AGAIN.
-                        offsetX > 140f -> onRate(Rating.AGAIN)
-                        offsetX < -140f -> onRate(Rating.EASY)
-                        else -> scope.launch { offsetX = 0f }
-                    }
-                }
-            )
+            .clickable(onClick = onClick)
     ) {
         ReviewCardFace(
             title = "问题", content = card.front, symbol = "book_5", visible = frontAlpha,
-            tag = reviewCardTagStyle(), rotation = rotation, shape = faceShape, designScale = designScale, backFace = false, theme = theme
+            tag = tag, rotation = rotation, shape = faceShape, designScale = designScale, backFace = false, theme = theme
         )
         ReviewCardFace(
             title = "答案", content = card.back, symbol = "wb_incandescent", visible = backAlpha,
-            tag = reviewCardTagStyle(), rotation = rotation, shape = faceShape, designScale = designScale, backFace = true, theme = theme
+            tag = tag, rotation = rotation, shape = faceShape, designScale = designScale, backFace = true,
+            theme = theme, scrollKey = card.id
         )
     }
 }
@@ -587,20 +766,26 @@ private fun ReviewCardFace(
     title: String,
     content: String,
     symbol: String,
-    tag: CardListTagStyle,
+    tag: CardListTagStyle?,
     visible: Float,
     rotation: Float,
     shape: RoundedCornerShape,
     designScale: Float,
     backFace: Boolean,
     theme: DeckTheme,
-    questionInk: Boolean = true
+    questionInk: Boolean = true,
+    scrollKey: Any = Unit,
 ) {
     // Figma 203:2594 big flip card: question face = ink, answer face = surface
     // (one step deeper than the Background page).
     val questionColor = if (questionInk) theme.strongText else theme.cardPanel
     val faceColor = if (backFace) theme.cardPanel else questionColor
     val faceContent = if (backFace) theme.strongText else if (questionInk) AppColors.TextIconLight else theme.strongText
+    // The answer face scrolls when the content outgrows the fixed card body;
+    // the scroll position resets whenever the face is (re)entered for a new
+    // card via [scrollKey]. The question face keeps the centred Figma layout.
+    val scrollState = remember(scrollKey) { ScrollState(0) }
+    val contentFits = !backFace || scrollState.maxValue <= 0
     Box(
         // The layer must wrap both the gradient and its text. Keeping it before
         // background prevents the invisible reverse face from painting over the
@@ -617,23 +802,30 @@ private fun ReviewCardFace(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Surface(color = tag.container, shape = RoundedCornerShape(999.dp)) {
-                    Text(
-                        tag.label,
-                        modifier = Modifier.padding(horizontal = (16 * designScale).dp, vertical = (8 * designScale).dp),
-                        color = tag.content,
-                        fontFamily = AppFonts.MiSansBold,
-                        fontWeight = FontWeight.Normal,
-                        fontSize = fixedSp(16 * designScale),
-                        lineHeight = fixedSp(21 * designScale),
-                        maxLines = 1
-                    )
+                tag?.let { style ->
+                    Surface(color = style.container, shape = RoundedCornerShape(999.dp)) {
+                        Text(
+                            style.label,
+                            modifier = Modifier.padding(horizontal = (16 * designScale).dp, vertical = (8 * designScale).dp),
+                            color = style.content,
+                            fontFamily = AppFonts.MiSansBold,
+                            fontWeight = FontWeight.Normal,
+                            fontSize = fixedSp(16 * designScale),
+                            lineHeight = fixedSp(21 * designScale),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
+            // Center while the content fits; once it overflows, anchor to the
+            // top so scrolling can reach the whole answer (a centred scroll
+            // container would clip the first lines above its scroll origin).
             Column(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f).then(
+                    if (backFace) Modifier.verticalScroll(scrollState) else Modifier
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = if (contentFits) Arrangement.Center else Arrangement.Top
             ) {
                 MaterialSymbol(symbol, null, tint = faceContent, size = fixedSp(44 * designScale), filled = true)
                 Spacer(Modifier.height((16 * designScale).dp))
@@ -775,7 +967,7 @@ private fun FreeStudyCard(card: FlashcardEntity, flipped: Boolean, onFlip: () ->
             title = "问题",
             content = card.front,
             symbol = "book_5",
-            tag = cardListTagStyle(card.position),
+            tag = cardDifficultyTagStyle(card.targetDifficulty),
             visible = if (rotation <= 90f) 1f else 0f,
             rotation = rotation,
             shape = shape,
@@ -788,13 +980,14 @@ private fun FreeStudyCard(card: FlashcardEntity, flipped: Boolean, onFlip: () ->
             title = "答案",
             content = listOfNotNull(card.back, card.code?.takeIf { it.isNotBlank() }).joinToString("\n\n"),
             symbol = "wb_incandescent",
-            tag = cardListTagStyle(card.position),
+            tag = cardDifficultyTagStyle(card.targetDifficulty),
             visible = if (rotation > 90f) 1f else 0f,
             rotation = rotation,
             shape = shape,
             designScale = designScale,
             backFace = true,
-            theme = theme
+            theme = theme,
+            scrollKey = card.id
         )
     }
 }
