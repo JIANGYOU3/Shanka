@@ -26,6 +26,10 @@ internal fun honestStudyDuration(totalSeconds: Long): String = when {
     else -> "${totalSeconds / 3_600L} 小时"
 }
 
+/** Renders server-derived seconds; a not-yet-loaded source stays a dash (never a fake 0). */
+internal fun honestStudyDurationOrNull(totalSeconds: Long?): String =
+    totalSeconds?.let(::honestStudyDuration) ?: "—"
+
 /**
  * Real project aggregates derived only from its decks. There is no project-statistics endpoint,
  * so every project metric must be the sum of the project's decks — whose counts all come from

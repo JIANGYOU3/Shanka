@@ -45,9 +45,9 @@ enum class V25CardType { QUESTION, TRUE_FALSE }
 enum class V25ProjectStatus { EMPTY, PARSING, PARSE_FAILED, AWAITING_CHAPTER_CONFIRMATION, READY }
 
 /** Learning material kind (structure-contract 3.2a); LINK is reserved and not implemented. */
-enum class V25MaterialType { PDF, TEXT }
+enum class V25MaterialType { PDF, TEXT, ZIP, HTML }
 
-/** Material lifecycle: PDF uses PENDING/PARSING/PARSED/FAILED; TEXT is always READY. */
+/** Material lifecycle: PDF uses PENDING/PARSING/PARSED/FAILED; TEXT/ZIP is always READY. */
 enum class V25MaterialStatus { PENDING, PARSING, PARSED, FAILED, READY }
 
 /**
@@ -81,6 +81,9 @@ enum class V25RewriteStatus { PENDING, APPLIED, CANCELLED, EXPIRED }
 
 /** The four self-rated review outcomes (V25-STUDY-FR-07). */
 enum class V25Rating { AGAIN, HARD, GOOD, EASY }
+
+/** V25-D-37 rating/session origin: where one rating or study session came from. */
+enum class V25StudyOrigin { PLAN, BACKLOG, ADHOC }
 
 /** Free-browse ordering; `random` is fixed per client session seed (Architecture 4.4). */
 enum class V25BrowseOrder { position, random }
@@ -207,12 +210,18 @@ data class V25Chapter(
     /** Owning material (structure-contract 3.2a); chapters always belong to one material. */
     val materialId: String,
     val name: String,
+    /** Chapter origin (V25-D-36): TOC / AI / FALLBACK / TEXT / ZIP / MANUAL. */
+    val source: String = "TOC",
     val startPage: Int?,
     val endPage: Int?,
 ) {
     /** Page-span label for the chapter list; TEXT chapters have no pages. */
     val pageSpanLabel: String?
         get() = if (startPage == null || endPage == null) null else "$startPage-$endPage 页"
+
+    /** AI-derived chapter structure (planned or whole-book fallback) — badge-worthy in UI. */
+    val isAiPlanned: Boolean
+        get() = source == "AI" || source == "FALLBACK"
 }
 
 /** Chapter name/page-span edit (PATCH /projects/{project_id}/chapters/{chapter_id}). */
@@ -626,6 +635,50 @@ data class V25StatsDashboard(
     val masteredCards: Int,
     val progress: List<V25ProgressSummary>,
     val updatedAt: Instant?,
+    /** V25-D-37 server-aggregated study duration (best-effort observational data). */
+    val weeklyStudySeconds: Int = 0,
+    val dailyStudySeconds: List<Int> = emptyList(),
+    val planStudySeconds: Int = 0,
+    val backlogStudySeconds: Int = 0,
+    val adhocStudySeconds: Int = 0,
+)
+
+/**
+ * V25-D-37 one same-day study session (structure-contract 3.25): a thin container holding the
+ * origin, optional single-deck scope and accumulated seconds. The server dedupes by
+ * (account, study date, origin, scope) — re-entering the same scope the same day resumes this
+ * row, so `studySeconds` is the resume base for client-side continuation.
+ */
+data class V25StudySession(
+    val sessionId: String,
+    val origin: V25StudyOrigin,
+    val deckId: String?,
+    val studyDate: LocalDate,
+    val studySeconds: Int,
+    val startedAt: Instant,
+    val lastReportedAt: Instant?,
+    val endedAt: Instant?,
+)
+
+/**
+ * begin response (V25-D-37): the session plus — only for reset=true — the deck's review-all
+ * queue (new cards first by position, the rest by forgetting risk; ratings stay FSRS-normal).
+ */
+data class V25StudySessionBegin(
+    val session: V25StudySession,
+    val reviewAllCards: List<V25PlanCard>,
+)
+
+/**
+ * V25-D-37 lifetime study-duration summary (GET /study/sessions/summary): per-deck ADHOC
+ * seconds plus the three origin totals. Feeds the existing 学习时长 metric cards
+ * (project/deck detail) with the cross-device server truth.
+ */
+data class V25StudyDurationSummary(
+    val deckSeconds: Map<String, Long>,
+    val planSeconds: Long,
+    val backlogSeconds: Long,
+    val adhocSeconds: Long,
 )
 
 // --- API key status (V25-SET-FR-05) ------------------------------------------------------------

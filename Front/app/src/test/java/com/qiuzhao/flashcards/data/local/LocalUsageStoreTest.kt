@@ -18,9 +18,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Device-local usage facts on a real in-memory Room database: study seconds must accumulate
- * per deck (never overwrite), a signed-out delta must drop rather than crash, and the deck
- * difficulty mix must aggregate off the card projection while unlabeled cards stay uncounted.
+ * Device-local usage facts on a real in-memory Room database: per-day rows must accumulate
+ * (never overwrite) and stay day-scoped, a signed-out delta must drop rather than crash, and
+ * the deck difficulty mix must aggregate off the card projection while unlabeled cards stay
+ * uncounted. Lifetime duration is server truth (V25-D-37) and intentionally has no local table.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -46,19 +47,51 @@ class LocalUsageStoreTest {
     }
 
     @Test
-    fun `study seconds accumulate per deck`() = runBlocking {
-        store.addStudySeconds(mapOf("d-1" to 60L), nowMs = 1_000)
-        store.addStudySeconds(mapOf("d-1" to 30L, "d-2" to 10L), nowMs = 2_000)
-        assertEquals(mapOf("d-1" to 90L, "d-2" to 10L), store.observeStudySeconds().first())
+    fun `today's seconds accumulate into the same day row per deck`() = runBlocking {
+        val now = 1_700_000_000_000L
+        store.addTodayStudySeconds(mapOf("d-1" to 60L), nowMs = now)
+        store.addTodayStudySeconds(mapOf("d-1" to 30L, "d-2" to 10L), nowMs = now + 1)
+
+        val today = store.observeDeckDailyActivity(nowMs = now).first()
+        assertEquals(90L, today["d-1"]?.studySeconds)
+        assertEquals(10L, today["d-2"]?.studySeconds)
+    }
+
+    @Test
+    fun `daily reviews and seconds accumulate into the same day row`() = runBlocking {
+        val today = 1_700_000_000_000L
+        store.addDeckReview("d-1", nowMs = today)
+        store.addDeckReview("d-1", nowMs = today + 1)
+        store.addTodayStudySeconds(mapOf("d-1" to 60L), nowMs = today + 2)
+
+        val todayRow = store.observeDeckDailyActivity(nowMs = today).first()
+        assertEquals(2, todayRow["d-1"]?.reviewedCount)
+        assertEquals(60L, todayRow["d-1"]?.studySeconds)
+    }
+
+    @Test
+    fun `yesterday's activity never leaks into today`() = runBlocking {
+        val today = 1_700_000_000_000L
+        store.addDeckReview("d-1", nowMs = today - 86_400_000)
+        store.addTodayStudySeconds(mapOf("d-1" to 30L), nowMs = today - 86_400_000)
+
+        assertEquals(emptyMap<String, DeckDailyActivity>(), store.observeDeckDailyActivity(nowMs = today).first())
+    }
+
+    @Test
+    fun `a signed-out review drops instead of attributing to nobody`() = runBlocking {
+        user = null
+        store.addDeckReview("d-1", nowMs = 1_000)
+        user = "u-1"
+        assertEquals(emptyMap<String, DeckDailyActivity>(), store.observeDeckDailyActivity(nowMs = 1_000).first())
     }
 
     @Test
     fun `a signed-out delta drops instead of attributing to nobody`() = runBlocking {
-        store.addStudySeconds(mapOf("d-1" to 60L), nowMs = 1_000)
         user = null
-        store.addStudySeconds(mapOf("d-1" to 60L), nowMs = 2_000)
+        store.addTodayStudySeconds(mapOf("d-1" to 60L), nowMs = 1_000)
         user = "u-1"
-        assertEquals(mapOf("d-1" to 60L), store.observeStudySeconds().first())
+        assertEquals(emptyMap<String, DeckDailyActivity>(), store.observeDeckDailyActivity(nowMs = 1_000).first())
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.qiuzhao.flashcards.domain.v25.V25ErrorCodes
 import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25Repository
 import com.qiuzhao.flashcards.domain.v25.V25Result
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +95,10 @@ class ReviewSyncCoordinator(
                 continue
             }
             val result = try {
-                remote.rateCard(next.cardId, rating, next.clientEventId, next.idempotencyKey)
+                // Rows enqueued before v8 carry a null origin; they replay as origin-less and
+                // the server stores NULL = 未分类 (legacy transition bucket).
+                val origin = next.origin?.let { runCatching { V25StudyOrigin.valueOf(it) }.getOrNull() }
+                remote.rateCard(next.cardId, rating, next.clientEventId, next.idempotencyKey, origin)
             } catch (failure: Throwable) {
                 V25Result.Failure(V25ErrorCodes.NETWORK_UNAVAILABLE)
             }

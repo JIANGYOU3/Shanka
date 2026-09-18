@@ -95,6 +95,40 @@ internal interface V25Api {
         @Part file: MultipartBody.Part,
     ): MaterialDto
 
+    @Headers("X-Shanka-Op: ${ShankaOps.REPARSE_MATERIAL}")
+    @POST("projects/{project_id}/materials/{material_id}/reparse")
+    suspend fun reparseProjectMaterial(
+        @Path("project_id") projectId: String,
+        @Path("material_id") materialId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): ProjectDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.WHOLE_BOOK_FALLBACK}")
+    @POST("projects/{project_id}/materials/{material_id}/chapters/whole-book")
+    suspend fun fallbackWholeBookChapters(
+        @Path("project_id") projectId: String,
+        @Path("material_id") materialId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): ProjectDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.ADD_MATERIAL_ZIP}")
+    @Multipart
+    @POST("projects/{project_id}/materials/zip")
+    suspend fun addProjectMaterialZip(
+        @Path("project_id") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Part file: MultipartBody.Part,
+    ): MaterialDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.ADD_MATERIAL_HTML}")
+    @Multipart
+    @POST("projects/{project_id}/materials/html")
+    suspend fun addProjectMaterialHtml(
+        @Path("project_id") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Part file: MultipartBody.Part,
+    ): MaterialDto
+
     @Headers("X-Shanka-Op: ${ShankaOps.ADD_MATERIAL_TEXT}")
     @POST("projects/{project_id}/materials/text")
     suspend fun addProjectMaterialText(
@@ -419,6 +453,31 @@ internal interface V25Api {
     @Headers("X-Shanka-Op: ${ShankaOps.REVIEW_QUEUE}")
     @GET("decks/{deck_id}/review")
     suspend fun deckReviewQueue(@Path("deck_id") deckId: String): ItemsResponse<CardDto>
+
+    // --- study sessions (V25-D-37) --------------------------------------------------------------------
+
+    @Headers("X-Shanka-Op: ${ShankaOps.BEGIN_STUDY_SESSION}")
+    @POST("study/sessions")
+    suspend fun beginStudySession(
+        @Body body: StudySessionBeginRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): StudySessionBeginResponseDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.REPORT_STUDY_SESSION}")
+    @PATCH("study/sessions/{session_id}")
+    suspend fun reportStudySession(
+        @Path("session_id") sessionId: String,
+        @Body body: StudySessionReportRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): StudySessionDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.LIST_STUDY_SESSIONS}")
+    @GET("study/sessions")
+    suspend fun studySessions(@Query("study_date") studyDate: String?): StudySessionsResponseDto
+
+    @Headers("X-Shanka-Op: ${ShankaOps.STUDY_SESSION_SUMMARY}")
+    @GET("study/sessions/summary")
+    suspend fun studySessionSummary(): StudySessionSummaryDto
 
     @Headers("X-Shanka-Op: ${ShankaOps.SUBMIT_REVIEW}")
     @POST("review-events")

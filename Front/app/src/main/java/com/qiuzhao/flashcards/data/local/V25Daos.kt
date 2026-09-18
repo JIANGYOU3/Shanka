@@ -407,21 +407,29 @@ data class DeckDifficultyCountRow(
     val cardCount: Int,
 )
 
-/** Device-owned usage facts: study seconds and the deck difficulty mix. Never synced. */
+/** Device-owned usage facts: the per-day activity rows and the deck difficulty mix. Never synced. */
 @Dao
 interface LocalUsageDao {
-    /** Atomic accumulate-upsert: settled session deltas land even when a row already exists. */
+    /** Atomic accumulate-upsert of one day's per-deck activity (reviews and/or seconds). */
     @Query(
-        "INSERT INTO deck_study_seconds (user_id, deck_id, total_seconds, updated_at_epoch_ms) " +
-            "VALUES (:userId, :deckId, :seconds, :nowMs) " +
-            "ON CONFLICT(user_id, deck_id) DO UPDATE SET " +
-            "total_seconds = total_seconds + excluded.total_seconds, " +
+        "INSERT INTO deck_daily_activity (user_id, deck_id, study_date, reviewed_count, study_seconds, updated_at_epoch_ms) " +
+            "VALUES (:userId, :deckId, :studyDate, :reviewedCount, :seconds, :nowMs) " +
+            "ON CONFLICT(user_id, deck_id, study_date) DO UPDATE SET " +
+            "reviewed_count = reviewed_count + excluded.reviewed_count, " +
+            "study_seconds = study_seconds + excluded.study_seconds, " +
             "updated_at_epoch_ms = excluded.updated_at_epoch_ms",
     )
-    suspend fun addStudySeconds(userId: String, deckId: String, seconds: Long, nowMs: Long)
+    suspend fun addDailyActivity(
+        userId: String,
+        deckId: String,
+        studyDate: String,
+        reviewedCount: Int,
+        seconds: Long,
+        nowMs: Long,
+    )
 
-    @Query("SELECT * FROM deck_study_seconds WHERE user_id = :userId")
-    fun observeStudySeconds(userId: String): Flow<List<DeckStudySecondsEntity>>
+    @Query("SELECT * FROM deck_daily_activity WHERE user_id = :userId AND study_date = :studyDate")
+    fun observeDailyActivity(userId: String, studyDate: String): Flow<List<DeckDailyActivityEntity>>
 
     /** Unlabeled cards (NULL target_difficulty, e.g. hand-written imports) stay uncounted. */
     @Query(

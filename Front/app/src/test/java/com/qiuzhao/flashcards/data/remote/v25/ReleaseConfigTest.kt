@@ -5,6 +5,7 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,7 +14,7 @@ import org.junit.Test
  * - Release fixes the production base URL at build time and carries no server-edit,
  *   test-mode or fixture switch (the release block's only `buildConfigField` is the fixed URL);
  * - Debug carries an explicit local base-URL override the release cannot reach;
- * - the app version is 2.5.0.
+ * - the app version is declared once (`appVersionName`) with the version code derived from it.
  *
  * JVM unit tests run against the debug variant, so the release facts are asserted on the
  * `build.gradle.kts` configuration text (the stable RED-first source of truth), while the
@@ -75,12 +76,31 @@ class ReleaseConfigTest {
     }
 
     @Test
-    fun `version is 2_5_0`() {
-        val defaultConfigBlock = extractBlock(buildFileText(), "defaultConfig")
-        assertTrue(
-            "defaultConfig 必须声明 versionName = \"2.5.0\"",
-            defaultConfigBlock.contains("""versionName = "2.5.0""""),
+    fun `version is single sourced with derived version code`() {
+        val source = buildFileText()
+        val declared = Regex("""val appVersionName = "(\d+)\.(\d+)\.(\d+)"""").find(source)
+        // 锁流程而非锁数字：版本只在 appVersionName 声明一次，versionName 引用它，
+        // versionCode 由它派生（major*10000 + minor*100 + patch），发版递增不破坏本测试。
+        assertNotNull(
+            "build.gradle.kts 必须以 val appVersionName = \"x.y.z\" 声明版本唯一事实源",
+            declared,
         )
+        val groups = declared!!.groupValues
+        val expectedCode = groups[1].toInt() * 10000 + groups[2].toInt() * 100 + groups[3].toInt()
+        assertTrue(
+            "defaultConfig 的 versionName 必须引用 appVersionName（单一事实源）",
+            source.contains("versionName = appVersionName"),
+        )
+        assertTrue(
+            "defaultConfig 的 versionCode 必须引用派生的 appVersionCode",
+            source.contains("versionCode = appVersionCode"),
+        )
+        assertTrue(
+            "appVersionCode 必须按 major*10000 + minor*100 + patch 派生",
+            source.contains("it[0] * 10000 + it[1] * 100 + it[2]"),
+        )
+        // 派生规则实测：按当前声明版本推导出的 versionCode 必须随版本单调（sanity：正数且位数合理）
+        assertTrue("versionCode 派生值异常：$expectedCode", expectedCode > 0)
     }
 
     // --- helpers --------------------------------------------------------------------------------

@@ -61,6 +61,7 @@ class ProjectComponentsTest {
             .assertIsDisplayed()
             .assertIsSelected()
         rule.onNodeWithContentDescription("项目内容切换：数据统计").assertIsDisplayed()
+        rule.onNodeWithContentDescription("项目内容切换：资料管理").assertIsDisplayed()
     }
 
     @Test fun secondaryHeaderSupportsBackAndEditActions() {

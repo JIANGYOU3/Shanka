@@ -34,6 +34,13 @@ internal fun DeckLearningDataCard(
     dailyGoal: Int?,
     theme: DeckTheme,
     designScale: Float,
+    /** 学习数据 switcher state; the deck screen owns it so 总览/今日 actually switch. */
+    todaySelected: Boolean = true,
+    onTodaySelected: (Boolean) -> Unit = {},
+    /** 总览 tab: the deck's server-derived lifecycle aggregate (learned of total). */
+    overviewReviewed: Int? = null,
+    overviewTotal: Int? = null,
+    overviewPercent: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val percent = if (reviewedToday != null && dailyGoal != null && dailyGoal > 0) {
@@ -42,11 +49,11 @@ internal fun DeckLearningDataCard(
         null
     }
     LearningDataProgressCard(
-        reviewedCards = reviewedToday,
-        totalCards = dailyGoal,
-        progressPercent = percent,
-        todaySelected = true,
-        onTodaySelected = {},
+        reviewedCards = if (todaySelected) reviewedToday else overviewReviewed,
+        totalCards = if (todaySelected) dailyGoal else overviewTotal,
+        progressPercent = if (todaySelected) percent else overviewPercent,
+        todaySelected = todaySelected,
+        onTodaySelected = onTodaySelected,
         theme = theme,
         designScale = designScale,
         modifier = modifier

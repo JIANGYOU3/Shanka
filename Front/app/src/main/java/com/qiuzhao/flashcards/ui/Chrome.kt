@@ -169,6 +169,9 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     val todayPlan by viewModel.todayPlan.collectAsState()
     val projectProgress by viewModel.projectProgress.collectAsState()
     val deckStudySeconds by viewModel.deckStudySeconds.collectAsState()
+    val crossDeckStudySeconds by viewModel.crossDeckStudySeconds.collectAsState()
+    val studyPlanState by viewModel.studyPlan.collectAsState()
+    val deckTodayActivity by viewModel.deckTodayActivity.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
     val accountBootstrap by viewModel.accountBootstrap.collectAsState()
     val account = accountBootstrap.account
@@ -218,6 +221,7 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                             onFailure = { onResult(false) },
                         )
                     },
+                    viewModel = viewModel,
                     progress = projectProgress[route.id],
                     // Contract 3.16: status EMPTY means no materials yet — the
                     // 卡组管理 pane shows the notice until the first material lands.
@@ -230,6 +234,9 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                         )
                     },
                     deckStudySeconds = deckStudySeconds,
+                    deckTodayActivity = deckTodayActivity,
+                    // 跨卡组会话（今日计划+积压巩固）只归属当前项目（V25-D-37）。
+                    crossDeckStudySeconds = crossDeckStudySeconds.takeIf { studyPlanState.currentProjectId == project.id },
                 )
             }
         }

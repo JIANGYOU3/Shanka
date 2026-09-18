@@ -22,6 +22,7 @@ import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
 import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25Repository
 import com.qiuzhao.flashcards.domain.v25.V25Result
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.domain.v25.isAuthFailure
 import java.io.ByteArrayInputStream
@@ -132,6 +133,68 @@ class V25RepositoryContractTest {
         val request = take()
         assertEquals("rating-key", request.getHeader("Idempotency-Key"))
         assertEquals("event-1", bodyJson(request)["client_event_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `rating origin rides the wire and is omitted when unset`() = runBlocking {
+        enqueue(ratingBody())
+
+        repo.rateCard("c-1", V25Rating.GOOD, origin = V25StudyOrigin.PLAN)
+
+        val request = take()
+        assertEquals("PLAN", bodyJson(request)["origin"]!!.jsonPrimitive.content)
+
+        enqueue(ratingBody())
+        repo.rateCard("c-1", V25Rating.GOOD)
+        assertNull("no origin means the field is omitted (server stores NULL = 未分类)", bodyJson(take())["origin"])
+    }
+
+    @Test
+    fun `study session begin posts origin scope and a fresh idempotency key`() = runBlocking {
+        enqueue(sessionBody(seconds = 300))
+
+        val result = repo.beginStudySession(V25StudyOrigin.ADHOC, "deck-1")
+
+        val request = take()
+        assertEquals("POST", request.method)
+        assertEquals("/study/sessions", request.path)
+        assertTrue(request.getHeader("Idempotency-Key")!!.isNotBlank())
+        val body = bodyJson(request)
+        assertEquals("ADHOC", body["origin"]!!.jsonPrimitive.content)
+        assertEquals("deck-1", body["deck_id"]!!.jsonPrimitive.content)
+        assertTrue(result is V25Result.Success)
+        val begin = (result as V25Result.Success).value
+        assertEquals("s-1", begin.session.sessionId)
+        assertEquals(300, begin.session.studySeconds)
+        assertEquals("reset=false returns an empty review-all queue", 0, begin.reviewAllCards.size)
+    }
+
+    @Test
+    fun `session reset rides the body and maps the review-all queue`() = runBlocking {
+        enqueue(sessionBody(seconds = 0, cards = true))
+
+        val result = repo.beginStudySession(V25StudyOrigin.ADHOC, "deck-1", reset = true)
+
+        val body = bodyJson(take())
+        assertEquals("true", body["reset"]!!.jsonPrimitive.content)
+        assertTrue(result is V25Result.Success)
+        val begin = (result as V25Result.Success).value
+        assertEquals("review-all queue carries the cards for the queue rebuild", 1, begin.reviewAllCards.size)
+    }
+
+    @Test
+    fun `study session report patches absolute seconds and the end flag`() = runBlocking {
+        enqueue(sessionBody(seconds = 500))
+
+        repo.reportStudySession("s-1", 500, ended = true)
+
+        val request = take()
+        assertEquals("PATCH", request.method)
+        assertEquals("/study/sessions/s-1", request.path)
+        assertTrue(request.getHeader("Idempotency-Key")!!.isNotBlank())
+        val body = bodyJson(request)
+        assertEquals(500, body["study_seconds"]!!.jsonPrimitive.content.toInt())
+        assertEquals(true, body["ended"]!!.jsonPrimitive.content.toBoolean())
     }
 
     @Test
@@ -470,6 +533,25 @@ class V25RepositoryContractTest {
     }
 
     @Test
+    fun `addProjectMaterialZip uploads the file part to the zip materials endpoint`() = runBlocking {
+        enqueue(zipMaterialBody(), 201)
+
+        val result = repo.addProjectMaterialZip("p-1", "01-LangGraph.zip", ByteArrayInputStream(byteArrayOf(1, 2)))
+
+        assertTrue(result is V25Result.Success)
+        val material = (result as V25Result.Success).value
+        assertEquals(V25MaterialType.ZIP, material.type)
+        assertEquals(V25MaterialStatus.READY, material.status)
+        assertEquals(96780, material.charCount)
+        val request = take()
+        assertEquals("/projects/p-1/materials/zip", request.path)
+        assertTrue(request.getHeader("Content-Type")!!.startsWith("multipart/form-data"))
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("01-LangGraph.zip"))
+        assertTrue(request.getHeader("Idempotency-Key")!!.isNotBlank())
+    }
+
+    @Test
     fun `addProjectMaterialText posts the JSON name and content body`() = runBlocking {
         enqueue(textMaterialBody(), 201)
 
@@ -666,6 +748,17 @@ class V25RepositoryContractTest {
     private fun ratingBody(): String =
         """{"review_state": {"state": "REVIEW", "due": "2026-08-15T09:00:00+00:00"}, "study_date": "2026-08-14"}"""
 
+    private fun sessionBody(seconds: Int, cards: Boolean = false): String {
+        val queue = if (cards) {
+            "," + "\"cards\": [{\"card_id\": \"c-1\", \"deck_id\": \"deck-1\", \"front\": \"f\", \"back\": \"b\", " +
+                "\"card_type\": \"QUESTION\", \"position\": 1, \"source\": \"MANUAL\", " +
+                "\"publication_state\": \"PUBLISHED\", \"version\": \"v1\"}]"
+        } else ""
+        return """{"session_id": "s-1", "origin": "ADHOC", "deck_id": "deck-1", "study_date": "2026-08-14",
+            "study_seconds": $seconds, "started_at": "2026-08-14T09:00:00+00:00",
+            "last_reported_at": null, "ended_at": null$queue}""".trimIndent()
+    }
+
     private fun preflightBody(): String = """
         {"resource_type": "project", "resource_id": "p-1", "can_delete": true, "blockers": [],
          "abandonable_task_ids": [], "has_uncancellable_tasks": false,
@@ -716,6 +809,13 @@ class V25RepositoryContractTest {
          "chapter": {"chapter_id": "ch-text", "material_id": "m-text", "name": "课堂笔记",
                      "start_page": null, "end_page": null},
          "created_at": "2026-08-14T09:00:00+00:00"}
+    """.trimIndent()
+
+    /** One READY ZIP note-pack material (V25-D-35; chapters surface via the project payload). */
+    private fun zipMaterialBody(): String = """
+        {"material_id": "m-zip", "project_id": "p-1", "type": "ZIP", "name": "01-LangGraph.zip",
+         "status": "READY", "error_code": null, "size_bytes": 89986, "char_count": 96780,
+         "chapter": null, "created_at": "2026-09-14T09:00:00+00:00"}
     """.trimIndent()
 
     private fun importResponseBody(): String = """

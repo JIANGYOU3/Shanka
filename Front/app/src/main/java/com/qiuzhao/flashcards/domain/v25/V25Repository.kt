@@ -93,6 +93,25 @@ interface V25Repository {
         idempotencyKey: String? = null,
     ): V25Result<V25Material>
 
+    /** POST /projects/{project_id}/materials/zip — attach a ZIP note pack; READY immediately (V25-D-35). */
+    suspend fun addProjectMaterialZip(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String? = null,
+    ): V25Result<V25Material>
+
+    /**
+     * POST /projects/{project_id}/materials/html (V25-D-38) — attach an HTML document;
+     * synchronous parse, headings become chapters (small/unstructured → single AUTO chapter).
+     */
+    suspend fun addProjectMaterialHtml(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String? = null,
+    ): V25Result<V25Material>
+
     /** POST /projects/{project_id}/materials/text — attach pasted text (≤30000 characters); READY immediately. */
     suspend fun addProjectMaterialText(
         projectId: String,
@@ -124,6 +143,18 @@ interface V25Repository {
         content: InputStream,
         idempotencyKey: String? = null,
     ): V25Result<V25Material>
+
+    /**
+     * POST /projects/{project_id}/materials/{material_id}/reparse (V25-D-36) — retry parsing a
+     * FAILED PDF material (AI chapter planning failure / key not set) without re-uploading.
+     */
+    suspend fun reparseProjectMaterial(projectId: String, materialId: String): V25Result<V25LearningProject>
+
+    /**
+     * POST /projects/{project_id}/materials/{material_id}/chapters/whole-book (V25-D-36) —
+     * degrade a FAILED no-TOC PDF to a single whole-book chapter and mark it PARSED.
+     */
+    suspend fun fallbackWholeBookChapters(projectId: String, materialId: String): V25Result<V25LearningProject>
 
     /** PATCH /projects/{project_id}/chapters/{chapter_id} — edit chapter name and page span. */
     suspend fun updateChapter(
@@ -295,16 +326,47 @@ interface V25Repository {
     suspend fun deckReviewQueue(deckId: String): V25Result<List<V25ReviewCard>>
 
     /**
+     * POST /study/sessions (V25-D-37) — begin-or-resume today's session for one origin/scope.
+     * The server dedupes by (account, study date, origin, scope), so the same entry point the
+     * same day returns the same row with its accumulated seconds (the resume base).
+     */
+    suspend fun beginStudySession(
+        origin: V25StudyOrigin,
+        deckId: String? = null,
+        reset: Boolean = false,
+    ): V25Result<V25StudySessionBegin>
+
+    /**
+     * PATCH /study/sessions/{id} (V25-D-37) — report the session's cumulative absolute seconds
+     * (not a delta); the server merges via max, so retries and reordering are idempotent.
+     */
+    suspend fun reportStudySession(
+        sessionId: String,
+        studySeconds: Long,
+        ended: Boolean = false,
+    ): V25Result<V25StudySession>
+
+    /** GET /study/sessions (V25-D-37) — sessions of one study date (null = today, server-side). */
+    suspend fun studySessions(studyDate: String? = null): V25Result<List<V25StudySession>>
+
+    /**
+     * GET /study/sessions/summary (V25-D-37) — lifetime study seconds per deck (ADHOC) plus
+     * the three origin totals; feeds the existing 学习时长 metric cards cross-device.
+     */
+    suspend fun studySessionSummary(): V25Result<V25StudyDurationSummary>
+
+    /**
      * POST /review-events — submit AGAIN/HARD/GOOD/EASY; returns the updated state and study
      * date. A retry of one rating must reuse the same `clientEventId` (the server's fallback
      * dedupe key) and the same `idempotencyKey`; both default to fresh values for a first
-     * submission.
+     * submission. [origin] (V25-D-37) labels the entry point and follows the same retry rule.
      */
     suspend fun rateCard(
         cardId: String,
         rating: V25Rating,
         clientEventId: String? = null,
         idempotencyKey: String? = null,
+        origin: V25StudyOrigin? = null,
     ): V25Result<V25RatingResult>
 
     // --- statistics (Architecture 4.5) ------------------------------------------------------------

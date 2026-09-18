@@ -50,6 +50,7 @@ import com.qiuzhao.flashcards.domain.v25.V25MaterialStatus
 import com.qiuzhao.flashcards.domain.v25.V25MaterialType
 import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
+import com.qiuzhao.flashcards.ui.auth.ErrorMessages
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import com.qiuzhao.flashcards.ui.motion.AppMotion
 
@@ -230,12 +231,13 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var requestError by remember { mutableStateOf<String?>(null) }
     var replacingPdf by remember { mutableStateOf(false) }
+    var showAiRetry by remember { mutableStateOf(false) }
     var preparing by remember { mutableStateOf(false) }
     val active = activeProject?.takeIf { it.projectId == project.id }
     // Sections span every material of the project (contract 3.2a): PDF sections show their page
     // span, TEXT material sections are whole-content with no pages.
     val sections = active?.chapters.orEmpty().map { chapter ->
-        SmartChapter(chapter.id, chapter.name, chapter.pageSpanLabel ?: "全文")
+        SmartChapter(chapter.id, chapter.name, chapter.pageSpanLabel ?: "全文", chapter.isAiPlanned)
     }
     // The wait states derive straight from the Room-backed project flow (V25-D-34): the
     // observation engine keeps it current, so the screen needs no poller and no timeout —
@@ -293,7 +295,7 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
             requestError?.let { error ->
                 item {
                     CardHint(
-                        "无法生成样卡：$error",
+                        "无法生成样卡：${ErrorMessages.forCode(error)}",
                         designScale = scale,
                         error = true,
                     )
@@ -323,7 +325,15 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
                             failed = true,
                             failureReason = failureReasonText(failedMaterial?.errorCode),
                             onClick = if (!replacingPdf) {
-                                { pdfPicker.launch(arrayOf("application/pdf")) }
+                                {
+                                    if (failedMaterial?.materialId != null &&
+                                        isAiChapterRetryable(failedMaterial.errorCode)
+                                    ) {
+                                        showAiRetry = true
+                                    } else {
+                                        pdfPicker.launch(arrayOf("application/pdf"))
+                                    }
+                                }
                             } else null,
                         )
                     }
@@ -338,6 +348,29 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
                     selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
                 }
             }
+        }
+        if (showAiRetry) {
+            val failedId = failedMaterial?.materialId
+            AiChapterFailureDialog(
+                theme = theme,
+                onReparse = {
+                    showAiRetry = false
+                    if (failedId != null) {
+                        viewModel.reparseProjectMaterial(project.id, failedId) { _, _ -> }
+                    }
+                },
+                onWholeBook = {
+                    showAiRetry = false
+                    if (failedId != null) {
+                        viewModel.fallbackWholeBookChapters(project.id, failedId) { _, _ -> }
+                    }
+                },
+                onReplaceFile = {
+                    showAiRetry = false
+                    pdfPicker.launch(arrayOf("application/pdf"))
+                },
+                onDismiss = { showAiRetry = false },
+            )
         }
         BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
         Column(
@@ -410,7 +443,7 @@ internal fun SmartCardChapterScreen(project: ProjectSummary, nav: ScreenNavigato
     }
 }
 
-private data class SmartChapter(val id: String, val title: String, val pages: String)
+private data class SmartChapter(val id: String, val title: String, val pages: String, val aiPlanned: Boolean = false)
 
 /**
  * Figma 222:4713 部分 row. Unselected lifts to the family Background with a
@@ -446,7 +479,19 @@ private fun SmartChapterCard(
         }
         Spacer(Modifier.width((16 * scale).dp))
         Column(Modifier.weight(1f).height((56 * scale).dp), verticalArrangement = Arrangement.SpaceBetween) {
-            AppText(chapter.title, AppTextRole.CardTitle, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AppText(chapter.title, AppTextRole.CardTitle, color = theme.text, designScale = scale, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (chapter.aiPlanned) {
+                    Spacer(Modifier.width((6 * scale).dp))
+                    Surface(color = theme.primary.copy(alpha = .12f), shape = RoundedCornerShape((6 * scale).dp)) {
+                        AppText(
+                            "AI 规划", AppTextRole.CardSubtitle,
+                            color = theme.primary, designScale = scale,
+                            modifier = Modifier.padding(horizontal = (6 * scale).dp, vertical = (2 * scale).dp),
+                        )
+                    }
+                }
+            }
             AppText(chapter.pages, AppTextRole.CardSubtitle, color = theme.text.copy(alpha = .5f), designScale = scale)
         }
     }
@@ -493,7 +538,7 @@ internal fun SmartCardPreviewScreen(project: ProjectSummary, nav: ScreenNavigato
             startError?.let { error ->
                 item {
                     CardHint(
-                        "无法开始生成：$error",
+                        "无法开始生成：${ErrorMessages.forCode(error)}",
                         designScale = scale,
                         error = true,
                     )

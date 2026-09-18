@@ -42,6 +42,10 @@ import com.qiuzhao.flashcards.domain.v25.V25ReviewState
 import com.qiuzhao.flashcards.domain.v25.V25RewriteStatus
 import com.qiuzhao.flashcards.domain.v25.V25SampleCard
 import com.qiuzhao.flashcards.domain.v25.V25StatsDashboard
+import com.qiuzhao.flashcards.domain.v25.V25StudyDurationSummary
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
+import com.qiuzhao.flashcards.domain.v25.V25StudySession
+import com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
@@ -101,6 +105,8 @@ internal data class ChapterDto(
     @SerialName("chapter_id") val chapterId: String,
     @SerialName("material_id") val materialId: String,
     @SerialName("name") val name: String,
+    /** Chapter origin (V25-D-36): TOC / AI / FALLBACK / TEXT / ZIP / MANUAL; older servers omit it. */
+    @SerialName("source") val source: String = "TOC",
     @SerialName("start_page") val startPage: Int? = null,
     @SerialName("end_page") val endPage: Int? = null,
 )
@@ -409,6 +415,45 @@ internal data class DashboardDto(
     @SerialName("recall_accuracy") val recallAccuracy: Double? = null,
     @SerialName("first_answer_accuracy") val firstAnswerAccuracy: Double? = null,
     @SerialName("retention_rate") val retentionRate: Double? = null,
+    // V25-D-37 study duration (server study_sessions aggregation). Defaults keep pre-V25-D-37
+    // servers parseable — an honest 0 rather than a crash on mixed-version deployments.
+    @SerialName("weekly_study_seconds") val weeklyStudySeconds: Int = 0,
+    @SerialName("daily_study_seconds") val dailyStudySeconds: List<Int> = emptyList(),
+    @SerialName("plan_study_seconds") val planStudySeconds: Int = 0,
+    @SerialName("backlog_study_seconds") val backlogStudySeconds: Int = 0,
+    @SerialName("adhoc_study_seconds") val adhocStudySeconds: Int = 0,
+)
+
+@Serializable
+internal data class StudySessionDto(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("origin") val origin: String,
+    @SerialName("deck_id") val deckId: String? = null,
+    @SerialName("study_date") val studyDate: String,
+    @SerialName("study_seconds") val studySeconds: Int,
+    @SerialName("started_at") val startedAt: String,
+    @SerialName("last_reported_at") val lastReportedAt: String? = null,
+    @SerialName("ended_at") val endedAt: String? = null,
+)
+
+@Serializable
+internal data class StudySessionsResponseDto(
+    @SerialName("study_date") val studyDate: String,
+    @SerialName("items") val items: List<StudySessionDto>,
+)
+
+@Serializable
+internal data class StudySessionSummaryDto(
+    @SerialName("deck_study_seconds") val deckStudySeconds: List<DeckStudySecondsDto>,
+    @SerialName("plan_study_seconds") val planStudySeconds: Int,
+    @SerialName("backlog_study_seconds") val backlogStudySeconds: Int,
+    @SerialName("adhoc_study_seconds") val adhocStudySeconds: Int,
+)
+
+@Serializable
+internal data class DeckStudySecondsDto(
+    @SerialName("deck_id") val deckId: String,
+    @SerialName("study_seconds") val studySeconds: Int,
 )
 
 @Serializable
@@ -527,6 +572,39 @@ internal data class ReviewEventRequest(
     @SerialName("card_id") val cardId: String,
     @SerialName("rating") val rating: String,
     @SerialName("client_event_id") val clientEventId: String,
+    /** V25-D-37 rating origin; null omits the field (server stores NULL = 未分类). */
+    @SerialName("origin") val origin: String? = null,
+)
+
+@Serializable
+internal data class StudySessionBeginRequest(
+    @SerialName("origin") val origin: String,
+    /** Only ADHOC carries a deck; PLAN/BACKLOG are cross-deck (null). */
+    @SerialName("deck_id") val deckId: String? = null,
+    /** V25-D-37 session reset: seal the live session, open a fresh row and return the
+     *  review-all queue (new cards first by position, the rest by forgetting risk). */
+    @SerialName("reset") val reset: Boolean = false,
+)
+
+@Serializable
+internal data class StudySessionBeginResponseDto(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("origin") val origin: String,
+    @SerialName("deck_id") val deckId: String? = null,
+    @SerialName("study_date") val studyDate: String,
+    @SerialName("study_seconds") val studySeconds: Int,
+    @SerialName("started_at") val startedAt: String,
+    @SerialName("last_reported_at") val lastReportedAt: String? = null,
+    @SerialName("ended_at") val endedAt: String? = null,
+    /** Review-all queue; only present when the begin request carried reset=true. */
+    @SerialName("cards") val cards: List<CardDto> = emptyList(),
+)
+
+@Serializable
+internal data class StudySessionReportRequest(
+    /** Cumulative absolute seconds for this session (not a delta); server merges via max. */
+    @SerialName("study_seconds") val studySeconds: Long,
+    @SerialName("ended") val ended: Boolean = false,
 )
 
 @Serializable
@@ -550,6 +628,7 @@ internal fun ChapterDto.toDomain(): V25Chapter = V25Chapter(
     id = chapterId,
     materialId = materialId,
     name = name,
+    source = source,
     startPage = startPage,
     endPage = endPage,
 )
@@ -828,8 +907,46 @@ internal fun DashboardDto.toDomain(): V25StatsDashboard {
         // fabricating numbers. Project/deck progress is derivable from decks + cards instead.
         progress = emptyList(),
         updatedAt = parseIsoInstant(updatedAt, "updated_at"),
+        weeklyStudySeconds = weeklyStudySeconds,
+        dailyStudySeconds = dailyStudySeconds,
+        planStudySeconds = planStudySeconds,
+        backlogStudySeconds = backlogStudySeconds,
+        adhocStudySeconds = adhocStudySeconds,
     )
 }
+
+internal fun StudySessionSummaryDto.toDomain(): V25StudyDurationSummary = V25StudyDurationSummary(
+    deckSeconds = deckStudySeconds.associate { it.deckId to it.studySeconds.toLong() },
+    planSeconds = planStudySeconds.toLong(),
+    backlogSeconds = backlogStudySeconds.toLong(),
+    adhocSeconds = adhocStudySeconds.toLong(),
+)
+
+internal fun StudySessionBeginResponseDto.toDomain(): V25StudySessionBegin =
+    V25StudySessionBegin(
+        session = StudySessionDto(
+            sessionId = sessionId,
+            origin = origin,
+            deckId = deckId,
+            studyDate = studyDate,
+            studySeconds = studySeconds,
+            startedAt = startedAt,
+            lastReportedAt = lastReportedAt,
+            endedAt = endedAt,
+        ).toDomain(),
+        reviewAllCards = cards.map(CardDto::toPlanCard),
+    )
+
+internal fun StudySessionDto.toDomain(): V25StudySession = V25StudySession(
+    sessionId = sessionId,
+    origin = enumValueOf<V25StudyOrigin>(origin),
+    deckId = deckId,
+    studyDate = LocalDate.parse(studyDate),
+    studySeconds = studySeconds,
+    startedAt = parseIsoInstant(startedAt, "started_at"),
+    lastReportedAt = lastReportedAt?.let { parseIsoInstant(it, "last_reported_at") },
+    endedAt = endedAt?.let { parseIsoInstant(it, "ended_at") },
+)
 
 internal fun RatingResultDto.toDomain(): V25RatingResult = V25RatingResult(
     reviewState = reviewState.toDomain(),

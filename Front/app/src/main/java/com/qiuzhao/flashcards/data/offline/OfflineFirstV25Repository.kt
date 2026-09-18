@@ -31,7 +31,11 @@ import com.qiuzhao.flashcards.domain.v25.V25ReviewCard
 import com.qiuzhao.flashcards.domain.v25.V25ReviewState
 import com.qiuzhao.flashcards.domain.v25.V25SampleCard
 import com.qiuzhao.flashcards.domain.v25.V25StatsDashboard
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
+import com.qiuzhao.flashcards.domain.v25.V25StudyDurationSummary
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
+import com.qiuzhao.flashcards.domain.v25.V25StudySession
+import com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
 import com.qiuzhao.flashcards.domain.v25.V25StudySettingsPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
@@ -369,6 +373,7 @@ class OfflineFirstV25Repository(
         rating: V25Rating,
         clientEventId: String?,
         idempotencyKey: String?,
+        origin: V25StudyOrigin?,
     ): V25Result<V25RatingResult> {
         val user = userId() ?: return requireUserId()
         val eventId = clientEventId ?: UUID.randomUUID().toString()
@@ -377,7 +382,7 @@ class OfflineFirstV25Repository(
         return try {
             // One transaction: outbox row first, then hide the card from its local queues.
             // Failure here keeps the card on screen and reports an error — never a lost swipe.
-            cache.enqueueReview(user, cardId, rating, eventId, key, now)
+            cache.enqueueReview(user, cardId, rating, eventId, key, origin, now)
             reviewSync.requestSync()
             V25Result.Success(optimisticRatingResult(user, cardId))
         } catch (failure: Throwable) {
@@ -388,6 +393,26 @@ class OfflineFirstV25Repository(
             )
         }
     }
+
+    // --- study sessions (V25-D-37): server-synchronous, best-effort duration reporting ------------------
+
+    override suspend fun beginStudySession(
+        origin: V25StudyOrigin,
+        deckId: String?,
+        reset: Boolean,
+    ): V25Result<V25StudySessionBegin> = remote.beginStudySession(origin, deckId, reset)
+
+    override suspend fun reportStudySession(
+        sessionId: String,
+        studySeconds: Long,
+        ended: Boolean,
+    ): V25Result<V25StudySession> = remote.reportStudySession(sessionId, studySeconds, ended)
+
+    override suspend fun studySessions(studyDate: String?): V25Result<List<V25StudySession>> =
+        remote.studySessions(studyDate)
+
+    override suspend fun studySessionSummary(): V25Result<V25StudyDurationSummary> =
+        remote.studySessionSummary()
 
     private suspend fun optimisticRatingResult(user: String, cardId: String): V25RatingResult {
         val lastKnown = cache.readReviewState(user, cardId)
@@ -474,6 +499,26 @@ class OfflineFirstV25Repository(
             userId()?.let { user -> cache.invalidate(user, V25CacheStore.KEY_PROJECTS) }
         }
 
+    override suspend fun addProjectMaterialHtml(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> =
+        remote.addProjectMaterialHtml(projectId, fileName, content, idempotencyKey).alsoOnSuccess {
+            userId()?.let { user -> cache.invalidate(user, V25CacheStore.KEY_PROJECTS) }
+        }
+
+    override suspend fun addProjectMaterialZip(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> =
+        remote.addProjectMaterialZip(projectId, fileName, content, idempotencyKey).alsoOnSuccess {
+            userId()?.let { user -> cache.invalidate(user, V25CacheStore.KEY_PROJECTS) }
+        }
+
     override suspend fun listProjectMaterials(projectId: String): V25Result<List<com.qiuzhao.flashcards.domain.v25.V25Material>> =
         remote.listProjectMaterials(projectId)
 
@@ -545,6 +590,22 @@ class OfflineFirstV25Repository(
         retainDecks: Boolean,
         allowCancel: Boolean,
     ): V25Result<V25DeletionPreflight> = remote.getProjectDeletionPreflight(projectId, retainDecks, allowCancel)
+
+    override suspend fun reparseProjectMaterial(
+        projectId: String,
+        materialId: String,
+    ): V25Result<V25LearningProject> =
+        remote.reparseProjectMaterial(projectId, materialId).alsoOnSuccess {
+            userId()?.let { user -> cache.invalidate(user, V25CacheStore.KEY_PROJECTS) }
+        }
+
+    override suspend fun fallbackWholeBookChapters(
+        projectId: String,
+        materialId: String,
+    ): V25Result<V25LearningProject> =
+        remote.fallbackWholeBookChapters(projectId, materialId).alsoOnSuccess {
+            userId()?.let { user -> cache.replaceProject(user, it, clock.millis()) }
+        }
 
     override suspend fun updateChapter(
         projectId: String,

@@ -66,7 +66,9 @@ internal fun MaterialImportScreen(
         if (uris.isNotEmpty()) viewModel.stageMaterialImportFiles(uris)
     }
     // 已落地资料的失败重试 = 换文件 replace 重传（V25-D-30）；尚未落地的草稿由自动识别重传。
+    // V25-D-36：AI 章节规划失败/未存 Key 的资料先弹选项（重试解析 / 按整本继续 / 换文件）。
     var replaceTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
+    var aiRetryTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
     val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val target = replaceTarget
         if (uri != null && target?.materialId != null && route.projectId != null) {
@@ -80,7 +82,9 @@ internal fun MaterialImportScreen(
         if (replaceTarget != null) replacePicker.launch(arrayOf("application/pdf"))
     }
     // Auto-recognition observer: every list change re-arms the pipeline, which
-    // picks up just-staged and failed drafts (idempotent for the rest).
+    // picks up just-staged drafts (idempotent for the rest). FAILED drafts stay
+    // put with a readable error until the card's 重试 tap re-arms them —
+    // automatic re-picking would re-upload a rejected file in a tight loop.
     LaunchedEffect(materials, route.projectId) {
         viewModel.autoRecognizeMaterialImport(route.projectId)
     }
@@ -114,12 +118,14 @@ internal fun MaterialImportScreen(
             item {
                 ImportAddPanel(
                     theme = theme, scale = scale,
-                    onChooseFile = { filePicker.launch(arrayOf("application/pdf")) },
+                    onChooseFile = { filePicker.launch(arrayOf("application/pdf", "application/zip", "text/html")) },
                     onEnterText = {
-                        val draftId = viewModel.stageMaterialImportText()
+                        // 不预创建空草稿：materialId 传 null，编辑器保存有效内容时
+                        // upsertMaterialImportText 才把文本资料入列——直接退出不留下
+                        // 空资料，也不会触发自动识别上传空文本（服务端 400）。
                         navigator.navigate(
                             AppRoute.ProjectTextEditor(
-                                materialId = draftId,
+                                materialId = null,
                                 themeKey = theme.key,
                                 projectId = route.projectId,
                                 stageForMaterialImport = true,
@@ -133,12 +139,16 @@ internal fun MaterialImportScreen(
                 ImportPreviewGroup(
                     theme = theme, scale = scale, title = "文件资料", icon = "files",
                     hint = "右滑卡片可编辑、删除文件",
-                    materials = filtered.filter { it.type == ProjectDraftMaterialType.FILE },
+                    materials = filtered.filter { it.type != ProjectDraftMaterialType.TEXT },
                     onEditFile = { editingFile = it },
                     onEditText = {},
                     onRetry = { material ->
-                        if (material.materialId != null && route.projectId != null) replaceTarget = material
-                        else viewModel.autoRecognizeMaterialImport(route.projectId)
+                        val onServer = material.materialId != null && route.projectId != null
+                        when {
+                            onServer && isAiChapterRetryable(material.errorCode) -> aiRetryTarget = material
+                            onServer -> replaceTarget = material
+                            else -> viewModel.retryMaterialImportDraft(material.id)
+                        }
                     },
                     onDelete = viewModel::removeMaterialImportDraft
                 )
@@ -158,7 +168,7 @@ internal fun MaterialImportScreen(
                             )
                         )
                     },
-                    onRetry = { viewModel.autoRecognizeMaterialImport(route.projectId) },
+                    onRetry = { material -> viewModel.retryMaterialImportDraft(material.id) },
                     onDelete = viewModel::removeMaterialImportDraft
                 )
             }
@@ -186,6 +196,30 @@ internal fun MaterialImportScreen(
                 AppText("完成导入", AppTextRole.Label, color = theme.onPrimary, designScale = scale)
             }
         }
+    }
+    aiRetryTarget?.let { material ->
+        val projectId = route.projectId
+        val materialId = material.materialId
+        AiChapterFailureDialog(
+            theme = theme,
+            onReparse = {
+                aiRetryTarget = null
+                if (projectId != null && materialId != null) {
+                    viewModel.reparseProjectMaterial(projectId, materialId) { _, _ -> }
+                }
+            },
+            onWholeBook = {
+                aiRetryTarget = null
+                if (projectId != null && materialId != null) {
+                    viewModel.fallbackWholeBookChapters(projectId, materialId) { _, _ -> }
+                }
+            },
+            onReplaceFile = {
+                aiRetryTarget = null
+                replaceTarget = material
+            },
+            onDismiss = { aiRetryTarget = null },
+        )
     }
     editingFile?.let { material ->
         FileNameEditorDialog(
@@ -301,7 +335,7 @@ private fun ImportPreviewGroup(
                         // Figma 1100:5644 状态=已选择: success shows check_circle.
                         doneIcon = "check_circle",
                         onEdit = {
-                            if (material.type == ProjectDraftMaterialType.FILE) onEditFile(material) else onEditText(material)
+                            if (material.type != ProjectDraftMaterialType.TEXT) onEditFile(material) else onEditText(material)
                         },
                         onDelete = { onDelete(material.id) },
                         onRetry = { onRetry(material) }

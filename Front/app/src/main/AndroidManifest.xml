@@ -3,7 +3,9 @@
     <application
         android:name=".FlashcardsApplication"
         android:allowBackup="true"
-        android:label="秋招闪卡"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
         android:theme="@style/Theme.AutumnFlashcards"
         android:supportsRtl="true">
         <activity

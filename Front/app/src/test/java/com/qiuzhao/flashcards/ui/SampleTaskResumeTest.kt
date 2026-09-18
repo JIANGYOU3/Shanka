@@ -82,7 +82,7 @@ class SampleTaskResumeTest {
         retryOfTaskId = null,
         status = status,
         internalStage = null,
-        selectedChapters = listOf(V25Chapter("chapter-1", "material-1", "第一章", 1, 2)),
+        selectedChapters = listOf(V25Chapter("chapter-1", "material-1", "第一章", "TOC", 1, 2)),
         generationConfig = config,
         sampleCards = emptyList(),
         sampleConfigHash = null,

@@ -1,6 +1,7 @@
 package com.qiuzhao.flashcards.domain.v25
 
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
@@ -37,6 +38,10 @@ class V25ContractTest {
             V25InternalStage.entries.map { it.name },
         )
         assertEquals(
+            listOf("PLAN", "BACKLOG", "ADHOC"),
+            V25StudyOrigin.entries.map { it.name },
+        )
+        assertEquals(
             listOf("STAGED", "PUBLISHED"),
             V25PublicationState.entries.map { it.name },
         )
@@ -45,8 +50,9 @@ class V25ContractTest {
     @Test
     fun `material enums carry the exact V2-5 values`() {
         // structure-contract 3.2a: LINK is reserved and not modelled; PDF uses the parse
-        // lifecycle while TEXT is always READY.
-        assertEquals(listOf("PDF", "TEXT"), V25MaterialType.entries.map { it.name })
+        // lifecycle while TEXT/ZIP are always READY (ZIP note pack, V25-D-35); HTML = 网页链接
+        // 资料类型（并行工作包 V25Repository.addProjectMaterialHtml）。
+        assertEquals(listOf("PDF", "TEXT", "ZIP", "HTML"), V25MaterialType.entries.map { it.name })
         assertEquals(
             listOf("PENDING", "PARSING", "PARSED", "FAILED", "READY"),
             V25MaterialStatus.entries.map { it.name },
@@ -551,6 +557,31 @@ private class StubV25Repository : V25Repository {
         ),
     )
 
+    override suspend fun addProjectMaterialHtml(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<V25Material> = throw NotImplementedError()
+
+    override suspend fun addProjectMaterialZip(
+        projectId: String,
+        fileName: String,
+        content: java.io.InputStream,
+        idempotencyKey: String?,
+    ): V25Result<V25Material> = V25Result.Success(
+        V25Material(
+            materialId = "material-zip",
+            projectId = projectId,
+            type = V25MaterialType.ZIP,
+            name = fileName,
+            status = V25MaterialStatus.READY,
+            charCount = null,
+            createdAt = now,
+        ),
+    )
+
+
     override suspend fun addProjectMaterialText(
         projectId: String,
         name: String,
@@ -586,6 +617,10 @@ private class StubV25Repository : V25Repository {
 
     /** Models the server's one-time delete: a second delete of the same id is a 404. */
     private val deletedMaterialIds = mutableSetOf<String>()
+
+    override suspend fun reparseProjectMaterial(projectId: String, materialId: String): V25Result<V25LearningProject> = throw NotImplementedError()
+
+    override suspend fun fallbackWholeBookChapters(projectId: String, materialId: String): V25Result<V25LearningProject> = throw NotImplementedError()
 
     override suspend fun replaceProjectMaterialPdf(
         projectId: String,
@@ -774,8 +809,30 @@ private class StubV25Repository : V25Repository {
         rating: V25Rating,
         clientEventId: String?,
         idempotencyKey: String?,
+        origin: V25StudyOrigin?,
     ): V25Result<V25RatingResult> =
         V25Result.Failure(V25ErrorCodes.NETWORK_UNAVAILABLE, "network.unavailable", null)
+
+    // V25-D-37 study sessions: not exercised by this suite.
+    override suspend fun beginStudySession(
+        origin: V25StudyOrigin,
+        deckId: String?,
+        reset: Boolean,
+    ): V25Result<V25StudySessionBegin> =
+        V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, message = "学习会话暂不可用")
+
+    override suspend fun reportStudySession(
+        sessionId: String,
+        studySeconds: Long,
+        ended: Boolean,
+    ): V25Result<V25StudySession> =
+        V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, message = "学习会话暂不可用")
+
+    override suspend fun studySessions(studyDate: String?): V25Result<List<V25StudySession>> =
+        V25Result.Success(emptyList())
+
+    override suspend fun studySessionSummary(): V25Result<V25StudyDurationSummary> =
+        V25Result.Success(V25StudyDurationSummary(emptyMap(), 0L, 0L, 0L))
 
     override suspend fun statsDashboard(): V25Result<V25StatsDashboard> = V25Result.Success(stats)
 

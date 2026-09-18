@@ -137,6 +137,7 @@ import com.qiuzhao.flashcards.data.remote.FlashcardEntity
 import com.qiuzhao.flashcards.data.ImportParser
 import com.qiuzhao.flashcards.data.remote.Rating
 import com.qiuzhao.flashcards.domain.v25.V25Difficulty
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
 import com.qiuzhao.flashcards.R
 import com.qiuzhao.flashcards.ui.motion.AppMotion
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
@@ -150,6 +151,16 @@ private const val RELEARN_DELAY_MS = 10 * 60 * 1000L
 
 /** One slot in the review session queue. [relearn] entries are AGAIN cards returning for their same-day second pass. */
 internal data class StudyQueueEntry(val cardId: String, val relearn: Boolean = false)
+
+/**
+ * V25-D-37 reset round (full-deck review-all): the server queue already IS the deck's entire
+ * visible set (new cards first by position, then forgetting-risk order; no due filter), so the
+ * rebuilt round keeps every entry in server order. Deliberately does not take the pre-reset
+ * session cards — those are a due-queue subset, and intersecting against them truncated the
+ * full-deck round back to the due queue.
+ */
+internal fun resetRoundQueue(reviewAll: List<FlashcardEntity>): List<StudyQueueEntry> =
+    reviewAll.map { StudyQueueEntry(it.id) }
 
 /** A card scheduled to come back after the FSRS relearning step, as (cardId, dueAtEpochMs). */
 private data class ScheduledRequeue(val cardId: String, val dueAtMs: Long)
@@ -233,6 +244,14 @@ internal fun StudyScreen(
         try {
             val load = if (todayMode) viewModel.startTodayStudy() else viewModel.startStudy(deckId, reviewMode)
             load.join()
+            // V25-D-37：评分学习路径开启当日服务端会话（同来源同范围同日续用同一行并
+            // 继承累计秒数）；自由刷题不评分不计时，不开会话。
+            if (reviewMode) {
+                viewModel.beginStudySession(
+                    if (todayMode) V25StudyOrigin.PLAN else V25StudyOrigin.ADHOC,
+                    if (todayMode) null else deckId,
+                )
+            }
         } finally {
             loadingStudy = false
         }
@@ -248,11 +267,41 @@ internal fun StudyScreen(
     // 学习时长（设备本地实测，Anki 口径）：前台计时，今日模式的时段归属当前卡片的卡组，
     // 切卡即切换归属；会话结束页不再计时。自由刷题不走本屏，与统计口径一致不计时。
     val studyTimer = remember(studyKey, reviewMode) { StudyTimeAccumulator() }
+    // V25-D-37：本客户端自 begin 起累计的会话秒数（服务端按 基数+该值 做 max 合并）。
+    var sessionLocalSeconds by remember(studyKey, reviewMode) { mutableLongStateOf(0L) }
     fun timingDeckId(): String? = if (todayMode) {
         val entry = sessionQueue?.getOrNull(currentIndex)
         entry?.let { queued -> cards.firstOrNull { it.id == queued.cardId }?.deckId }
     } else {
         deckId
+    }
+
+    /** Settles the timer, records the device-local seconds and reports the server session. */
+    fun reportSession(ended: Boolean) {
+        val deltas = studyTimer.pause(System.currentTimeMillis())
+        viewModel.recordStudySeconds(deltas)
+        if (deltas.isEmpty() && !ended) return
+        sessionLocalSeconds += deltas.values.sum()
+        viewModel.reportStudySession(sessionLocalSeconds, ended)
+    }
+
+    // V25-D-37：重置成功后用服务端全卡组复盘队列重建本轮——队列即卡组全部可见卡（服务端
+    // 无到期过滤，新卡按 position 最前、其余按遗忘风险降序），卡片实体已随重置灌满
+    // studyCards，按服务端顺序整队即可；不得与重置前屏内的到期子集求交集（会把全量复盘
+    // 截断回到期队列）。无卡可学时按完成页处理。
+    val resetQueue by viewModel.resetQueue.collectAsState()
+    LaunchedEffect(resetQueue) {
+        val reviewAll = resetQueue ?: return@LaunchedEffect
+        viewModel.consumeResetQueue()
+        if (reviewAll.isEmpty()) {
+            sessionQueue = emptyList()
+        } else {
+            baseCompleted = 0
+            sessionFinished = false
+            sessionQueue = resetRoundQueue(reviewAll)
+            currentIndex = 0
+            timingDeckId()?.let { studyTimer.resume(it, System.currentTimeMillis()) }
+        }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, studyKey, reviewMode) {
@@ -260,20 +309,19 @@ internal fun StudyScreen(
             when (event) {
                 Lifecycle.Event.ON_RESUME ->
                     if (!sessionFinished) timingDeckId()?.let { studyTimer.resume(it, System.currentTimeMillis()) }
-                Lifecycle.Event.ON_PAUSE ->
-                    viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+                Lifecycle.Event.ON_PAUSE -> reportSession(ended = false)
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+            reportSession(ended = true)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     LaunchedEffect(currentIndex, sessionQueue, sessionFinished) {
         if (sessionFinished) {
-            viewModel.recordStudySeconds(studyTimer.pause(System.currentTimeMillis()))
+            reportSession(ended = true)
         } else {
             timingDeckId()?.let { studyTimer.resume(it, System.currentTimeMillis()) }
         }
@@ -354,6 +402,10 @@ internal fun StudyScreen(
                     forgottenCount = 0
                     loadingStudy = true
                     backlogSession = true
+                    // V25-D-37：结束计划段，切换为独立的积压会话（同日 BACKLOG 自然键）。
+                    reportSession(ended = true)
+                    sessionLocalSeconds = 0
+                    viewModel.beginStudySession(V25StudyOrigin.BACKLOG)
                     viewModel.startTodayBacklogStudy { succeeded ->
                         loadingStudy = false
                         if (!succeeded) sessionQueue = emptyList()
@@ -395,13 +447,37 @@ internal fun StudyScreen(
                     val grownQueue = sessionQueue.orEmpty()
                     currentIndex = (safeIndex + 1).coerceAtMost(grownQueue.lastIndex)
                 },
+                onReset = if (!todayMode) {
+                    {
+                        // V25-D-37 会话重置：封存当前 ADHOC 会话（时长保留在历史）、
+                        // 开一代新会话从 0 计时，并把队列表重建为服务端的全卡组复盘
+                        // 队列（新卡按位置最前，其余按 FSRS 遗忘风险降序）。
+                        reportSession(ended = true)
+                        sessionLocalSeconds = 0
+                        latestRatings = emptyMap()
+                        scheduledRequeues = emptyList()
+                        sessionFinished = false
+                        rememberedCount = 0
+                        forgottenCount = 0
+                        currentIndex = 0
+                        viewModel.beginStudySession(V25StudyOrigin.ADHOC, deckId, reset = true)
+                    }
+                } else {
+                    {}
+                },
                 onRate = { rating ->
                     val ratedIndex = safeIndex
                     // The rating lands in the outbox first; the session-level
                     // bookkeeping (relearn schedule, advance) happens in the
                     // completion callback, and a failure keeps the card on
                     // screen for a retry that replays the same event identifiers.
-                    viewModel.rate(card.id, rating) {
+                    // card.deckId also feeds the device-local per-day counter.
+                    val origin = when {
+                        todayMode && backlogSession -> V25StudyOrigin.BACKLOG
+                        todayMode -> V25StudyOrigin.PLAN
+                        else -> V25StudyOrigin.ADHOC
+                    }
+                    viewModel.rate(card.id, rating, card.deckId, origin) {
                         handleRated(ratedIndex, card.id, rating)
                     }
                 }
@@ -429,6 +505,10 @@ internal fun StudyScreen(
                     forgottenCount = 0
                     loadingStudy = true
                     backlogSession = true
+                    // V25-D-37：结束计划段，切换为独立的积压会话（同日 BACKLOG 自然键）。
+                    reportSession(ended = true)
+                    sessionLocalSeconds = 0
+                    viewModel.beginStudySession(V25StudyOrigin.BACKLOG)
                     viewModel.startTodayBacklogStudy { succeeded ->
                         loadingStudy = false
                         if (!succeeded) sessionQueue = emptyList()
@@ -495,6 +575,7 @@ private fun ReviewStudy(
     onToggleAnswer: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onReset: () -> Unit = {},
     onRate: (Rating) -> Unit
 ) {
     var editingCard by remember(card.id) { mutableStateOf<FlashcardEntity?>(null) }
@@ -505,6 +586,11 @@ private fun ReviewStudy(
             subtitle = if (isRelearnVisit) "$position/$total · 复练" else "$position/$total",
             onBack = onBack,
             backContainer = theme.cardPanel, titleColor = theme.text,
+            // V25-D-37 会话重置：右上角小按钮（restart_alt 最简循环箭头）。
+            onTrailingAction = onReset,
+            trailingActionSymbol = "restart_alt",
+            trailingActionDescription = "重置会话",
+            trailingActionContainer = theme.cardPanel,
             modifier = Modifier.zIndex(1f)
         )
         LinearProgressIndicator(

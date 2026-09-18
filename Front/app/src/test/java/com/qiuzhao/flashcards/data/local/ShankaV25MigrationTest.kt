@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -235,12 +236,14 @@ class ShankaV25MigrationTest {
     }
 
     @Test
-    fun test_migration_v4_to_v5_creates_deck_study_seconds_and_preserves_facts() = runBlocking {
+    fun test_migration_v4_to_v8_preserves_facts_and_drops_legacy_seconds() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val dbFile = File(context.cacheDir, "migration-v4-v5-${System.nanoTime()}.db")
+        val dbFile = File(context.cacheDir, "migration-v4-v8-${System.nanoTime()}.db")
 
-        // A v4 database with one cached deck: opening through the production builder must run
-        // MIGRATIONS(4→5) and validate the resulting schema against the exported entities.
+        // A v4 database with one cached deck: opening through the production builder runs the
+        // whole chain to head (v8). The v5-era `deck_study_seconds` table is dropped again at
+        // v7→v8 (lifetime duration became server truth, V25-D-37), and every other cached
+        // fact survives.
         createV4Database(dbFile)
         insertV4Fact(dbFile)
 
@@ -248,12 +251,224 @@ class ShankaV25MigrationTest {
         val cache = V25CacheStore(migrated)
         assertEquals("the pre-existing deck survives the migration", "d-old", cache.readDecks("u-1").single().deckId)
 
-        // The brand-new device-owned accumulator accepts deltas and re-emits the accumulated total.
         val usage = LocalUsageStore(migrated) { "u-1" }
-        usage.addStudySeconds(mapOf("d-old" to 90L), nowMs = 1_000)
-        usage.addStudySeconds(mapOf("d-old" to 30L), nowMs = 2_000)
-        assertEquals(mapOf("d-old" to 120L), usage.observeStudySeconds().first())
+        usage.addTodayStudySeconds(mapOf("d-old" to 45L), nowMs = 2_000)
+        val today = usage.observeDeckDailyActivity(nowMs = 2_000).first()["d-old"]!!
+        assertEquals(45L, today.studySeconds)
+        val cursor = migrated.openHelper.readableDatabase.query("SELECT name FROM sqlite_master WHERE name = 'deck_study_seconds'")
+        assertEquals("legacy lifetime-seconds table is gone at head", 0, cursor.count)
+        cursor.close()
         migrated.close()
+    }
+
+    @Test
+    fun test_migration_v5_to_v6_creates_deck_daily_activity_and_preserves_facts() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = File(context.cacheDir, "migration-v5-v6-${System.nanoTime()}.db")
+
+        // A v5 database with one cached deck: opening through the production builder must run
+        // MIGRATIONS(5→6) and validate the resulting schema against the exported entities.
+        createV5Database(dbFile)
+        insertV5Fact(dbFile)
+
+        val migrated = ShankaV25Database.buildOnFile(context, dbFile.absolutePath)
+        val cache = V25CacheStore(migrated)
+        assertEquals("the pre-existing deck survives the migration", "d-old", cache.readDecks("u-1").single().deckId)
+
+        // The brand-new per-day device-owned table accepts reviews and seconds and reads
+        // them back as today's activity.
+        val usage = LocalUsageStore(migrated) { "u-1" }
+        usage.addDeckReview("d-old", nowMs = 1_000)
+        usage.addTodayStudySeconds(mapOf("d-old" to 45L), nowMs = 2_000)
+        val today = usage.observeDeckDailyActivity(nowMs = 2_000).first()["d-old"]!!
+        assertEquals(1, today.reviewedCount)
+        assertEquals(45L, today.studySeconds)
+        migrated.close()
+    }
+
+    @Test
+    fun test_migration_v6_to_v7_adds_chapter_source_and_preserves_facts() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = File(context.cacheDir, "migration-v6-v7-${System.nanoTime()}.db")
+
+        // A v6 database with one cached chapter (pre-V25-D-36 shape, no `source` column):
+        // opening through the production builder must run MIGRATIONS(6→7), validate the
+        // schema against the exported entities and seed the origin column with TOC.
+        createV6Database(dbFile)
+        insertV6ChapterFact(dbFile)
+
+        val migrated = ShankaV25Database.buildOnFile(context, dbFile.absolutePath)
+        val cache = V25CacheStore(migrated)
+        val chapters = cache.readProjects("u-1").single().chapters
+        assertEquals("the pre-existing chapter survives the migration", "ch-old", chapters.single().id)
+        assertEquals(
+            "existing rows seed with TOC until the next project refresh rewrites the projection",
+            "TOC",
+            chapters.single().source,
+        )
+        migrated.close()
+    }
+
+    @Test
+    fun test_migration_v7_to_v8_adds_origin_and_duration_and_preserves_facts() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = File(context.cacheDir, "migration-v7-v8-${System.nanoTime()}.db")
+
+        // A v7 database (v6 + chapters.source) carrying one pending outbox row and one
+        // dashboard snapshot, both in their pre-V25-D-37 shape (no origin / duration columns):
+        // MIGRATIONS(7→8) must add the columns without touching either fact.
+        createV7Database(dbFile)
+        insertV7Facts(dbFile)
+
+        val migrated = ShankaV25Database.buildOnFile(context, dbFile.absolutePath)
+        val cache = V25CacheStore(migrated)
+
+        // The pending row survives with a null origin — it replays as origin-less and the
+        // server stores NULL = 未分类.
+        val pending = cache.nextDueOutbox("u-1", now = 1_000L)
+        assertEquals("ev-1", pending?.clientEventId)
+        assertNull("rows pending at upgrade keep a null origin", pending?.origin)
+
+        // The old dashboard snapshot reads back with the honest duration defaults until the
+        // next dashboard refresh rewrites the projection.
+        val dashboard = cache.readDashboard("u-1")
+        assertEquals(0, dashboard?.weeklyStudySeconds)
+        assertEquals(emptyList<Int>(), dashboard?.dailyStudySeconds)
+
+        // The new origin write path works after migration.
+        cache.enqueueReview(
+            userId = "u-1",
+            cardId = "c-9",
+            rating = com.qiuzhao.flashcards.domain.v25.V25Rating.GOOD,
+            clientEventId = "ev-2",
+            idempotencyKey = "key-2",
+            origin = com.qiuzhao.flashcards.domain.v25.V25StudyOrigin.PLAN,
+            now = 2_000L,
+        )
+        val fresh = cache.allOutbox("u-1").first { it.clientEventId == "ev-2" }
+        assertEquals("PLAN", fresh.origin)
+        migrated.close()
+    }
+
+    /** The v7 schema is the v6 projection plus `project_chapters.source` (V25-D-36). */
+    private fun createV7Database(dbFile: File) {
+        createV6Database(dbFile)
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(7))
+                .build(),
+        ).writableDatabase
+        db.execSQL("ALTER TABLE `project_chapters` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'TOC'")
+        db.version = 7
+        db.close()
+    }
+
+    /** One pending review row + one dashboard snapshot, both in their v7 (pre-V25-D-37) shape. */
+    private fun insertV7Facts(dbFile: File) {
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(7))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "INSERT INTO review_outbox (user_id, client_event_id, card_id, rating, idempotency_key, " +
+                "created_at, status, attempt_count, next_attempt_at, last_error_code) VALUES " +
+                "('u-1', 'ev-1', 'c-1', 'GOOD', 'key-1', 1, 'PENDING', 0, 1, NULL)",
+        )
+        db.execSQL(
+            "INSERT INTO dashboard_snapshot (user_id, has_data, week_start_date, weekly_activity, " +
+                "weekly_total, weekly_change_rate, weekly_goal, weekly_completed_count, " +
+                "weekly_goal_progress, recall_accuracy, first_answer_accuracy, retention_rate, " +
+                "streak_days, mastered_card_count, updated_at) VALUES " +
+                "('u-1', 0, '2026-09-14', '[0,0,0,0,0,0,0]', 0, NULL, 100, 0, NULL, NULL, NULL, NULL, 0, 0, 1)",
+        )
+        db.close()
+    }
+
+    /** The v6 schema is the v5 projection plus the device-owned `deck_daily_activity` table. */
+    private fun createV6Database(dbFile: File) {
+        createV5Database(dbFile)
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(6))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `deck_daily_activity` (" +
+                "`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, `study_date` TEXT NOT NULL, " +
+                "`reviewed_count` INTEGER NOT NULL, `study_seconds` INTEGER NOT NULL, " +
+                "`updated_at_epoch_ms` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`user_id`, `deck_id`, `study_date`))",
+        )
+        db.version = 6
+        db.close()
+    }
+
+    /** One v6-shaped chapter fact: projects + project_materials + project_chapters rows. */
+    private fun insertV6ChapterFact(dbFile: File) {
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(6))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "INSERT INTO projects VALUES ('u-1', 'p-1', 'v6 项目', 'READY', 1, 0, 0, 100, 200, 7)",
+        )
+        db.execSQL(
+            "INSERT INTO project_materials VALUES ('u-1', 'm-1', 'p-1', 'PDF', 'book.pdf', 'PARSED', NULL, 100, NULL, 1000)",
+        )
+        db.execSQL(
+            "INSERT INTO project_chapters VALUES ('u-1', 'ch-old', 'p-1', 'm-1', '第一章', 1, 20, 0)",
+        )
+        db.close()
+    }
+
+    /** The v5 schema is the v4 projection plus the cumulative `deck_study_seconds` table. */
+    private fun createV5Database(dbFile: File) {
+        createV4Database(dbFile)
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(5))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `deck_study_seconds` (" +
+                "`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, " +
+                "`total_seconds` INTEGER NOT NULL, `updated_at_epoch_ms` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`user_id`, `deck_id`))",
+        )
+        db.version = 5
+        db.close()
+    }
+
+    private fun insertV5Fact(dbFile: File) {
+        val db = FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(
+                ApplicationProvider.getApplicationContext(),
+            )
+                .name(dbFile.absolutePath)
+                .callback(NoOpCallback(5))
+                .build(),
+        ).writableDatabase
+        db.execSQL(
+            "INSERT INTO decks VALUES ('u-1', 'd-old', 'v5 卡组', 'p-1', 3, 1, 0, 5, NULL, 3, 0, 0, 0, 0, 0, NULL)",
+        )
+        db.close()
     }
 
     /** The v4 schema is the v3 projection plus the `deletion_outbox` tombstone table. */
@@ -512,8 +727,8 @@ class ShankaV25MigrationTest {
         updatedAt = Instant.ofEpochMilli(2_000L),
         version = 5,
         chapters = listOf(
-            com.qiuzhao.flashcards.domain.v25.V25Chapter("ch-pdf", "m-pdf", "第一章", 1, 20),
-            com.qiuzhao.flashcards.domain.v25.V25Chapter("ch-text", "m-text", "课堂笔记", null, null),
+            com.qiuzhao.flashcards.domain.v25.V25Chapter("ch-pdf", "m-pdf", "第一章", "TOC", 1, 20),
+            com.qiuzhao.flashcards.domain.v25.V25Chapter("ch-text", "m-text", "课堂笔记", "TEXT", null, null),
         ),
     )
 

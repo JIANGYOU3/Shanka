@@ -146,14 +146,15 @@ class ReviewCoordinatorTest {
             val rating: V25Rating,
             val clientEventId: String?,
             val idempotencyKey: String?,
+            val origin: com.qiuzhao.flashcards.domain.v25.V25StudyOrigin?,
         )
 
         val rateCardCalls = mutableListOf<RatingCall>()
         val rateResultsQueue = ArrayDeque<V25Result<V25RatingResult>>()
         var rateGate: CompletableDeferred<V25Result<V25RatingResult>>? = null
 
-        override suspend fun rateCard(cardId: String, rating: V25Rating, clientEventId: String?, idempotencyKey: String?): V25Result<V25RatingResult> {
-            rateCardCalls += RatingCall(cardId, rating, clientEventId, idempotencyKey)
+        override suspend fun rateCard(cardId: String, rating: V25Rating, clientEventId: String?, idempotencyKey: String?, origin: com.qiuzhao.flashcards.domain.v25.V25StudyOrigin?): V25Result<V25RatingResult> {
+            rateCardCalls += RatingCall(cardId, rating, clientEventId, idempotencyKey, origin)
             rateGate?.let { gate -> return gate.await() }
             return rateResultsQueue.removeFirstOrNull() ?: V25Result.Success(
                 V25RatingResult(
@@ -162,6 +163,11 @@ class ReviewCoordinatorTest {
                 ),
             )
         }
+
+        override suspend fun beginStudySession(origin: com.qiuzhao.flashcards.domain.v25.V25StudyOrigin, deckId: String?, reset: Boolean): V25Result<com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin> = throw NotImplementedError()
+        override suspend fun reportStudySession(sessionId: String, studySeconds: Long, ended: Boolean): V25Result<com.qiuzhao.flashcards.domain.v25.V25StudySession> = throw NotImplementedError()
+        override suspend fun studySessions(studyDate: String?): V25Result<List<com.qiuzhao.flashcards.domain.v25.V25StudySession>> = throw NotImplementedError()
+        override suspend fun studySessionSummary(): V25Result<com.qiuzhao.flashcards.domain.v25.V25StudyDurationSummary> = throw NotImplementedError()
 
         // Untouched boundary methods: any call is a test bug.
         override suspend fun getAuthUser(): V25Result<V25AuthUser> = throw NotImplementedError()
@@ -172,10 +178,23 @@ class ReviewCoordinatorTest {
         override suspend fun setCurrentProject(projectId: String?): V25Result<V25UserPreferences> = throw NotImplementedError()
         override suspend fun createProject(name: String, idempotencyKey: String?): V25Result<V25LearningProject> = throw NotImplementedError()
         override suspend fun addProjectMaterialPdf(projectId: String, fileName: String, content: InputStream, idempotencyKey: String?): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
+        override suspend fun addProjectMaterialHtml(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
+
+    override suspend fun addProjectMaterialZip(projectId: String, fileName: String, content: InputStream, idempotencyKey: String?): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
         override suspend fun addProjectMaterialText(projectId: String, name: String, content: String, idempotencyKey: String?): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
         override suspend fun listProjectMaterials(projectId: String): V25Result<List<com.qiuzhao.flashcards.domain.v25.V25Material>> = throw NotImplementedError()
         override suspend fun deleteProjectMaterial(projectId: String, materialId: String, retainCards: Boolean, idempotencyKey: String?): V25Result<Unit> = throw NotImplementedError()
-        override suspend fun replaceProjectMaterialPdf(projectId: String, materialId: String, fileName: String, content: InputStream, idempotencyKey: String?): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
+        override suspend fun reparseProjectMaterial(projectId: String, materialId: String): V25Result<V25LearningProject> = throw NotImplementedError()
+
+
+    override suspend fun fallbackWholeBookChapters(projectId: String, materialId: String): V25Result<V25LearningProject> = throw NotImplementedError()
+
+    override suspend fun replaceProjectMaterialPdf(projectId: String, materialId: String, fileName: String, content: InputStream, idempotencyKey: String?): V25Result<com.qiuzhao.flashcards.domain.v25.V25Material> = throw NotImplementedError()
         override suspend fun listProjects(forceRefresh: Boolean): V25Result<List<V25LearningProject>> = throw NotImplementedError()
         override suspend fun getProject(projectId: String, forceRefresh: Boolean): V25Result<V25LearningProject> = throw NotImplementedError()
         override suspend fun renameProject(projectId: String, name: String): V25Result<V25LearningProject> = throw NotImplementedError()

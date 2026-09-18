@@ -4,6 +4,7 @@ import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25RatingResult
 import com.qiuzhao.flashcards.domain.v25.V25Repository
 import com.qiuzhao.flashcards.domain.v25.V25Result
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,8 @@ data class ReviewAttempt(
     val rating: V25Rating,
     val clientEventId: String,
     val idempotencyKey: String,
+    /** V25-D-37 entry-point origin; a retry replays it with the same identifiers. */
+    val origin: V25StudyOrigin? = null,
 )
 
 /**
@@ -47,14 +50,20 @@ class ReviewCoordinator(private val repository: V25Repository) {
      * attempt's `clientEventId` and `idempotencyKey` when both the card and the rating match; a
      * different decision starts a fresh pair of identifiers.
      */
-    suspend fun submit(cardId: String, rating: V25Rating): V25Result<V25RatingResult> {
+    suspend fun submit(
+        cardId: String,
+        rating: V25Rating,
+        origin: V25StudyOrigin? = null,
+    ): V25Result<V25RatingResult> {
         if (_submitting.value) return V25Result.Failure(IN_FLIGHT_CODE, null, null)
-        val attempt = _attempt.value?.takeIf { it.cardId == cardId && it.rating == rating }
+        val attempt = _attempt.value
+            ?.takeIf { it.cardId == cardId && it.rating == rating }
             ?: ReviewAttempt(
                 cardId = cardId,
                 rating = rating,
                 clientEventId = UUID.randomUUID().toString(),
                 idempotencyKey = UUID.randomUUID().toString(),
+                origin = origin,
             ).also { _attempt.value = it }
         _submitting.value = true
         return try {
@@ -70,7 +79,15 @@ class ReviewCoordinator(private val repository: V25Repository) {
     }
 
     private suspend fun run(attempt: ReviewAttempt): V25Result<V25RatingResult> =
-        when (val result = repository.rateCard(attempt.cardId, attempt.rating, attempt.clientEventId, attempt.idempotencyKey)) {
+        when (
+            val result = repository.rateCard(
+                attempt.cardId,
+                attempt.rating,
+                attempt.clientEventId,
+                attempt.idempotencyKey,
+                attempt.origin,
+            )
+        ) {
             is V25Result.Success -> {
                 // Committed: the next rating is a fresh event.
                 _attempt.value = null

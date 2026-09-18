@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.qiuzhao.flashcards.domain.v25.V25Card
 import com.qiuzhao.flashcards.domain.v25.V25Difficulty
+import com.qiuzhao.flashcards.ui.auth.ErrorMessages
 import com.qiuzhao.flashcards.ui.navigation.AppNavigator
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 import com.qiuzhao.flashcards.ui.motion.AppMotion
@@ -74,7 +75,7 @@ internal fun SmartCardReviewScreen(
     Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
         ScreenTopInformationBar(
             title = "卡片列表",
-            subtitle = cards?.let { "${it.size} cards" },
+            subtitle = cards?.let { "${it.size} 张卡片" },
             onBack = nav::goBack,
             backContainer = theme.cardPanel,
             titleColor = theme.text
@@ -84,7 +85,7 @@ internal fun SmartCardReviewScreen(
                 CircularProgressIndicator()
             }
             loadError != null -> Box(Modifier.fillMaxSize().padding((16 * scale).dp), contentAlignment = Alignment.Center) {
-                CardHint("无法加载生成卡片：${loadError}", designScale = scale, error = true)
+                CardHint("无法加载生成卡片：${ErrorMessages.forCode(loadError)}", designScale = scale, error = true)
             }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().statusBarsPadding()

@@ -97,6 +97,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -159,8 +160,11 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
     val progress by viewModel.deckProgress(deck.id).collectAsState(
         initial = DeckProgress(deck.cardCount, deck.dueCount, masteredCards = 0, reviewCount = 0)
     )
-    // 设备本地实测的学习秒数与题型分布（难度分层投影聚合），随 Room 投影实时刷新。
+    // 服务端会话累计的学习秒数（V25-D-37，跨设备一致）；题型分布为本地投影聚合。
     val studySeconds by viewModel.deckStudySeconds.collectAsState()
+    // 今日 tab 的设备本地按日实测（答题张数）；总览 tab 用服务端生命周期聚合。
+    val todayActivity by viewModel.deckTodayActivity.collectAsState()
+    var showToday by rememberSaveable { mutableStateOf(true) }
     val difficultyCounts by viewModel.deckDifficultyCounts(deck.id).collectAsState(initial = emptyMap())
     // 卡片投影按需缓存：进页刷新一次，题型分布（及浏览/学习）才有本地事实可读。
     LaunchedEffect(deck.id) { viewModel.refreshCards(deck.id) }
@@ -183,9 +187,22 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                     contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail() * designScale).dp),
                     verticalArrangement = Arrangement.spacedBy((16 * designScale).dp)
                 ) {
-                    // Today's reviewed count and a deck-level daily goal are not exposed by the
-                    // server; the card keeps its Figma layout and shows honest dashes.
-                    item { DeckLearningDataCard(reviewedToday = null, dailyGoal = null, theme = theme, designScale = designScale) }
+                    // 今日 = 设备本地按日实测的答题张数（无卡组级每日目标，百分比保持空档）；
+                    // 总览 = 服务端生命周期聚合（已学/总卡数）。切开关由本页自持状态驱动。
+                    item {
+                        val overviewLearned = (deck.cardCount - deck.notStartedCount).coerceAtLeast(0)
+                        DeckLearningDataCard(
+                            reviewedToday = todayActivity[deck.id]?.reviewedCount ?: 0,
+                            dailyGoal = null,
+                            theme = theme,
+                            designScale = designScale,
+                            todaySelected = showToday,
+                            onTodaySelected = { showToday = it },
+                            overviewReviewed = overviewLearned,
+                            overviewTotal = deck.cardCount.takeIf { it > 0 },
+                            overviewPercent = if (deck.cardCount > 0) overviewLearned * 100 / deck.cardCount else null,
+                        )
+                    }
                     // 题型分布 = 本地卡片投影按难度分层聚合；未标注难度的卡（如手写导入）不计入。
                     item {
                         DeckQuestionTypesCard(
@@ -199,7 +216,7 @@ internal fun DeckScreen(deck: DeckSummary, viewModel: AppViewModel, nav: ScreenN
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy((16 * designScale).dp)) {
                             StatisticsMetricCard(
-                                honestStudyDuration(studySeconds[deck.id] ?: 0L),
+                                honestStudyDurationOrNull(studySeconds?.get(deck.id)),
                                 StatisticsMetricKind.LearningTime,
                                 StatisticsMetricSurface.White,
                                 designScale,

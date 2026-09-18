@@ -31,7 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CacheMetadataEntity::class,
         ReviewOutboxEntity::class,
         DeletionOutboxEntity::class,
-        DeckStudySecondsEntity::class,
+        DeckDailyActivityEntity::class,
     ],
     version = ShankaV25Database.VERSION,
     exportSchema = true,
@@ -53,7 +53,7 @@ abstract class ShankaV25Database : RoomDatabase() {
 
     companion object {
         const val NAME = "shanka-v25.db"
-        const val VERSION = 5
+        const val VERSION = 8
 
         /** Projection schema version written into cache metadata rows. */
         const val CACHE_SCHEMA_VERSION = 3
@@ -143,6 +143,64 @@ abstract class ShankaV25Database : RoomDatabase() {
                             "`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, " +
                             "`total_seconds` INTEGER NOT NULL, `updated_at_epoch_ms` INTEGER NOT NULL, " +
                             "PRIMARY KEY(`user_id`, `deck_id`))",
+                    )
+                }
+            },
+            // v5 → v6 (per-day device-local usage): `deck_daily_activity` buckets rated cards
+            // and foreground seconds per deck and device-local study date — the 学习数据 "今日"
+            // tab's source. Another brand-new device-owned table; existing rows are untouched.
+            object : Migration(5, 6) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `deck_daily_activity` (" +
+                            "`user_id` TEXT NOT NULL, `deck_id` TEXT NOT NULL, `study_date` TEXT NOT NULL, " +
+                            "`reviewed_count` INTEGER NOT NULL, `study_seconds` INTEGER NOT NULL, " +
+                            "`updated_at_epoch_ms` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`user_id`, `deck_id`, `study_date`))",
+                    )
+                }
+            },
+            // v6 → v7 (AI chapter planning, contract V25-D-36): chapters gain the origin column
+            // `source` (TOC/AI/FALLBACK/TEXT/ZIP/MANUAL). Existing rows are all pre-V25-D-36
+            // projections of the same server chapters, so they seed with TOC; the next project
+            // refresh rewrites the projection from the server payload.
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE `project_chapters` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'TOC'",
+                    )
+                }
+            },
+            // v7 → v8 (study sessions & rating origin, contract V25-D-37): `review_outbox` gains
+            // the nullable `origin` column — rows pending at upgrade replay as origin-less and
+            // the server stores NULL = 未分类; `dashboard_snapshot` gains the server-aggregated
+            // study-duration columns (0/'[]' until the next dashboard refresh rewrites them).
+            object : Migration(7, 8) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE `review_outbox` ADD COLUMN `origin` TEXT")
+                    // The device-local lifetime-seconds table is superseded by server-side
+                    // study-session aggregation (V25-D-37); the data cannot be migrated into
+                    // sessions (no per-day split was kept) and would otherwise never be read.
+                    db.execSQL("DROP TABLE IF EXISTS `deck_study_seconds`")
+                    db.execSQL(
+                        "ALTER TABLE `dashboard_snapshot` ADD COLUMN `weekly_study_seconds` " +
+                            "INTEGER NOT NULL DEFAULT 0",
+                    )
+                    db.execSQL(
+                        "ALTER TABLE `dashboard_snapshot` ADD COLUMN `daily_study_seconds` " +
+                            "TEXT NOT NULL DEFAULT '[]'",
+                    )
+                    db.execSQL(
+                        "ALTER TABLE `dashboard_snapshot` ADD COLUMN `plan_study_seconds` " +
+                            "INTEGER NOT NULL DEFAULT 0",
+                    )
+                    db.execSQL(
+                        "ALTER TABLE `dashboard_snapshot` ADD COLUMN `backlog_study_seconds` " +
+                            "INTEGER NOT NULL DEFAULT 0",
+                    )
+                    db.execSQL(
+                        "ALTER TABLE `dashboard_snapshot` ADD COLUMN `adhoc_study_seconds` " +
+                            "INTEGER NOT NULL DEFAULT 0",
                     )
                 }
             },

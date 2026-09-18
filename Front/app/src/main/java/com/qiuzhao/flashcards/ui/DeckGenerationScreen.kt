@@ -71,14 +71,14 @@ internal fun DeckGenerationScreen(
     val theme = deckTheme(project)
     val projectMats by viewModel.projectMaterials.collectAsState()
     val materials = projectMats[project.id].orEmpty()
-    val fileItems = materials.filter { it.type == ProjectDraftMaterialType.FILE }
+    val fileItems = materials.filter { it.type != ProjectDraftMaterialType.TEXT }
     val textItems = materials.filter { it.type == ProjectDraftMaterialType.TEXT }
     // Background material uploads from 完成设置: they land here one by one (refreshProjects
     // projects each landed material with its PARSING status) while this screen shows live rows.
     val uploadStates by viewModel.projectUploadStates.collectAsState()
     val uploads = uploadStates[project.id].orEmpty()
-    val uploadingFiles = uploads.filter { it.isPdf && it.phase != MaterialUploadPhase.DONE }
-    val uploadingTexts = uploads.filter { !it.isPdf && it.phase != MaterialUploadPhase.DONE }
+    val uploadingFiles = uploads.filter { it.isFile && it.phase != MaterialUploadPhase.DONE }
+    val uploadingTexts = uploads.filter { !it.isFile && it.phase != MaterialUploadPhase.DONE }
     val uploadsBusy = uploads.isNotEmpty()
 
     var name by remember { mutableStateOf("") }
@@ -478,7 +478,7 @@ private fun DeckGenerationMaterialSection(
             val selectable = materialCardState(material) == ProjectMaterialCardState.DONE
             // Figma 807:4451 / 835:5466：资料卡统一为「状态图标块 + 标题胶囊」紧凑卡，
             // 解析中转圈、失败红卡 + 卡下原因行（点击换文件重传）、就绪可点选。
-            if (material.type == ProjectDraftMaterialType.FILE) {
+            if (material.type != ProjectDraftMaterialType.TEXT) {
                 ProjectCompactMaterialCard(
                     material = material, theme = theme, scale = scale, doneIcon = "picture_as_pdf",
                     onEdit = {}, onDelete = {},

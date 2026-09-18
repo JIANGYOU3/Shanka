@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
@@ -48,10 +49,51 @@ import com.qiuzhao.flashcards.ui.navigation.AppRoute
 internal fun MaterialManagementScreen(project: ProjectSummary?, viewModel: AppViewModel, nav: ScreenNavigator) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = DeckThemes.first { it.key == "azure" }
+    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
+        ScreenTopInformationBar(
+            title = "资料管理", subtitle = null, onBack = nav::goBack,
+            backContainer = theme.cardPanel, titleColor = theme.text
+        )
+        MaterialManagementContent(
+            project = project,
+            theme = theme,
+            viewModel = viewModel,
+            nav = nav,
+            designScale = scale,
+            contentHorizontalPadding = (16 * scale).dp,
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        )
+        BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
+        AddMaterialButton(theme, scale) {
+            viewModel.beginMaterialImport()
+            nav.navigate(AppRoute.MaterialImport(project?.id))
+        }
+    }
+}
+
+/**
+ * The materials list itself — the file/text groups with the floating search field plus the
+ * edit/delete dialogs — shared by the global full-screen entry and the project-detail
+ * 资料管理 section. [project] scopes the list to one project; null shows the app-wide
+ * materials library. The caller owns whatever surrounds it (top bar, section switcher, the
+ * fixed 添加资料 action): this box starts at its top edge.
+ */
+@Composable
+internal fun MaterialManagementContent(
+    project: ProjectSummary?,
+    theme: DeckTheme,
+    viewModel: AppViewModel,
+    nav: ScreenNavigator,
+    designScale: Float,
+    /** Horizontal inset of the groups; a caller whose column is already inset passes 0.dp. */
+    contentHorizontalPadding: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val scale = designScale
     val drafts by viewModel.projectCreationMaterials.collectAsState()
     val projectMats by viewModel.projectMaterials.collectAsState()
-    // Global entry (project == null) is the app-wide materials library: every project's
-    // server-backed materials plus any unbound creation drafts.
+    // Project entry lists that project's server-backed materials; the global entry
+    // (project == null) is the app-wide materials library plus unbound creation drafts.
     val list = project?.let { projectMats[it.id] }
         ?: (projectMats.values.flatten() + drafts)
     var query by rememberSaveable { mutableStateOf("") }
@@ -61,17 +103,15 @@ internal fun MaterialManagementScreen(project: ProjectSummary?, viewModel: AppVi
     var materialDeletionInFlight by remember { mutableStateOf(false) }
     val filtered = list.filter { material -> query.isBlank() || material.title.contains(query, true) || material.content.contains(query, true) }
     val textItems = filtered.filter { it.type == ProjectDraftMaterialType.TEXT }
-    val fileItems = filtered.filter { it.type == ProjectDraftMaterialType.FILE }
+    val fileItems = filtered.filter { it.type != ProjectDraftMaterialType.TEXT }
     val hasMaterials = list.isNotEmpty()
 
-    Box(Modifier.fillMaxSize().background(AppColors.BaseBackground)) {
-        ScreenTopInformationBar(
-            title = "资料管理", subtitle = null, onBack = nav::goBack,
-            backContainer = theme.cardPanel, titleColor = theme.text
-        )
+    Box(modifier) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().statusBarsPadding()
-                .padding(start = (16 * scale).dp, top = ((if (hasMaterials) 187 else 88) * scale).dp, end = (16 * scale).dp)
+            modifier = Modifier.fillMaxSize()
+                .padding(start = contentHorizontalPadding, end = contentHorizontalPadding)
+                // The floating search field overlays the list's top; leave its slot clear.
+                .padding(top = ((if (hasMaterials) 96 else 0) * scale).dp)
                 .clip(RoundedCornerShape((24 * scale).dp)),
             contentPadding = PaddingValues(bottom = (fixedBottomControlScrollTail(bottomOffset = 16) * scale).dp),
             verticalArrangement = Arrangement.spacedBy((16 * scale).dp)
@@ -104,28 +144,10 @@ internal fun MaterialManagementScreen(project: ProjectSummary?, viewModel: AppVi
                 onQueryChange = { query = it },
                 theme = theme,
                 scale = scale,
-                modifier = Modifier.statusBarsPadding()
-                    .padding(start = (16 * scale).dp, top = (88 * scale).dp, end = (16 * scale).dp)
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .padding(horizontal = contentHorizontalPadding)
                     .fillMaxWidth()
             )
-        }
-        BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = AppColors.BaseBackground)
-        Surface(
-            onClick = {
-                viewModel.beginMaterialImport()
-                nav.navigate(AppRoute.MaterialImport(project?.id))
-            },
-            color = theme.primary, contentColor = theme.onPrimary,
-            shape = RoundedCornerShape((24 * scale).dp),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                .padding(horizontal = (16 * scale).dp, vertical = (16 * scale).dp)
-                .fillMaxWidth().height((68 * scale).dp).zIndex(1f)
-        ) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                MaterialSymbol("folder_open", null, tint = LocalContentColor.current, size = fixedSp(24 * scale), filled = true)
-                Spacer(Modifier.width((8 * scale).dp))
-                AppText("添加资料", AppTextRole.Label, color = LocalContentColor.current, designScale = scale)
-            }
         }
     }
     editingFile?.let { material ->
@@ -159,6 +181,29 @@ internal fun MaterialManagementScreen(project: ProjectSummary?, viewModel: AppVi
     }
 }
 
+/** The fixed bottom 添加资料 action shared by the global screen and the project section. */
+@Composable
+internal fun AddMaterialButton(
+    theme: DeckTheme,
+    designScale: Float,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) = Surface(
+    onClick = onClick,
+    color = theme.primary, contentColor = theme.onPrimary,
+    shape = RoundedCornerShape((24 * designScale).dp),
+    modifier = modifier
+        .navigationBarsPadding()
+        .padding(horizontal = (16 * designScale).dp, vertical = (16 * designScale).dp)
+        .fillMaxWidth().height((68 * designScale).dp).zIndex(1f)
+) {
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        MaterialSymbol("folder_open", null, tint = LocalContentColor.current, size = fixedSp(24 * designScale), filled = true)
+        Spacer(Modifier.width((8 * designScale).dp))
+        AppText("添加资料", AppTextRole.Label, color = LocalContentColor.current, designScale = designScale)
+    }
+}
+
 /**
  * The three-tier material deletion confirmation (V25-D-30): the destructive action plus the
  * card-retention decision. No per-material preflight endpoint exists, so the impact line states
@@ -188,6 +233,45 @@ internal fun MaterialDeletionDialog(
                 )
                 CompactDeletionButton("删除资料，保留卡片", theme, deleting) { onConfirm(true) }
                 CompactDeletionButton("删除资料及卡片", theme, deleting, destructive = true) { onConfirm(false) }
+            }
+        }
+    }
+}
+
+/** V25-D-36 retryable parse failures: AI chapter planning failed or the API key was never saved. */
+internal fun isAiChapterRetryable(errorCode: String?): Boolean =
+    errorCode == "PDF_AI_CHAPTERS_FAILED" || errorCode == "API_KEY_NOT_SET"
+
+/**
+ * V25-D-36 failure-path chooser for a no-TOC PDF whose AI chapter planning failed: retry the
+ * parse without re-uploading, degrade to a single whole-book chapter, or fall back to the
+ * classic replace-with-another-file flow.
+ */
+@Composable
+internal fun AiChapterFailureDialog(
+    theme: DeckTheme,
+    busy: Boolean = false,
+    onReparse: () -> Unit,
+    onWholeBook: () -> Unit,
+    onReplaceFile: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(
+            color = theme.background,
+            shape = RoundedCornerShape(36.dp),
+            modifier = Modifier.width(331.dp),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppText("AI 章节规划未完成", AppTextRole.SectionTitle, color = theme.text, maxLines = 2)
+                AppText(
+                    "这份 PDF 没有自带目录，需要由 AI 规划章节。可以选择重试解析（不重新上传），或直接按整本资料继续——整本会作为一个部分进入确认流程，不影响制卡。",
+                    AppTextRole.CardSubtitle,
+                    color = theme.text.copy(alpha = .6f),
+                )
+                CompactDeletionButton("重试解析（不重新上传）", theme, busy) { onReparse() }
+                CompactDeletionButton("按整本继续（单一部分）", theme, busy) { onWholeBook() }
+                CompactDeletionButton("换文件重传", theme, busy) { onReplaceFile() }
             }
         }
     }
@@ -237,7 +321,7 @@ private fun MaterialManagementGroup(
             }
         }
         materials.forEach { material ->
-            if (material.type == ProjectDraftMaterialType.FILE) {
+            if (material.type != ProjectDraftMaterialType.TEXT) {
                 ProjectDraftFileCard(material, theme, scale, onEdit = { onEditFile(material) }) { onDelete(material) }
             } else {
                 ProjectDraftTextCard(material, theme, scale, onEdit = { onEditText(material) }, onDelete = { onDelete(material) })

@@ -84,6 +84,9 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     // 范围 selection is two sets: a whole-checked project implies all of its
     // decks; the drawer's individually picked decks live beside it. The checked
     // circle derives from either, so picking one deck re-checks its project.
+    // The plan itself is single-project (PUT /study/plan takes one project_id
+    // and requires every deck to belong to it), so every toggle below moves the
+    // whole scope instead of accumulating across projects.
     var wholeProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedDeckIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var expandedProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -113,15 +116,16 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     val pendingDecksByProject = projects.associate { project ->
         project.id to decks.filter { it.projectId == project.id && it.cardCount == 0 }
     }
-    val effectiveDeckIds = decks
-        .filter { it.cardCount > 0 && (it.projectId in wholeProjectIds || it.id in selectedDeckIds) }
-        .map { it.id }
-    val primaryProjectId = (
-        projects.firstOrNull { it.id in wholeProjectIds }
-            ?: projects.firstOrNull { project ->
-                decks.any { it.projectId == project.id && it.id in selectedDeckIds }
-            }
-        )?.id.orEmpty()
+    val learnableDeckIdsByProject = learnableDecksByProject.mapValues { (_, deckList) ->
+        deckList.map { it.id }.toSet()
+    }
+    val (primaryProjectId, scopedDeckIds) = studyGoalScope(
+        projectIds = projects.map { it.id },
+        wholeProjectIds = wholeProjectIds,
+        selectedDeckIds = selectedDeckIds,
+        learnableDeckIdsByProject = learnableDeckIdsByProject,
+    )
+    val effectiveDeckIds = scopedDeckIds.toList()
     val validGoals = newGoal in 0..200 && reviewGoal in 0..200 && newGoal % 10 == 0 &&
         reviewGoal % 10 == 0 && newGoal + reviewGoal > 0
     val canSave = studyGoalCanSave(
@@ -147,7 +151,10 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                 } else {
                     Column(
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        // 尾部留白让展开的卡组抽屉与表单底部错误提示能完整滚出
+                        // 悬浮「完成」按钮背后（与其他固定底钮页面同款算式）。
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+                            .padding(bottom = fixedBottomControlScrollTail(bottomOffset = 16).dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         PlanSectionCard("每日目标", "edit_calendar") {
@@ -175,16 +182,16 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                             projectDecks.any { it.id in selectedDeckIds },
                                         expanded = project.id in expandedProjectIds,
                                         onToggleProject = {
-                                            val isChecked = project.id in wholeProjectIds ||
-                                                projectDecks.any { it.id in selectedDeckIds }
-                                            if (isChecked) {
-                                                wholeProjectIds -= project.id
-                                                selectedDeckIds -= projectDecks.map { it.id }.toSet()
-                                            } else {
-                                                // Collapsed or not, checking a project implies
-                                                // every deck under it (Figma 范围 default).
-                                                wholeProjectIds += project.id
-                                            }
+                                            // Checking a project moves the whole plan scope here;
+                                            // unchecking clears only this project's picks.
+                                            val (whole, picked) = projectToggleSelection(
+                                                projectId = project.id,
+                                                projectDeckIds = projectDecks.map { it.id }.toSet(),
+                                                wholeProjectIds = wholeProjectIds,
+                                                selectedDeckIds = selectedDeckIds,
+                                            )
+                                            wholeProjectIds = whole
+                                            selectedDeckIds = picked
                                         },
                                         onToggleExpand = {
                                             if (project.id in expandedProjectIds) {
@@ -205,11 +212,16 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                             }
                                         },
                                         onToggleDeck = { deck ->
-                                            selectedDeckIds = if (deck.id in selectedDeckIds) {
-                                                selectedDeckIds - deck.id
-                                            } else {
-                                                selectedDeckIds + deck.id
-                                            }
+                                            // Picking a deck moves the plan scope to its project;
+                                            // other projects' flags and picks give way.
+                                            val (whole, picked) = deckToggleSelection(
+                                                deckId = deck.id,
+                                                projectDeckIds = projectDecks.map { it.id }.toSet(),
+                                                wholeProjectIds = wholeProjectIds,
+                                                selectedDeckIds = selectedDeckIds,
+                                            )
+                                            wholeProjectIds = whole
+                                            selectedDeckIds = picked
                                         },
                                         deckChecked = {
                                             it.id in selectedDeckIds || project.id in wholeProjectIds
@@ -292,6 +304,64 @@ internal fun drawerOpenSelection(
         return wholeProjectIds to selectedDeckIds
     }
     return (wholeProjectIds - projectId) to (selectedDeckIds + projectDeckIds)
+}
+
+/**
+ * 勾选/取消勾选项目卡（[StudyGoalScreen] 范围区）。计划是单项目的——
+ * PUT /study/plan 只接受一个 project_id，且要求所选卡组全部属于它——所以
+ * 勾选项目即把计划范围整个切到它：其他项目的整选与逐卡组勾选一律让位；
+ * 取消勾选只清除本项目自己的选中。返回 (wholeProjectIds', selectedDeckIds')。
+ */
+internal fun projectToggleSelection(
+    projectId: String,
+    projectDeckIds: Set<String>,
+    wholeProjectIds: Set<String>,
+    selectedDeckIds: Set<String>,
+): Pair<Set<String>, Set<String>> {
+    val isChecked = projectId in wholeProjectIds || projectDeckIds.any { it in selectedDeckIds }
+    return if (isChecked) {
+        (wholeProjectIds - projectId) to (selectedDeckIds - projectDeckIds)
+    } else {
+        setOf(projectId) to (selectedDeckIds intersect projectDeckIds)
+    }
+}
+
+/**
+ * 勾选/反选抽屉里的单个卡组。反选原样移除、整选旗不动；勾选把计划范围切到
+ * 该卡组所属项目（见 [projectToggleSelection]）：其他项目的整选旗与勾选全部
+ * 清除，本项目既有勾选保留、整选迁为逐卡组勾选。返回 (wholeProjectIds', selectedDeckIds')。
+ */
+internal fun deckToggleSelection(
+    deckId: String,
+    projectDeckIds: Set<String>,
+    wholeProjectIds: Set<String>,
+    selectedDeckIds: Set<String>,
+): Pair<Set<String>, Set<String>> {
+    if (deckId in selectedDeckIds) {
+        return wholeProjectIds to (selectedDeckIds - deckId)
+    }
+    return emptySet<String>() to ((selectedDeckIds intersect projectDeckIds) + deckId)
+}
+
+/**
+ * 当前保存范围（[StudyGoalScreen] 提交口径）：整选项目优先，否则首个含勾选
+ * 卡组的项目；没有则返回空串与空集。有效卡组集合只含该项目——后端要求所选
+ * 卡组全部属于提交的 project_id，跨项目残留在此兜底剔除。返回 (projectId, deckIds)。
+ */
+internal fun studyGoalScope(
+    projectIds: List<String>,
+    wholeProjectIds: Set<String>,
+    selectedDeckIds: Set<String>,
+    learnableDeckIdsByProject: Map<String, Set<String>>,
+): Pair<String, Set<String>> {
+    val primary = projectIds.firstOrNull { it in wholeProjectIds }
+        ?: projectIds.firstOrNull { project ->
+            learnableDeckIdsByProject[project].orEmpty().any { it in selectedDeckIds }
+        }
+        ?: return "" to emptySet()
+    val learnable = learnableDeckIdsByProject[primary].orEmpty()
+    val picked = selectedDeckIds intersect learnable
+    return primary to if (primary in wholeProjectIds) learnable else picked
 }
 
 /** Figma 977:4937 card language: #EEF4FA r36, 20dp padding, 16dp item gap. */

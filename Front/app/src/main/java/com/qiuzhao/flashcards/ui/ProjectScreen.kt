@@ -69,6 +69,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import kotlin.math.roundToInt
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
+import com.qiuzhao.flashcards.ui.auth.ErrorMessages
 import com.qiuzhao.flashcards.ui.navigation.AppRoute
 
 /** Figma 494:1447 project root. Project data is derived from the contract layer. */
@@ -189,6 +190,7 @@ internal fun ProjectCreateScreen(
     }
     // 编辑页失败 PDF 的「点击重试」= 换文件 replace 重传（V25-D-30）。
     var replaceTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
+    var aiRetryTarget by remember { mutableStateOf<ProjectDraftMaterial?>(null) }
     val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val target = replaceTarget
         if (uri != null && target?.materialId != null && projectId != null) {
@@ -293,9 +295,15 @@ internal fun ProjectCreateScreen(
                     ProjectCreationMaterialsPanel(
                         title = "文件资料", icon = "files", hint = "右滑卡片可编辑、删除文件",
                         theme = theme, scale = scale,
-                        materials = materials.filter { it.type == ProjectDraftMaterialType.FILE },
+                        materials = materials.filter { it.type != ProjectDraftMaterialType.TEXT },
                         onEditFile = { editingFile = it }, onEditText = {},
-                        onRetry = { material -> replaceTarget = material },
+                        onRetry = { material ->
+                            when {
+                                material.materialId != null && editingProject != null &&
+                                    isAiChapterRetryable(material.errorCode) -> aiRetryTarget = material
+                                else -> replaceTarget = material
+                            }
+                        },
                         onDelete = { material ->
                             if (editingProject == null || material.materialId == null) viewModel.deleteProjectDraftMaterial(material.id)
                             else pendingMaterialDeletion = material
@@ -400,6 +408,31 @@ internal fun ProjectCreateScreen(
                 editingFile = null
             },
             onDismiss = { editingFile = null }
+        )
+    }
+    aiRetryTarget?.let { material ->
+        val retryProjectId = material.projectId ?: projectId
+        val retryMaterialId = material.materialId
+        AiChapterFailureDialog(
+            theme = theme,
+            onReparse = {
+                aiRetryTarget = null
+                if (retryProjectId != null && retryMaterialId != null) {
+                    viewModel.reparseProjectMaterial(retryProjectId, retryMaterialId) { _, _ -> }
+                    viewModel.markMaterialImportParsing(material.id)
+                }
+            },
+            onWholeBook = {
+                aiRetryTarget = null
+                if (retryProjectId != null && retryMaterialId != null) {
+                    viewModel.fallbackWholeBookChapters(retryProjectId, retryMaterialId) { _, _ -> }
+                }
+            },
+            onReplaceFile = {
+                aiRetryTarget = null
+                replaceTarget = material
+            },
+            onDismiss = { aiRetryTarget = null },
         )
     }
     pendingMaterialDeletion?.let { material ->
@@ -549,9 +582,9 @@ private fun ProjectCreationMaterialsPanel(
             material = material,
             theme = theme,
             scale = scale,
-            doneIcon = if (material.type == ProjectDraftMaterialType.FILE) "files" else "description",
+            doneIcon = if (material.type != ProjectDraftMaterialType.TEXT) "files" else "description",
             onEdit = {
-                if (material.type == ProjectDraftMaterialType.FILE) onEditFile(material) else onEditText(material)
+                if (material.type != ProjectDraftMaterialType.TEXT) onEditFile(material) else onEditText(material)
             },
             onDelete = { onDelete(material) },
             onRetry = { onRetry(material) }
@@ -561,15 +594,15 @@ private fun ProjectCreationMaterialsPanel(
 }
 
 /**
- * Contract status line for server-backed materials (解析中 / 解析失败 / 就绪, TEXT shows the
+ * Contract status line for server-backed materials (解析中 / 解析失败 / 就绪, TEXT/ZIP show the
  * character count); null for creation-flow drafts that have no server status yet.
  */
 internal fun materialStatusLine(material: ProjectDraftMaterial): String? = when {
     material.serverStatus == null -> null
-    material.type == ProjectDraftMaterialType.TEXT ->
-        if (material.charCount != null) "就绪 · ${material.charCount}字" else "就绪"
+    material.charCount != null && material.serverStatus == "READY" ->
+        "就绪 · ${material.charCount}字"
     material.serverStatus == "FAILED" ->
-        "解析失败" + (material.errorCode?.let { " · $it" } ?: "")
+        "解析失败" + (material.errorCode?.let { " · ${ErrorMessages.forCode(it)}" } ?: "")
     material.serverStatus == "PENDING" || material.serverStatus == "PARSING" -> "解析中"
     else -> "就绪"
 }
@@ -1228,7 +1261,9 @@ internal fun ProjectTextEditorScreen(route: AppRoute.ProjectTextEditor, viewMode
         // Figma 1107:6361: the save action hugs its content, centred over the fade.
         Surface(
             onClick = {
-                if (title.isBlank()) {
+                // 与标题同款拦截：空标题/空内容都留在编辑器，避免“看似保存、
+                // 实则退出丢弃输入”。
+                if (title.isBlank() || content.isBlank()) {
                     return@Surface
                 }
                 if (route.stageForMaterialImport) {

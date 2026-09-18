@@ -68,8 +68,8 @@ internal data class AppBottomNavigationItem(
     val onClick: () -> Unit
 )
 
-/** Project-detail's two equal secondary destinations. */
-internal enum class ProjectDetailSection { STATISTICS, DECKS }
+/** Project-detail's three equal secondary destinations. */
+internal enum class ProjectDetailSection { STATISTICS, DECKS, MATERIALS }
 
 private const val FigmaSelectionDurationMillis = 500
 
@@ -310,7 +310,7 @@ private fun AppBottomNavigationItemContent(
     }
 }
 
-/** Figma 540:4273: project data statistics / deck-management switcher. */
+/** Figma 540:4273: project data statistics / deck-management / materials switcher. */
 @Composable
 internal fun ProjectSectionSwitcher(
     selected: ProjectDetailSection,
@@ -325,11 +325,11 @@ internal fun ProjectSectionSwitcher(
     ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
             val itemGap = 12.dp
-            val itemWidth = (maxWidth - itemGap) / 2
+            val itemWidth = (maxWidth - itemGap * 2) / 3
             val density = LocalDensity.current
             val indicatorTranslationPx by animateFloatAsState(
                 targetValue = with(density) {
-                    (if (selected == ProjectDetailSection.STATISTICS) 0.dp else itemWidth + itemGap).toPx()
+                    ((itemWidth + itemGap) * selected.ordinal).toPx()
                 },
                 animationSpec = tween(durationMillis = FigmaSelectionDurationMillis, easing = FastOutSlowInEasing),
                 label = "project detail section indicator"
@@ -359,6 +359,15 @@ internal fun ProjectSectionSwitcher(
                     selected = selected == ProjectDetailSection.DECKS,
                     theme = theme,
                     onClick = { onSelect(ProjectDetailSection.DECKS) },
+                    modifier = Modifier.weight(1f)
+                )
+                ProjectSectionItem(
+                    section = ProjectDetailSection.MATERIALS,
+                    label = "资料管理",
+                    symbol = "folder_open",
+                    selected = selected == ProjectDetailSection.MATERIALS,
+                    theme = theme,
+                    onClick = { onSelect(ProjectDetailSection.MATERIALS) },
                     modifier = Modifier.weight(1f)
                 )
             }

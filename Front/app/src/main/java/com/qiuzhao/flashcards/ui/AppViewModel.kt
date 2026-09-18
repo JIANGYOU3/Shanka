@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qiuzhao.flashcards.BuildConfig
 import com.qiuzhao.flashcards.data.CardDraft
+import com.qiuzhao.flashcards.data.local.DeckDailyActivity
 import com.qiuzhao.flashcards.data.local.LocalUsageStore
 import com.qiuzhao.flashcards.data.offline.ObservationEngine
 import com.qiuzhao.flashcards.data.offline.OfflineFirstV25Repository
@@ -46,6 +47,9 @@ import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25Result
 import com.qiuzhao.flashcards.domain.v25.V25SampleCard
 import com.qiuzhao.flashcards.domain.v25.V25StatsDashboard
+import com.qiuzhao.flashcards.domain.v25.V25PlanCard
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
+import com.qiuzhao.flashcards.domain.v25.V25StudySession
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
@@ -147,7 +151,7 @@ data class AccountBootstrap(val loaded: Boolean = false, val account: LocalAccou
  * then every staged material uploads through the materials endpoints). Server-backed materials
  * carry their real ids and statuses so the management screens render the contract states.
  */
-internal enum class ProjectDraftMaterialType { FILE, TEXT }
+internal enum class ProjectDraftMaterialType { FILE, TEXT, ZIP, HTML }
 
 internal data class ProjectDraftMaterial(
     val id: String,
@@ -207,6 +211,12 @@ data class DashboardUiState(
     val retentionRate: Float? = null,
     val streakDays: Int = 0,
     val masteredCards: Int = 0,
+    /** V25-D-37 server-aggregated study duration (0 = no session data yet, an honest empty). */
+    val weeklyStudySeconds: Int = 0,
+    val dailyStudySeconds: List<Int> = emptyList(),
+    val planStudySeconds: Int = 0,
+    val backlogStudySeconds: Int = 0,
+    val adhocStudySeconds: Int = 0,
 )
 
 /** Typed projection of the server-computed plan used by the home page. */
@@ -322,8 +332,20 @@ class AppViewModel(
         .map { values -> values.sumOf { it.reviewEventCount } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    /** Device-measured study seconds per deck (deckId → seconds); local-only, never synced. */
-    val deckStudySeconds: StateFlow<Map<String, Long>> = localUsage.observeStudySeconds()
+    /**
+     * V25-D-37 server-aggregated lifetime study seconds per deck (deckId → seconds), the
+     * 学习时长 metric card's cross-device source; null until the first summary loads
+     * (an honest dash, not a fabricated 0). Supersedes the removed device-local accumulator.
+     */
+    private val _deckStudySeconds = MutableStateFlow<Map<String, Long>?>(null)
+    val deckStudySeconds: StateFlow<Map<String, Long>?> = _deckStudySeconds.asStateFlow()
+
+    /** Cross-deck (今日计划 + 积压巩固) lifetime seconds; attributed to the current project. */
+    private val _crossDeckStudySeconds = MutableStateFlow<Long?>(null)
+    val crossDeckStudySeconds: StateFlow<Long?> = _crossDeckStudySeconds.asStateFlow()
+
+    /** Device-measured per-day activity per deck (deckId → today); 学习数据 今日 tab's source. */
+    val deckTodayActivity: StateFlow<Map<String, DeckDailyActivity>> = localUsage.observeDeckDailyActivity()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     private val deckDifficultyFlows = mutableMapOf<String, Flow<Map<V25Difficulty, Int>>>()
@@ -338,12 +360,96 @@ class AppViewModel(
             }
         }
 
-    /** Persists one settled study-session delta from the study screen's timer. */
+    /** Persists one settled study-session delta into today's device-local activity row. */
     fun recordStudySeconds(perDeckSeconds: Map<String, Long>) {
         if (perDeckSeconds.isEmpty()) return
         viewModelScope.launch {
-            localUsage.addStudySeconds(perDeckSeconds, System.currentTimeMillis())
+            localUsage.addTodayStudySeconds(perDeckSeconds, System.currentTimeMillis())
         }
+    }
+
+    /** Refreshes the lifetime duration summary feeding the 学习时长 cards; keeps the last value on failure. */
+    fun refreshStudyDurationSummary(): Job = viewModelScope.launch {
+        when (val result = v25Repository.studySessionSummary()) {
+            is V25Result.Success -> {
+                _deckStudySeconds.value = result.value.deckSeconds
+                _crossDeckStudySeconds.value =
+                    result.value.planSeconds + result.value.backlogSeconds
+            }
+            is V25Result.Failure -> handleFailure("study_session_summary", result, surface = false)
+        }
+    }
+
+    // --- V25-D-37 study session: server-side duration, best-effort reporting --------------------------
+    //
+    // The session is a thin same-day container: begin returns the server-accumulated seconds
+    // (the resume base), every report sends the session's cumulative ABSOLUTE seconds and the
+    // server merges via max — so retries, reordering and lost final segments can never inflate
+    // or corrupt the number, only under-report it. Failures never touch the study flow: the
+    // report stays dirty and re-sends on the next drained sync pass or begin.
+
+    private var activeSession: V25StudySession? = null
+    private var pendingSessionReport: Pair<String, Long>? = null
+
+    /**
+     * The review-all queue of the latest reset, consumed by the study screen to rebuild its
+     * sessionQueue; null when no reset happened (or it failed). The entities double as the new
+     * [studyCards] source: the server queue is the deck's full visible set (no due filter), so it
+     * must NOT be intersected with the previously loaded session cards (a due-queue subset).
+     */
+    private val _resetQueue = MutableStateFlow<List<FlashcardEntity>?>(null)
+    val resetQueue: StateFlow<List<FlashcardEntity>?> = _resetQueue.asStateFlow()
+
+    /** The study screen consumes the reset queue exactly once after rendering it. */
+    fun consumeResetQueue() {
+        _resetQueue.value = null
+    }
+
+    /** Opens (or resumes) today's session for one origin/scope; silent on failure. */
+    fun beginStudySession(origin: V25StudyOrigin, deckId: String? = null, reset: Boolean = false) =
+        viewModelScope.launch {
+            flushPendingSessionReport()
+            when (val result = v25Repository.beginStudySession(origin, deckId, reset)) {
+                is V25Result.Success -> {
+                    activeSession = result.value.session
+                    if (reset) {
+                        val entities = result.value.reviewAllCards.map { toFlashcard(it.card) }
+                        _studyCards.value = entities
+                        _resetQueue.value = entities
+                    } else {
+                        _resetQueue.value = null
+                    }
+                }
+                is V25Result.Failure -> {
+                    activeSession = null // 尽力而为：无服务端时长也不阻塞学习
+                    if (reset) _resetQueue.value = emptyList()
+                }
+            }
+        }
+
+    /**
+     * Reports the active session's [localSessionSeconds] (this client's cumulative count since
+     * begin) on top of the server resume base. Fire-and-forget: a failure leaves the absolute
+     * value dirty for the next flush point.
+     */
+    fun reportStudySession(localSessionSeconds: Long, ended: Boolean) {
+        val session = activeSession ?: return
+        val absolute = session.studySeconds.toLong() + localSessionSeconds
+        if (absolute <= 0) return
+        pendingSessionReport = session.sessionId to absolute
+        viewModelScope.launch {
+            when (val result = v25Repository.reportStudySession(session.sessionId, absolute, ended)) {
+                is V25Result.Success -> pendingSessionReport = null
+                is V25Result.Failure -> Unit // keep dirty; drained pass / next begin re-sends
+            }
+        }
+    }
+
+    /** Re-sends the last unsent absolute report (max-merge makes the replay harmless). */
+    private suspend fun flushPendingSessionReport() {
+        val pending = pendingSessionReport ?: return
+        val result = v25Repository.reportStudySession(pending.first, pending.second, ended = false)
+        if (result is V25Result.Success) pendingSessionReport = null
     }
 
     private val cardFlows = mutableMapOf<String, MutableStateFlow<List<FlashcardEntity>>>()
@@ -454,9 +560,11 @@ class AppViewModel(
         // no extra network) is what lets the home page's 今日计划 move right after a rating.
         viewModelScope.launch {
             v25Repository.reviewSync.drainedPasses.drop(1).collect {
+                flushPendingSessionReport() // 尽力补发：上一段未送达的会话时长
                 refreshDecks()
                 refreshTodayPlan()
                 refreshDashboard()
+                refreshStudyDurationSummary() // 会话时长已变，学习时长卡随之更新
             }
         }
         viewModelScope.launch {
@@ -466,6 +574,7 @@ class AppViewModel(
                 refreshDecks()
                 refreshTodayPlan()
                 refreshDashboard()
+                refreshStudyDurationSummary()
             }
         }
         viewModelScope.launch {
@@ -585,6 +694,7 @@ class AppViewModel(
         viewModelScope.launch {
             delay(1_100)
             refreshDashboard()
+            refreshStudyDurationSummary()
             refreshApiKeyStatus()
             recoverPendingDeletion()
             refreshProfile()
@@ -771,14 +881,18 @@ class AppViewModel(
      */
     fun addProjectDraftFile(uri: Uri, displayName: String = contentResolver.displayName(uri)) {
         val extension = displayName.substringAfterLast('.', "").lowercase()
-        if (extension != "pdf") {
-            _uiMessage.value = "仅支持 PDF 文件"
-            return
+        val draftType = when (extension) {
+            "pdf" -> ProjectDraftMaterialType.FILE
+            "zip" -> ProjectDraftMaterialType.ZIP
+            else -> {
+                _uiMessage.value = "仅支持 PDF / ZIP 文件"
+                return
+            }
         }
         if (_projectCreationMaterials.value.any { it.uri == uri }) return
         _projectCreationMaterials.value = _projectCreationMaterials.value + ProjectDraftMaterial(
-            id = "project-pdf-${System.nanoTime()}",
-            type = ProjectDraftMaterialType.FILE,
+            id = "project-file-${System.nanoTime()}",
+            type = draftType,
             title = displayName,
             extension = extension,
             uri = uri,
@@ -787,7 +901,7 @@ class AppViewModel(
 
     /** Kept for an old visual callback; it intentionally refuses name-only fake files. */
     fun addProjectDraftFile(@Suppress("UNUSED_PARAMETER") displayName: String) {
-        _uiMessage.value = "请通过文件选择器选择 PDF，不能只保存文件名"
+        _uiMessage.value = "请通过文件选择器选择 PDF / ZIP，不能只保存文件名"
     }
 
     fun deleteProjectDraftMaterial(materialId: String) {
@@ -796,7 +910,7 @@ class AppViewModel(
 
     internal fun renameProjectDraftFile(materialId: String, title: String) {
         _projectCreationMaterials.value = _projectCreationMaterials.value.map { material ->
-            if (material.type == ProjectDraftMaterialType.FILE && material.id == materialId) {
+            if (material.type != ProjectDraftMaterialType.TEXT && material.id == materialId) {
                 material.renamedFile(title)
             } else if (material.id == materialId) {
                 material.copy(title = title.trim().ifBlank { material.title })
@@ -919,14 +1033,19 @@ class AppViewModel(
         for (uri in uris) {
             val displayName = contentResolver.displayName(uri)
             val extension = displayName.substringAfterLast('.', "").lowercase()
-            if (extension != "pdf") {
-                _uiMessage.value = "仅支持 PDF 文件"
-                continue
+            val draftType = when (extension) {
+                "pdf" -> ProjectDraftMaterialType.FILE
+                "zip" -> ProjectDraftMaterialType.ZIP
+                "html", "htm" -> ProjectDraftMaterialType.HTML
+                else -> {
+                    _uiMessage.value = "仅支持 PDF / ZIP / HTML 文件"
+                    continue
+                }
             }
             if (_materialImportDrafts.value.any { it.uri == uri }) continue
             _materialImportDrafts.value = _materialImportDrafts.value + ProjectDraftMaterial(
-                id = "staged-pdf-${System.nanoTime()}",
-                type = ProjectDraftMaterialType.FILE,
+                id = "staged-file-${System.nanoTime()}",
+                type = draftType,
                 title = displayName,
                 extension = extension,
                 uri = uri,
@@ -935,16 +1054,6 @@ class AppViewModel(
     }
 
     /** Opens the shared text editor for one new import draft; the editor commits the content. */
-    internal fun stageMaterialImportText(): String {
-        val id = "staged-text-${System.nanoTime()}"
-        _materialImportDrafts.value = _materialImportDrafts.value + ProjectDraftMaterial(
-            id = id,
-            type = ProjectDraftMaterialType.TEXT,
-            title = "",
-        )
-        return id
-    }
-
     /** Editor callback for an import-flow text draft (staged until "识别并导入"). */
     internal fun upsertMaterialImportText(materialId: String?, title: String, content: String) {
         val normalizedTitle = title.trim()
@@ -973,7 +1082,7 @@ class AppViewModel(
 
     internal fun renameMaterialImportFile(materialId: String, title: String) {
         _materialImportDrafts.value = _materialImportDrafts.value.map { material ->
-            if (material.type == ProjectDraftMaterialType.FILE && material.id == materialId) {
+            if (material.type != ProjectDraftMaterialType.TEXT && material.id == materialId) {
                 material.renamedFile(title)
             } else if (material.id == materialId) {
                 material.copy(title = title.trim().ifBlank { material.title })
@@ -989,11 +1098,16 @@ class AppViewModel(
      * the upload coordinator owns one operation at a time) while the draft's wire
      * status drives the card states; creation drafts join the wizard instead and
      * upload with the project at 完成设置.
+     *
+     * FAILED drafts are deliberately NOT re-picked: a rejected file (bad ZIP, oversized
+     * text, unsupported request) would otherwise re-upload in a tight loop with the
+     * failure card flashing between 解析中/失败. A failed draft waits for the card's
+     * explicit 重试 tap ([retryMaterialImportDraft]).
      */
     internal fun autoRecognizeMaterialImport(projectId: String?) {
         if (projectId == null) return
         val pending = _materialImportDrafts.value.filter {
-            it.serverStatus == null || it.serverStatus == "PENDING" || it.serverStatus == "FAILED"
+            it.serverStatus == null || it.serverStatus == "PENDING"
         }
         if (pending.isEmpty()) return
         // Synchronous PENDING write keeps just-staged cards recognizing through the
@@ -1007,11 +1121,14 @@ class AppViewModel(
                 val outcome = when (material.type) {
                     ProjectDraftMaterialType.FILE -> commitStagedPdf(projectId, material)
                     ProjectDraftMaterialType.TEXT -> commitStagedImportText(projectId, material)
+                    ProjectDraftMaterialType.ZIP -> commitStagedZip(projectId, material)
+                    ProjectDraftMaterialType.HTML -> commitStagedHtml(projectId, material)
                 }
                 if (outcome is V25Result.Failure) {
                     if (outcome.code != ImportCoordinator.IN_FLIGHT_CODE) {
                         handleFailure("commit_material", outcome, surface = false)
-                        updateImportDraftStatus(material.id, "FAILED")
+                        // The code drives the card's readable failure line (错误提示全量本地化).
+                        updateImportDraftStatus(material.id, "FAILED", errorCode = outcome.code)
                     } else {
                         // The upload coordinator is busy; the card keeps recognizing.
                         updateImportDraftStatus(material.id, "PENDING")
@@ -1026,6 +1143,13 @@ class AppViewModel(
                 }
             }
             refreshProjects()
+        }
+    }
+
+    /** 手动重试一个失败的导入草稿：回到 PENDING，由自动识别管线重新拾取上传。 */
+    fun retryMaterialImportDraft(materialId: String) {
+        _materialImportDrafts.value = _materialImportDrafts.value.map {
+            if (it.id == materialId) it.copy(serverStatus = "PENDING", errorCode = null) else it
         }
     }
 
@@ -1051,9 +1175,9 @@ class AppViewModel(
         onDone()
     }
 
-    private fun updateImportDraftStatus(materialId: String, status: String) {
+    private fun updateImportDraftStatus(materialId: String, status: String, errorCode: String? = null) {
         _materialImportDrafts.value = _materialImportDrafts.value.map {
-            if (it.id == materialId) it.copy(serverStatus = status) else it
+            if (it.id == materialId) it.copy(serverStatus = status, errorCode = errorCode) else it
         }
     }
 
@@ -1068,6 +1192,8 @@ class AppViewModel(
                 val outcome = when (material.type) {
                     ProjectDraftMaterialType.FILE -> commitStagedPdf(projectId, material)
                     ProjectDraftMaterialType.TEXT -> commitStagedImportText(projectId, material)
+                    ProjectDraftMaterialType.ZIP -> commitStagedZip(projectId, material)
+                    ProjectDraftMaterialType.HTML -> commitStagedHtml(projectId, material)
                 }
                 if (outcome is V25Result.Failure) {
                     if (outcome.code != ImportCoordinator.IN_FLIGHT_CODE) handleFailure("commit_material", outcome, surface = false)
@@ -1127,6 +1253,61 @@ class AppViewModel(
     }
 
     /**
+     * One staged ZIP note pack → POST materials/zip (V25-D-35). Synchronous server-side
+     * parsing: a structural rejection lands here as a 4xx failure on the draft card —
+     * retry means picking the file again, never a server replace.
+     */
+    private suspend fun commitStagedHtml(projectId: String, material: ProjectDraftMaterial): V25Result<*> {
+        val uri = material.uri
+            ?: return V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选 HTML")
+        val fileName = contentResolver.displayName(uri)
+        val attempt = pdfUploadCoordinator.begin(PdfUploadOperation.AddHtmlMaterial(projectId), uri.toString(), fileName)
+            ?: return V25Result.Failure(ImportCoordinator.IN_FLIGHT_CODE, null, null)
+        val input = contentResolver.openInputStream(uri)
+        if (input == null) {
+            pdfUploadCoordinator.fail()
+            return V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选 HTML")
+        }
+        return try {
+            input.use { content ->
+                v25Repository.addProjectMaterialHtml(projectId, fileName, content, attempt.idempotencyKey)
+            }.also { result ->
+                if (result is V25Result.Success) pdfUploadCoordinator.commit() else pdfUploadCoordinator.fail()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            pdfUploadCoordinator.fail()
+            V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, failure.message)
+        }
+    }
+
+    private suspend fun commitStagedZip(projectId: String, material: ProjectDraftMaterial): V25Result<*> {
+        val uri = material.uri
+            ?: return V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选 ZIP")
+        val fileName = contentResolver.displayName(uri)
+        val attempt = pdfUploadCoordinator.begin(PdfUploadOperation.AddZipMaterial(projectId), uri.toString(), fileName)
+            ?: return V25Result.Failure(ImportCoordinator.IN_FLIGHT_CODE, null, null)
+        val input = contentResolver.openInputStream(uri)
+        if (input == null) {
+            pdfUploadCoordinator.fail()
+            return V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选 ZIP")
+        }
+        return try {
+            input.use { content ->
+                v25Repository.addProjectMaterialZip(projectId, fileName, content, attempt.idempotencyKey)
+            }.also { result ->
+                if (result is V25Result.Success) pdfUploadCoordinator.commit() else pdfUploadCoordinator.fail()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            pdfUploadCoordinator.fail()
+            V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, failure.message)
+        }
+    }
+
+    /**
      * Two-step creation (contract V25-D-29): POST /projects with the JSON name, then every
      * staged material through POST materials/pdf|text. Zero staged materials is valid — the
      * project is created EMPTY and the guide screen offers the add-material entries.
@@ -1151,6 +1332,20 @@ class AppViewModel(
                         openStream = { contentResolver.openInputStream(uri) },
                     )
                 }
+                ProjectDraftMaterialType.ZIP -> material.uri?.let { uri ->
+                    MaterialUpload.Zip(
+                        draftId = material.id,
+                        materialName = material.title,
+                        openStream = { contentResolver.openInputStream(uri) },
+                    )
+                }
+                ProjectDraftMaterialType.HTML -> material.uri?.let { uri ->
+                    MaterialUpload.Html(
+                        draftId = material.id,
+                        materialName = material.title,
+                        openStream = { contentResolver.openInputStream(uri) },
+                    )
+                }
                 ProjectDraftMaterialType.TEXT -> MaterialUpload.Text(
                     draftId = material.id,
                     materialName = material.title,
@@ -1158,8 +1353,8 @@ class AppViewModel(
                 )
             }
         }
-        if (materials.any { it.type == ProjectDraftMaterialType.FILE && it.uri == null }) {
-            onResult(null, "无法读取所选 PDF")
+        if (materials.any { it.type != ProjectDraftMaterialType.TEXT && it.uri == null }) {
+            onResult(null, "无法读取所选文件")
             return
         }
         viewModelScope.launch {
@@ -1227,6 +1422,45 @@ class AppViewModel(
                     handleFailure("replace_project_material", result, surface = false)
                     onResult(false, userMessage(result))
                 }
+            }
+        }
+    }
+
+    /** V25-D-36：重试解析（不重传文件）——仅 AI 章节规划失败/未存 Key 的 FAILED PDF。 */
+    fun reparseProjectMaterial(
+        projectId: String,
+        materialId: String,
+        onResult: (Boolean, String?) -> Unit,
+    ) = viewModelScope.launch {
+        when (val result = v25Repository.reparseProjectMaterial(projectId, materialId)) {
+            is V25Result.Success -> {
+                markMaterialImportParsing(materialId)
+                refreshActiveProject(projectId)
+                refreshProjects()
+                onResult(true, null)
+            }
+            is V25Result.Failure -> {
+                handleFailure("reparse_project_material", result, surface = false)
+                onResult(false, userMessage(result))
+            }
+        }
+    }
+
+    /** V25-D-36：整本单章降级——AI 失败态 PDF 以单章进入章节确认流程。 */
+    fun fallbackWholeBookChapters(
+        projectId: String,
+        materialId: String,
+        onResult: (Boolean, String?) -> Unit,
+    ) = viewModelScope.launch {
+        when (val result = v25Repository.fallbackWholeBookChapters(projectId, materialId)) {
+            is V25Result.Success -> {
+                refreshActiveProject(projectId)
+                refreshProjects()
+                onResult(true, null)
+            }
+            is V25Result.Failure -> {
+                handleFailure("fallback_whole_book", result, surface = false)
+                onResult(false, userMessage(result))
             }
         }
     }
@@ -1804,10 +2038,22 @@ class AppViewModel(
      * a network round-trip. The sync coordinator replays the event and the merged refresh
      * (decks / today plan / dashboard, once per drained pass) updates the Room projections;
      * there is deliberately no per-rating multi-endpoint fan-out anymore.
+     *
+     * [deckId] feeds the device-local per-day review counter (学习数据 今日 tab); blank means
+     * the caller cannot attribute the card, and the counter simply skips that swipe.
      */
-    fun rate(cardId: String, rating: Rating, onSuccess: () -> Unit = {}) = viewModelScope.launch {
-        when (val result = reviewCoordinator.submit(cardId, V25Rating.valueOf(rating.name))) {
-            is V25Result.Success -> onSuccess()
+    fun rate(
+        cardId: String,
+        rating: Rating,
+        deckId: String = "",
+        origin: V25StudyOrigin? = null,
+        onSuccess: () -> Unit = {},
+    ) = viewModelScope.launch {
+        when (val result = reviewCoordinator.submit(cardId, V25Rating.valueOf(rating.name), origin)) {
+            is V25Result.Success -> {
+                if (deckId.isNotBlank()) localUsage.addDeckReview(deckId, System.currentTimeMillis())
+                onSuccess()
+            }
             is V25Result.Failure -> {
                 if (result.code != ReviewCoordinator.IN_FLIGHT_CODE) handleFailure("submit_review", result)
             }
@@ -2012,6 +2258,11 @@ class AppViewModel(
             retentionRate = value.retentionRate,
             streakDays = value.streakDays,
             masteredCards = value.masteredCards,
+            weeklyStudySeconds = value.weeklyStudySeconds,
+            dailyStudySeconds = value.dailyStudySeconds,
+            planStudySeconds = value.planStudySeconds,
+            backlogStudySeconds = value.backlogStudySeconds,
+            adhocStudySeconds = value.adhocStudySeconds,
         )
         _weeklyActivity.value = WeeklyActivityData(
             dailyCounts = value.weeklyActivity.map { it.ratingCount }.padTo(7),
@@ -2150,8 +2401,7 @@ class AppViewModel(
         if (BuildConfig.DEBUG) Log.w("ShankaNetwork", "op=$operation code=${result.code}")
     }
 
-    private fun userMessage(result: V25Result.Failure): String =
-        if (result.code == "NETWORK_UNAVAILABLE") "网络错误，请稍后重试" else ErrorMessages.forCode(result.code)
+    private fun userMessage(result: V25Result.Failure): String = ErrorMessages.forCode(result.code)
 
     private fun toProjectSummary(project: V25LearningProject) = com.qiuzhao.flashcards.data.remote.ProjectSummary(
         id = project.projectId,
@@ -2164,12 +2414,17 @@ class AppViewModel(
 
     private fun com.qiuzhao.flashcards.domain.v25.V25Material.toProjectMaterial() = ProjectDraftMaterial(
         id = "project-material-$projectId-$materialId",
-        type = if (type == V25MaterialType.PDF) ProjectDraftMaterialType.FILE else ProjectDraftMaterialType.TEXT,
+        type = when (type) {
+            V25MaterialType.PDF, V25MaterialType.ZIP -> ProjectDraftMaterialType.FILE
+            V25MaterialType.HTML -> ProjectDraftMaterialType.HTML
+            V25MaterialType.TEXT -> ProjectDraftMaterialType.TEXT
+        },
         title = name,
-        extension = if (type == V25MaterialType.PDF) {
-            name.substringAfterLast('.', "").lowercase().ifBlank { "pdf" }
-        } else {
-            null
+        extension = when (type) {
+            V25MaterialType.PDF -> name.substringAfterLast('.', "").lowercase().ifBlank { "pdf" }
+            V25MaterialType.ZIP -> name.substringAfterLast('.', "").lowercase().ifBlank { "zip" }
+            V25MaterialType.HTML -> name.substringAfterLast('.', "").lowercase().ifBlank { "html" }
+            V25MaterialType.TEXT -> null
         },
         importedAt = createdAt,
         projectId = projectId,

@@ -367,6 +367,11 @@ private fun DataMetricRow(symbol: String, label: String, value: String, designSc
 
 private fun DashboardUiState?.percent(value: Float?): String = value?.let { "${(it * 100).roundToInt()}%" } ?: "—"
 
+// V25-D-37: the server-aggregated study seconds live in DashboardUiState (weeklyStudySeconds
+// / dailyStudySeconds / per-origin splits) and stay available to the existing 学习时长 metric
+// slots (ProjectDetailScreen / DeckScreen LearningTime cards); the stats tab intentionally
+// renders no extra duration card.
+
 @Composable
 private fun DataStreakCards(designScale: Float, dashboard: DashboardUiState?, totalReviewCount: Int) {
     val longestStreak = dashboard?.streakDays

@@ -62,6 +62,8 @@ data class ProjectChapterEntity(
     /** Owning material (structure-contract 3.2a); TEXT chapters own their material's single chapter. */
     @ColumnInfo(name = "material_id") val materialId: String,
     @ColumnInfo(name = "name") val name: String,
+    /** Chapter origin (V25-D-36): TOC / AI / FALLBACK / TEXT / ZIP / MANUAL. */
+    @ColumnInfo(name = "source", defaultValue = "TOC") val source: String = "TOC",
     /** Page spans are PDF-only; TEXT chapters store null. */
     @ColumnInfo(name = "start_page") val startPage: Int?,
     @ColumnInfo(name = "end_page") val endPage: Int?,
@@ -228,6 +230,12 @@ data class DashboardEntity(
     @ColumnInfo(name = "retention_rate") val retentionRate: Double?,
     @ColumnInfo(name = "streak_days") val streakDays: Int,
     @ColumnInfo(name = "mastered_card_count") val masteredCards: Int,
+    /** V25-D-37 study-duration projection (server study_sessions aggregation). */
+    @ColumnInfo(name = "weekly_study_seconds") val weeklyStudySeconds: Int,
+    @ColumnInfo(name = "daily_study_seconds") val dailyStudySeconds: String,
+    @ColumnInfo(name = "plan_study_seconds") val planStudySeconds: Int,
+    @ColumnInfo(name = "backlog_study_seconds") val backlogStudySeconds: Int,
+    @ColumnInfo(name = "adhoc_study_seconds") val adhocStudySeconds: Int,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 
@@ -268,6 +276,11 @@ data class ReviewOutboxEntity(
     @ColumnInfo(name = "client_event_id") val clientEventId: String,
     @ColumnInfo(name = "card_id") val cardId: String,
     @ColumnInfo(name = "rating") val rating: String,
+    /**
+     * V25-D-37 rating origin (PLAN/BACKLOG/ADHOC). Nullable: rows enqueued before v8 replay
+     * as origin-less and the server stores NULL = 未分类; new rows always carry one.
+     */
+    @ColumnInfo(name = "origin") val origin: String?,
     @ColumnInfo(name = "idempotency_key") val idempotencyKey: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "status") val status: String,
@@ -310,15 +323,16 @@ data class DeletionOutboxEntity(
 )
 
 /**
- * Device-owned study-time accumulator: the study screen's foreground seconds per deck
- * (card-shown → leave, Anki-style). V2.5 collects no timing server-side, so these rows are
- * this device's measurement only — they never sync and survive re-projections of every
- * server-backed table.
+ * The device's per-day measurement of one deck: rated cards and foreground seconds bucketed by
+ * the device-local study date — a device-owned fact feeding the 学习数据 "今日" tab. Lifetime
+ * duration is server truth since V25-D-37 (study sessions), so no cumulative local table exists.
  */
-@Entity(tableName = "deck_study_seconds", primaryKeys = ["user_id", "deck_id"])
-data class DeckStudySecondsEntity(
+@Entity(tableName = "deck_daily_activity", primaryKeys = ["user_id", "deck_id", "study_date"])
+data class DeckDailyActivityEntity(
     @ColumnInfo(name = "user_id") val userId: String,
     @ColumnInfo(name = "deck_id") val deckId: String,
-    @ColumnInfo(name = "total_seconds") val totalSeconds: Long,
+    @ColumnInfo(name = "study_date") val studyDate: String,
+    @ColumnInfo(name = "reviewed_count") val reviewedCount: Int,
+    @ColumnInfo(name = "study_seconds") val studySeconds: Long,
     @ColumnInfo(name = "updated_at_epoch_ms") val updatedAtEpochMs: Long,
 )

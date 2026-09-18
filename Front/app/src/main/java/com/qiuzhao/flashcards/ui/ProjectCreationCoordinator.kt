@@ -40,6 +40,20 @@ sealed interface MaterialUpload {
         val openStream: () -> InputStream?,
     ) : MaterialUpload
 
+    /** POST /projects/{project_id}/materials/zip (multipart; V25-D-35 ZIP note pack). */
+    class Zip(
+        override val draftId: String,
+        override val materialName: String,
+        val openStream: () -> InputStream?,
+    ) : MaterialUpload
+
+    /** POST /projects/{project_id}/materials/html (multipart; V25-D-38 HTML document). */
+    class Html(
+        override val draftId: String,
+        override val materialName: String,
+        val openStream: () -> InputStream?,
+    ) : MaterialUpload
+
     /** POST /projects/{project_id}/materials/text (JSON body, ≤30000 characters). */
     class Text(
         override val draftId: String,
@@ -59,7 +73,8 @@ enum class MaterialUploadPhase { UPLOADING, FAILED, DONE }
 data class MaterialUploadState(
     val draftId: String,
     val name: String,
-    val isPdf: Boolean,
+    /** True for byte uploads (PDF / ZIP); texts upload as JSON and render in their own group. */
+    val isFile: Boolean,
     val phase: MaterialUploadPhase,
     val errorCode: String? = null,
 )
@@ -190,6 +205,18 @@ class ProjectCreationCoordinator(
                                             repository.addProjectMaterialPdf(projectId, upload.materialName, content, key)
                                         }
                                     } ?: V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选文件")
+                                is MaterialUpload.Zip ->
+                                    upload.openStream()?.let { input ->
+                                        input.use { content ->
+                                            repository.addProjectMaterialZip(projectId, upload.materialName, content, key)
+                                        }
+                                    } ?: V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选文件")
+                                is MaterialUpload.Html ->
+                                    upload.openStream()?.let { input ->
+                                        input.use { content ->
+                                            repository.addProjectMaterialHtml(projectId, upload.materialName, content, key)
+                                        }
+                                    } ?: V25Result.Failure(V25ErrorCodes.INVALID_RESPONSE, null, "无法读取所选文件")
                                 is MaterialUpload.Text ->
                                     repository.addProjectMaterialText(projectId, upload.materialName, upload.content, key)
                             }
@@ -251,7 +278,7 @@ class ProjectCreationCoordinator(
             MaterialUploadState(
                 draftId = upload.draftId,
                 name = upload.materialName,
-                isPdf = upload is MaterialUpload.Pdf,
+                isFile = upload !is MaterialUpload.Text,
                 phase = if (done) MaterialUploadPhase.DONE else MaterialUploadPhase.UPLOADING,
             )
         }

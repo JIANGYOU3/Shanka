@@ -3,8 +3,9 @@ package com.qiuzhao.flashcards.ui.auth
 /**
  * Full error-code → user-facing message map (spec §4.1): every backend error code has
  * a dedicated Chinese message; unknown codes fall back to [UNKNOWN_ERROR_MESSAGE].
- * Transport failures never reach this table — they are mapped to the network message
- * before lookup (see AuthViewModel.authErrorMessage).
+ * Client-side transport codes (NETWORK_UNAVAILABLE, INVALID_RESPONSE) and the HTTP_nnn
+ * synthetic codes from the network stack are localized here too, so every UI surface
+ * can hand raw codes to [forCode] and always get displayable Chinese text.
  */
 object ErrorMessages {
     const val UNKNOWN_ERROR_MESSAGE = "操作失败，请稍后重试"
@@ -18,12 +19,22 @@ object ErrorMessages {
         "RATE_LIMITED" to "请求过于频繁，请稍后重试",
         "IDEMPOTENCY_CONFLICT" to "请求冲突，请勿重复提交",
         "INTERNAL_ERROR" to "服务器内部错误，请稍后重试",
+        "NETWORK_UNAVAILABLE" to "网络错误，请稍后重试",
+        "INVALID_RESPONSE" to "数据解析异常，请稍后重试",
         "PDF_UPLOAD_INVALID" to "文件不符合要求，请上传有效 PDF",
         "PDF_PARSE_FAILED" to "PDF 解析失败，请换一份文件重试",
         "PDF_TOC_MISSING" to "PDF 缺少目录结构，无法生成",
+        "PDF_AI_CHAPTERS_FAILED" to "AI 章节规划失败，可重试解析或按整本继续",
+        "PDF_NOT_READY" to "PDF 尚未解析完成，请稍候再试",
         "PDF_NOT_FOUND" to "文件不存在或已删除",
+        "ZIP_UPLOAD_INVALID" to "ZIP 文件不符合要求（≤20MB、≤500 个 md、正文≤30 万字）",
+        "ZIP_STRUCTURE_INVALID" to "ZIP 结构不符：需恰有一个主文件夹，子文件夹放 md 笔记",
+        "ZIP_EXTRACT_FAILED" to "ZIP 损坏或包含非 UTF-8 的 md 文件",
+        "HTML_UPLOAD_INVALID" to "HTML 文件不符合要求（≤20MB、正文≤30 万字）",
+        "HTML_EXTRACT_FAILED" to "HTML 解析失败，请确认文件为 UTF-8 编码",
         "CHAPTER_NOT_FOUND" to "章节不存在或已删除",
         "PROJECT_NOT_FOUND" to "项目不存在或已删除",
+        "MATERIAL_NOT_FOUND" to "资料不存在或已删除",
         "PROJECT_NAME_TAKEN" to "项目名称已存在",
         "PROJECT_STATE_CONFLICT" to "项目当前状态无法执行此操作，请刷新后重试",
         "PROJECT_HAS_ACTIVE_TASK" to "项目仍有进行中的生成任务；准备阶段任务可在删除确认中一起放弃",
@@ -36,7 +47,7 @@ object ErrorMessages {
         "TASK_NOT_RESUMABLE" to "任务无法继续",
         "TASK_IN_PROGRESS" to "资源正被任务使用；准备阶段任务可先放弃，正式生成需等待完成",
         "GENERATION_FAILED" to "生成失败，请稍后重试",
-        "DECK_NOT_FOUND" to "牌组不存在或已删除",
+        "DECK_NOT_FOUND" to "牌组不存在、已删除或不属于当前项目",
         "CARD_NOT_FOUND" to "卡片不存在或已删除",
         "CARD_DELETE_WINDOW_EXPIRED" to "撤销时间已结束",
         "CARD_REWRITE_UNAVAILABLE" to "暂时无法生成改写预览",
@@ -48,7 +59,27 @@ object ErrorMessages {
         "REWRITE_SCHEMA_INVALID" to "改写结果不符合要求，请重试",
         "REVIEW_EVENT_INVALID" to "学习记录无效",
         "REVIEW_EVENT_CONFLICT" to "学习记录冲突，请刷新重试",
+        "SESSION_NOT_FOUND" to "学习会话不存在或已过期，请重新进入学习",
     )
 
-    fun forCode(code: String?): String = code?.let { byCode[it] } ?: UNKNOWN_ERROR_MESSAGE
+    /**
+     * Resolves a code to its Chinese message. Codes missing from the table hit the
+     * generic fallback; HTTP_nnn synthetic codes (RemoteV25Repository.toFailure, when
+     * the error body carries no envelope code) map by status class so users never
+     * see the raw string.
+     */
+    fun forCode(code: String?): String {
+        if (code == null) return UNKNOWN_ERROR_MESSAGE
+        byCode[code]?.let { return it }
+        if (code.startsWith("HTTP_")) {
+            return when (code.removePrefix("HTTP_").toIntOrNull()) {
+                404 -> "请求的内容不存在或已下线"
+                429 -> "请求过于频繁，请稍后重试"
+                in 500..599 -> "服务器开小差了，请稍后重试"
+                in 400..499 -> "请求失败，请稍后重试"
+                else -> UNKNOWN_ERROR_MESSAGE
+            }
+        }
+        return UNKNOWN_ERROR_MESSAGE
+    }
 }

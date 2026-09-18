@@ -29,12 +29,10 @@ sealed interface AuthState {
 const val NETWORK_ERROR_MESSAGE = "网络错误，请稍后重试"
 
 /**
- * Transport failures (no HTTP response at all — the unified OkHttp stack maps them to
- * code NETWORK_UNAVAILABLE) show the network message; every real server error code goes
- * through the full [ErrorMessages] table, unknown codes included (generic fallback).
+ * Every failure code — transport failures (NETWORK_UNAVAILABLE) included — resolves
+ * through the full [ErrorMessages] table; unknown codes get the generic fallback.
  */
-private fun ApiResult.Failure.authErrorMessage(): String =
-    if (code == "NETWORK_UNAVAILABLE") NETWORK_ERROR_MESSAGE else ErrorMessages.forCode(code)
+private fun ApiResult.Failure.authErrorMessage(): String = ErrorMessages.forCode(code)
 
 /**
  * A plain state holder (deliberately not an AndroidX ViewModel) so the session logic runs on

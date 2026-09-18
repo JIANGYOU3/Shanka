@@ -33,8 +33,12 @@ import com.qiuzhao.flashcards.domain.v25.V25Result
 import com.qiuzhao.flashcards.domain.v25.V25ReviewCard
 import com.qiuzhao.flashcards.domain.v25.V25SampleCard
 import com.qiuzhao.flashcards.domain.v25.V25StatsDashboard
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
+import com.qiuzhao.flashcards.domain.v25.V25StudyDurationSummary
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
+import com.qiuzhao.flashcards.domain.v25.V25StudySession
+import com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin
 import com.qiuzhao.flashcards.domain.v25.V25StudySettingsPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
@@ -137,6 +141,24 @@ class RemoteV25Repository internal constructor(
         uploadApi.addProjectMaterialPdf(projectId, idempotencyKey ?: newKey(), pdfPart(fileName, content)).toDomain()
     }
 
+    override suspend fun addProjectMaterialZip(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<V25Material> = wire {
+        uploadApi.addProjectMaterialZip(projectId, idempotencyKey ?: newKey(), zipPart(fileName, content)).toDomain()
+    }
+
+    override suspend fun addProjectMaterialHtml(
+        projectId: String,
+        fileName: String,
+        content: InputStream,
+        idempotencyKey: String?,
+    ): V25Result<V25Material> = wire {
+        uploadApi.addProjectMaterialHtml(projectId, idempotencyKey ?: newKey(), htmlPart(fileName, content)).toDomain()
+    }
+
     override suspend fun addProjectMaterialText(
         projectId: String,
         name: String,
@@ -199,6 +221,17 @@ class RemoteV25Repository internal constructor(
             cancelActiveTasks = if (allowCancel) true else null,
         ).toDomain()
     }
+
+    override suspend fun reparseProjectMaterial(
+        projectId: String,
+        materialId: String,
+    ): V25Result<V25LearningProject> = wire { api.reparseProjectMaterial(projectId, materialId, newKey()).toDomain() }
+
+    override suspend fun fallbackWholeBookChapters(
+        projectId: String,
+        materialId: String,
+    ): V25Result<V25LearningProject> =
+        wire { api.fallbackWholeBookChapters(projectId, materialId, newKey()).toDomain() }
 
     override suspend fun updateChapter(
         projectId: String,
@@ -399,14 +432,50 @@ class RemoteV25Repository internal constructor(
         rating: V25Rating,
         clientEventId: String?,
         idempotencyKey: String?,
+        origin: V25StudyOrigin?,
     ): V25Result<V25RatingResult> = wire {
         api.submitReview(
             // client_event_id is the device-unique offline-retry idempotency identity: a retrying
             // submission reuses its original id so the server's fallback dedupe sees one event.
-            ReviewEventRequest(cardId, rating.name, clientEventId ?: UUID.randomUUID().toString()),
+            ReviewEventRequest(
+                cardId,
+                rating.name,
+                clientEventId ?: UUID.randomUUID().toString(),
+                origin?.name,
+            ),
             idempotencyKey ?: newKey(),
         ).toDomain()
     }
+
+    // --- study sessions (V25-D-37) --------------------------------------------------------------------
+
+    override suspend fun beginStudySession(
+        origin: V25StudyOrigin,
+        deckId: String?,
+        reset: Boolean,
+    ): V25Result<V25StudySessionBegin> = wire {
+        api.beginStudySession(
+            StudySessionBeginRequest(origin.name, deckId, reset),
+            newKey(),
+        ).toDomain()
+    }
+
+    override suspend fun reportStudySession(
+        sessionId: String,
+        studySeconds: Long,
+        ended: Boolean,
+    ): V25Result<V25StudySession> = wire {
+        // Absolute-value max merge server-side: a fresh key per report is safe (the seconds
+        // themselves are the idempotency — re-sends can only confirm, never inflate).
+        api.reportStudySession(sessionId, StudySessionReportRequest(studySeconds, ended), newKey())
+            .toDomain()
+    }
+
+    override suspend fun studySessions(studyDate: String?): V25Result<List<V25StudySession>> =
+        wire { api.studySessions(studyDate).items.map { it.toDomain() } }
+
+    override suspend fun studySessionSummary(): V25Result<V25StudyDurationSummary> =
+        wire { api.studySessionSummary().toDomain() }
 
     // --- statistics (Architecture 4.5) ------------------------------------------------------------
 
@@ -486,5 +555,24 @@ internal fun pdfPart(fileName: String, content: InputStream): MultipartBody.Part
         "file",
         fileName,
         bytes.toRequestBody("application/pdf".toMediaType()),
+    )
+}
+
+/** Frames the ZIP note-pack part (V25-D-35); same Content-Disposition safety as [pdfPart]. */
+internal fun zipPart(fileName: String, content: InputStream): MultipartBody.Part {
+    val bytes = content.use { it.readBytes() }
+    return MultipartBody.Part.createFormData(
+        "file",
+        fileName,
+        bytes.toRequestBody("application/zip".toMediaType()),
+    )
+}
+
+internal fun htmlPart(fileName: String, content: InputStream): MultipartBody.Part {
+    val bytes = content.use { it.readBytes() }
+    return MultipartBody.Part.createFormData(
+        "file",
+        fileName,
+        bytes.toRequestBody("text/html".toMediaType()),
     )
 }

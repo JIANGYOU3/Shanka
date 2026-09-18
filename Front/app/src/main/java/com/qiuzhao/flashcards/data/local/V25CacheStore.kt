@@ -16,6 +16,7 @@ import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25ReviewCard
 import com.qiuzhao.flashcards.domain.v25.V25ReviewState
 import com.qiuzhao.flashcards.domain.v25.V25StatsDashboard
+import com.qiuzhao.flashcards.domain.v25.V25StudyOrigin
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25TodayPlan
 import java.time.Instant
@@ -428,6 +429,7 @@ class V25CacheStore(private val db: ShankaV25Database) {
         rating: V25Rating,
         clientEventId: String,
         idempotencyKey: String,
+        origin: V25StudyOrigin?,
         now: Long,
     ) {
         db.withTransaction {
@@ -437,6 +439,7 @@ class V25CacheStore(private val db: ShankaV25Database) {
                     clientEventId = clientEventId,
                     cardId = cardId,
                     rating = rating.name,
+                    origin = origin?.name,
                     idempotencyKey = idempotencyKey,
                     createdAt = now,
                     status = OutboxStatus.PENDING,
@@ -576,6 +579,7 @@ private fun List<V25Chapter>.toEntities(userId: String, projectId: String) =
             projectId = projectId,
             materialId = chapter.materialId,
             name = chapter.name,
+            source = chapter.source,
             startPage = chapter.startPage,
             endPage = chapter.endPage,
             position = index,
@@ -608,7 +612,7 @@ private fun ProjectEntity.toDomain(materials: List<V25Material>, chapters: List<
         updatedAt = Instant.ofEpochMilli(updatedAt),
         version = version,
         chapters = chapters.map {
-            V25Chapter(it.chapterId, it.materialId, it.name, it.startPage, it.endPage)
+            V25Chapter(it.chapterId, it.materialId, it.name, it.source, it.startPage, it.endPage)
         },
     )
 
@@ -844,6 +848,11 @@ private fun V25StatsDashboard.toEntity(userId: String, now: Long) = DashboardEnt
     retentionRate = retentionRate?.toDouble(),
     streakDays = streakDays,
     masteredCards = masteredCards,
+    weeklyStudySeconds = weeklyStudySeconds,
+    dailyStudySeconds = cacheJson.encodeToString(ListSerializer(Int.serializer()), dailyStudySeconds),
+    planStudySeconds = planStudySeconds,
+    backlogStudySeconds = backlogStudySeconds,
+    adhocStudySeconds = adhocStudySeconds,
     updatedAt = now,
 )
 
@@ -852,6 +861,9 @@ private fun DashboardEntity.toDomain(): V25StatsDashboard {
     val counts = runCatching {
         cacheJson.decodeFromString(ListSerializer(Int.serializer()), weeklyActivity)
     }.getOrDefault(List(7) { 0 })
+    val dailySeconds = runCatching {
+        cacheJson.decodeFromString(ListSerializer(Int.serializer()), dailyStudySeconds)
+    }.getOrDefault(emptyList())
     return V25StatsDashboard(
         hasData = hasData,
         weeklyActivity = counts.mapIndexed { index, ratingCount ->
@@ -869,5 +881,10 @@ private fun DashboardEntity.toDomain(): V25StatsDashboard {
         masteredCards = masteredCards,
         progress = emptyList(),
         updatedAt = Instant.ofEpochMilli(updatedAt),
+        weeklyStudySeconds = weeklyStudySeconds,
+        dailyStudySeconds = dailySeconds,
+        planStudySeconds = planStudySeconds,
+        backlogStudySeconds = backlogStudySeconds,
+        adhocStudySeconds = adhocStudySeconds,
     )
 }

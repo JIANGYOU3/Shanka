@@ -38,9 +38,9 @@ class MaterialStatusLineTest {
     }
 
     @Test
-    fun `failed pdf materials render as 解析失败 with the backend error code`() {
+    fun `failed pdf materials render as 解析失败 with the localized reason`() {
         assertEquals(
-            "解析失败 · PDF_PARSE_FAILED",
+            "解析失败 · PDF 解析失败，请换一份文件重试",
             materialStatusLine(material(ProjectDraftMaterialType.FILE, "FAILED", errorCode = "PDF_PARSE_FAILED")),
         )
         assertEquals("解析失败", materialStatusLine(material(ProjectDraftMaterialType.FILE, "FAILED")))
@@ -55,5 +55,12 @@ class MaterialStatusLineTest {
     fun `text materials render as 就绪 with their character count`() {
         assertEquals("就绪 · 30000字", materialStatusLine(material(ProjectDraftMaterialType.TEXT, "READY", charCount = 30000)))
         assertEquals("就绪", materialStatusLine(material(ProjectDraftMaterialType.TEXT, "READY")))
+    }
+
+    @Test
+    fun `zip note packs render as 就绪 with the md character count`() {
+        // V25-D-35: ZIP parses synchronously server-side, so the draft always lands READY.
+        assertEquals("就绪 · 96780字", materialStatusLine(material(ProjectDraftMaterialType.ZIP, "READY", charCount = 96780)))
+        assertEquals("就绪", materialStatusLine(material(ProjectDraftMaterialType.ZIP, "READY")))
     }
 }

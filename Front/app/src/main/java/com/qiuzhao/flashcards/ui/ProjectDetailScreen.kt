@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.qiuzhao.flashcards.data.local.DeckDailyActivity
 import com.qiuzhao.flashcards.data.remote.DeckSummary
 import com.qiuzhao.flashcards.data.remote.ProjectSummary
 import com.qiuzhao.flashcards.domain.v25.V25ObservedTask
@@ -68,6 +69,8 @@ internal fun ProjectDetailScreen(
     decks: List<DeckSummary>,
     nav: ScreenNavigator,
     onDeleteDeck: (String, (Boolean) -> Unit) -> Unit,
+    /** 资料管理板块的列表/导入/删除都走 AppViewModel 的现成管道。 */
+    viewModel: AppViewModel,
     progress: V25ProgressSummary? = null,
     /** Server status EMPTY: the project has no materials yet and shows the add-deck guide. */
     isEmptyProject: Boolean = false,
@@ -75,14 +78,18 @@ internal fun ProjectDetailScreen(
     tasks: List<V25ObservedTask> = emptyList(),
     /** 卡组二「点击重试」：owner 页面负责 retry + 导航到样卡等待页。 */
     onRetryDeckTask: (String) -> Unit = {},
-    /** 设备本地实测的学习秒数（deckId → seconds），项目页按项目内卡组求和展示。 */
-    deckStudySeconds: Map<String, Long> = emptyMap(),
+    /** 服务端会话累计的学习秒数（V25-D-37，deckId → seconds）；null = 首次汇总未返回。 */
+    deckStudySeconds: Map<String, Long>? = null,
+    /** 设备本地按日实测（deckId → 今日活动），今日 tab 的数据源。 */
+    deckTodayActivity: Map<String, DeckDailyActivity> = emptyMap(),
+    /** 跨卡组会话秒数（今日计划 + 积压巩固），仅当前项目传入。 */
+    crossDeckStudySeconds: Long? = null,
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
-    // Figma 1114:6906: an empty project opens on 卡组管理, whose pane carries the notice.
+    // Figma 1114:6906: an empty project opens on 资料管理 — adding materials is its first step.
     var section by rememberSaveable(project.id) {
-        mutableStateOf(if (isEmptyProject) ProjectDetailSection.DECKS else ProjectDetailSection.STATISTICS)
+        mutableStateOf(if (isEmptyProject) ProjectDetailSection.MATERIALS else ProjectDetailSection.STATISTICS)
     }
     var deckPendingDeletion by rememberSaveable { mutableStateOf<String?>(null) }
     var deckDeletionInFlight by rememberSaveable { mutableStateOf(false) }
@@ -109,6 +116,18 @@ internal fun ProjectDetailScreen(
                     Modifier.weight(1f),
                     decks,
                     deckStudySeconds,
+                    deckTodayActivity,
+                    crossDeckStudySeconds,
+                )
+                ProjectDetailSection.MATERIALS -> MaterialManagementContent(
+                    project = project,
+                    theme = theme,
+                    viewModel = viewModel,
+                    nav = nav,
+                    designScale = scale,
+                    // The surrounding column already insets by 16dp.
+                    contentHorizontalPadding = 0.dp,
+                    modifier = Modifier.weight(1f),
                 )
                 ProjectDetailSection.DECKS -> if (isEmptyProject) {
                     ProjectEmptyDecksNotice(
@@ -132,14 +151,22 @@ internal fun ProjectDetailScreen(
                 }
             }
         }
-        if (section == ProjectDetailSection.DECKS) {
+        if (section == ProjectDetailSection.DECKS || section == ProjectDetailSection.MATERIALS) {
             BottomContentFade(scale, Modifier.align(Alignment.BottomCenter), color = theme.background)
+        }
+        if (section == ProjectDetailSection.DECKS) {
             ProjectDeckActions(
                 theme = theme,
                 scale = scale,
                 onAddDeck = { nav.navigate(AppRoute.DeckGeneration(project.id)) },
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(1f)
             )
+        }
+        if (section == ProjectDetailSection.MATERIALS) {
+            AddMaterialButton(theme, scale, Modifier.align(Alignment.BottomCenter).zIndex(1f)) {
+                viewModel.beginMaterialImport()
+                nav.navigate(AppRoute.MaterialImport(project.id))
+            }
         }
     }
     deckPendingDeletion?.let { deckId ->
@@ -206,12 +233,16 @@ private fun ProjectStatisticsContent(
     scale: Float,
     modifier: Modifier,
     decks: List<DeckSummary>,
-    deckStudySeconds: Map<String, Long>,
+    deckStudySeconds: Map<String, Long>?,
+    deckTodayActivity: Map<String, DeckDailyActivity>,
+    crossDeckStudySeconds: Long? = null,
 ) {
     var showToday by rememberSaveable { mutableStateOf(true) }
     // The project endpoint is the source of truth.  Until it returns, every metric stays an
     // honest dash instead of being recomputed from the visible deck list.
     val learnedCards = progress?.let { (it.cardCount - it.notStartedCount).coerceAtLeast(0) }
+    // 今日 tab = 项目内卡组的设备本地按日实测之和；无卡组级每日目标，百分比保持空档。
+    val todayReviewed = decks.sumOf { deckTodayActivity[it.id]?.reviewedCount ?: 0 }
     LazyColumn(
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape((AppScrollableContentClipRadius * scale).dp)),
         // Statistics has no fixed bottom action bar. A 32dp tail places the
@@ -222,9 +253,9 @@ private fun ProjectStatisticsContent(
         item {
             LearningDataProgressCard(
                 // The overview tab is backed by the server-derived lifecycle aggregate. The
-                // today tab has no project-scoped daily endpoint in this screen, so it remains
-                // an honest dash without changing the card geometry.
-                reviewedCards = if (showToday) null else learnedCards,
+                // today tab reads the device-local per-day measurement; with no project-level
+                // daily goal the percent slot keeps its honest dash without changing geometry.
+                reviewedCards = if (showToday) todayReviewed else learnedCards,
                 totalCards = if (showToday) null else progress?.cardCount?.takeIf { it > 0 },
                 progressPercent = if (showToday || progress == null || progress.cardCount == 0) null
                     else (learnedCards!! * 100 / progress.cardCount),
@@ -248,8 +279,12 @@ private fun ProjectStatisticsContent(
                     modifier = Modifier.weight(1f)
                 )
                 StatisticsMetricCard(
-                    // 项目学习时长 = 项目内卡组的设备本地实测秒数之和（无项目级服务端口径）。
-                    value = honestStudyDuration(decks.sumOf { deckStudySeconds[it.id] ?: 0L }),
+                    // 项目学习时长 = 服务端会话累计（V25-D-37）：项目内卡组 ADHOC 秒数之和 +
+                    // （仅当前项目）跨卡组会话秒数（今日计划 + 积压巩固归属当前项目）。
+                    value = honestStudyDurationOrNull(
+                        deckStudySeconds
+                            ?.let { seconds -> decks.sumOf { seconds[it.id] ?: 0L } + (crossDeckStudySeconds ?: 0L) },
+                    ),
                     kind = StatisticsMetricKind.LearningTime,
                     surface = StatisticsMetricSurface.White,
                     designScale = scale,
