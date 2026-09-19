@@ -488,12 +488,12 @@ class V25SerializationTest {
     }
 
     @Test
-    fun `today plan empty state has a null current project`() {
+    fun `today plan empty state is unconfigured`() {
         val plan = decode<TodayPlanDto>(todayPlanEmptyBody()).toDomain()
 
         assertEquals("Asia/Shanghai", plan.learningTimezone)
         assertEquals(LocalDate.parse("2026-08-15"), plan.studyDate)
-        assertNull(plan.currentProject)
+        assertFalse(plan.planConfigured)
         assertEquals(50, plan.dailyGoal)
         assertEquals(0, plan.completedCount)
         assertEquals(0, plan.dueCount)
@@ -503,11 +503,9 @@ class V25SerializationTest {
     }
 
     @Test
-    fun `plan card marks review-state NEW as isNew and keeps the summary project`() {
+    fun `plan card marks review-state NEW as isNew`() {
         val plan = decode<TodayPlanDto>(todayPlanBody()).toDomain()
 
-        assertEquals("p-1", plan.currentProject!!.projectId)
-        assertEquals("线性代数", plan.currentProject!!.name)
         assertEquals(2, plan.dueCount)
         assertEquals(47, plan.planRemaining)
         assertEquals(1, plan.cards.size)
@@ -781,6 +779,8 @@ class V25SerializationTest {
          "updated_at": "2026-08-15T12:00:00Z", "has_data": true}
     """.trimIndent()
 
+    // current_project 已随 V25-D-39 从契约删除；fixture 保留该字段以锁定
+    // "旧服务端响应多出的字段被 kotlinx 忽略、解析不失败"的兼容语义。
     private fun todayPlanEmptyBody(): String = """
         {"timezone": "Asia/Shanghai", "study_date": "2026-08-15",
          "current_project": null, "daily_goal": 50,

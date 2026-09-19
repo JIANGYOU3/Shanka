@@ -82,8 +82,6 @@ internal fun ProjectDetailScreen(
     deckStudySeconds: Map<String, Long>? = null,
     /** 设备本地按日实测（deckId → 今日活动），今日 tab 的数据源。 */
     deckTodayActivity: Map<String, DeckDailyActivity> = emptyMap(),
-    /** 跨卡组会话秒数（今日计划 + 积压巩固），仅当前项目传入。 */
-    crossDeckStudySeconds: Long? = null,
 ) {
     val scale = (LocalConfiguration.current.screenWidthDp / 402f).coerceIn(.75f, 1f)
     val theme = deckTheme(project)
@@ -117,7 +115,6 @@ internal fun ProjectDetailScreen(
                     decks,
                     deckStudySeconds,
                     deckTodayActivity,
-                    crossDeckStudySeconds,
                 )
                 ProjectDetailSection.MATERIALS -> MaterialManagementContent(
                     project = project,
@@ -235,7 +232,6 @@ private fun ProjectStatisticsContent(
     decks: List<DeckSummary>,
     deckStudySeconds: Map<String, Long>?,
     deckTodayActivity: Map<String, DeckDailyActivity>,
-    crossDeckStudySeconds: Long? = null,
 ) {
     var showToday by rememberSaveable { mutableStateOf(true) }
     // The project endpoint is the source of truth.  Until it returns, every metric stays an
@@ -279,11 +275,10 @@ private fun ProjectStatisticsContent(
                     modifier = Modifier.weight(1f)
                 )
                 StatisticsMetricCard(
-                    // 项目学习时长 = 服务端会话累计（V25-D-37）：项目内卡组 ADHOC 秒数之和 +
-                    // （仅当前项目）跨卡组会话秒数（今日计划 + 积压巩固归属当前项目）。
+                    // 项目学习时长 = 服务端会话累计（V25-D-37）：项目内卡组 ADHOC 秒数之和。
+                    // V25-D-39：计划/巩固（PLAN/BACKLOG）时段跨项目归属不定，不再计入项目时长。
                     value = honestStudyDurationOrNull(
-                        deckStudySeconds
-                            ?.let { seconds -> decks.sumOf { seconds[it.id] ?: 0L } + (crossDeckStudySeconds ?: 0L) },
+                        deckStudySeconds?.let { seconds -> decks.sumOf { seconds[it.id] ?: 0L } },
                     ),
                     kind = StatisticsMetricKind.LearningTime,
                     surface = StatisticsMetricSurface.White,

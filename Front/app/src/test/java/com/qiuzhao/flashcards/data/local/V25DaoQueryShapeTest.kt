@@ -83,7 +83,6 @@ class V25DaoQueryShapeTest {
         val plan = V25TodayPlan(
             learningTimezone = "UTC",
             studyDate = date,
-            currentProject = null,
             dailyGoal = 40,
             completedCount = 0,
             dueCount = 40,
@@ -122,7 +121,6 @@ class V25DaoQueryShapeTest {
         val plan = V25TodayPlan(
             learningTimezone = "UTC",
             studyDate = date,
-            currentProject = null,
             dailyGoal = 40,
             completedCount = 0,
             dueCount = 40,

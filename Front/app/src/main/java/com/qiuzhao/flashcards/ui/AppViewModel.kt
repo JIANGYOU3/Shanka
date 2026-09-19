@@ -242,7 +242,6 @@ data class StudyPlanUiState(
     val loaded: Boolean = false,
     val saving: Boolean = false,
     val configured: Boolean = false,
-    val currentProjectId: String? = null,
     val selectedDeckIds: List<String> = emptyList(),
     val dailyNewGoal: Int = 10,
     val dailyReviewGoal: Int = 40,
@@ -340,10 +339,6 @@ class AppViewModel(
     private val _deckStudySeconds = MutableStateFlow<Map<String, Long>?>(null)
     val deckStudySeconds: StateFlow<Map<String, Long>?> = _deckStudySeconds.asStateFlow()
 
-    /** Cross-deck (今日计划 + 积压巩固) lifetime seconds; attributed to the current project. */
-    private val _crossDeckStudySeconds = MutableStateFlow<Long?>(null)
-    val crossDeckStudySeconds: StateFlow<Long?> = _crossDeckStudySeconds.asStateFlow()
-
     /** Device-measured per-day activity per deck (deckId → today); 学习数据 今日 tab's source. */
     val deckTodayActivity: StateFlow<Map<String, DeckDailyActivity>> = localUsage.observeDeckDailyActivity()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
@@ -373,8 +368,6 @@ class AppViewModel(
         when (val result = v25Repository.studySessionSummary()) {
             is V25Result.Success -> {
                 _deckStudySeconds.value = result.value.deckSeconds
-                _crossDeckStudySeconds.value =
-                    result.value.planSeconds + result.value.backlogSeconds
             }
             is V25Result.Failure -> handleFailure("study_session_summary", result, surface = false)
         }
@@ -813,9 +806,8 @@ class AppViewModel(
         }
     }
 
-    /** Saves the whole plan once; a failed response leaves the caller's local form untouched. */
+    /** Saves the whole account-scoped plan once (V25-D-39); a failed response leaves the caller's local form untouched. */
     fun saveStudyPlan(
-        currentProjectId: String,
         selectedDeckIds: List<String>,
         dailyNewGoal: Int,
         dailyReviewGoal: Int,
@@ -824,7 +816,6 @@ class AppViewModel(
         if (_studyPlan.value.saving) return@launch
         _studyPlan.value = _studyPlan.value.copy(saving = true)
         val fingerprint = listOf(
-            currentProjectId,
             selectedDeckIds.joinToString(","),
             dailyNewGoal.toString(),
             dailyReviewGoal.toString(),
@@ -838,7 +829,7 @@ class AppViewModel(
             studyPlanIdempotencyKey!!
         }
         val result = v25Repository.updateStudyPlan(
-            V25StudyPlanUpdate(currentProjectId, selectedDeckIds, dailyNewGoal, dailyReviewGoal),
+            V25StudyPlanUpdate(selectedDeckIds, dailyNewGoal, dailyReviewGoal),
             idempotencyKey = key,
         )
         when (result) {
@@ -2295,7 +2286,6 @@ class AppViewModel(
             loaded = true,
             saving = _studyPlan.value.saving,
             configured = value.configured,
-            currentProjectId = value.currentProjectId,
             selectedDeckIds = value.selectedDeckIds,
             dailyNewGoal = value.dailyNewGoal,
             dailyReviewGoal = value.dailyReviewGoal,

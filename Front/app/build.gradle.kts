@@ -30,7 +30,7 @@ if (shankaDebugApiBaseUrl != null) {
 // 产品版本唯一事实源：发版时只改这里（semver，每次正式发布至少递增 patch）。
 // versionCode 由版本号派生（major*10000 + minor*100 + patch，如 2.5.2 → 20502），
 // 保证覆盖安装单调递增，无需手工维护；发布脚本 build-release.sh 从此处解析并门禁校验。
-val appVersionName = "2.5.8"
+val appVersionName = "2.5.9"
 val appVersionCode = appVersionName.split(".").map { it.toInt() }.let { it[0] * 10000 + it[1] * 100 + it[2] }
 
 android {

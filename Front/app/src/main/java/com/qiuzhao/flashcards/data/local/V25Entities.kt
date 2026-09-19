@@ -155,7 +155,6 @@ data class ReviewQueueItemEntity(
 data class StudyPlanEntity(
     @ColumnInfo(name = "user_id") val userId: String,
     @ColumnInfo(name = "configured") val configured: Boolean,
-    @ColumnInfo(name = "current_project_id") val currentProjectId: String?,
     @ColumnInfo(name = "selected_deck_ids") val selectedDeckIds: String,
     @ColumnInfo(name = "daily_new_goal") val dailyNewGoal: Int,
     @ColumnInfo(name = "daily_review_goal") val dailyReviewGoal: Int,
@@ -168,8 +167,6 @@ data class TodayPlanEntity(
     @ColumnInfo(name = "user_id") val userId: String,
     @ColumnInfo(name = "study_date") val studyDate: String,
     @ColumnInfo(name = "timezone") val timezone: String,
-    @ColumnInfo(name = "current_project_id") val currentProjectId: String?,
-    @ColumnInfo(name = "current_project_name") val currentProjectName: String?,
     @ColumnInfo(name = "daily_goal") val dailyGoal: Int,
     @ColumnInfo(name = "today_completed_count") val completedCount: Int,
     @ColumnInfo(name = "due_count") val dueCount: Int,

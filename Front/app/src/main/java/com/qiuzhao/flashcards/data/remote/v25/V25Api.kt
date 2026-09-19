@@ -217,18 +217,6 @@ internal interface V25Api {
         @Header("Idempotency-Key") idempotencyKey: String,
     ): ProjectDto
 
-    @Headers("X-Shanka-Op: ${ShankaOps.GET_STUDY_SETTINGS}")
-    @GET("projects/{project_id}/study-settings")
-    suspend fun getStudySettings(@Path("project_id") projectId: String): StudySettingsDto
-
-    @Headers("X-Shanka-Op: ${ShankaOps.UPDATE_STUDY_SETTINGS}")
-    @PATCH("projects/{project_id}/study-settings")
-    suspend fun updateStudySettings(
-        @Path("project_id") projectId: String,
-        @Body body: StudySettingsPatchRequest,
-        @Header("Idempotency-Key") idempotencyKey: String,
-    ): StudySettingsDto
-
     // --- generation tasks (Architecture 4.3) ----------------------------------------------------
 
     @Headers("X-Shanka-Op: ${ShankaOps.CREATE_TASK}")

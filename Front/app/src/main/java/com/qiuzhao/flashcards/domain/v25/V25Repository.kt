@@ -173,15 +173,6 @@ interface V25Repository {
     /** POST /projects/{project_id}/confirm-chapters — accept the table of contents; project → READY. */
     suspend fun confirmChapters(projectId: String): V25Result<V25LearningProject>
 
-    /** GET /projects/{project_id}/study-settings — new-card chapter scope and unassigned group. */
-    suspend fun getStudySettings(projectId: String): V25Result<V25ProjectStudySettings>
-
-    /** PATCH /projects/{project_id}/study-settings — update the new-card chapter scope. */
-    suspend fun updateStudySettings(
-        projectId: String,
-        patch: V25StudySettingsPatch,
-    ): V25Result<V25ProjectStudySettings>
-
     // --- generation tasks (Architecture 4.3) ---------------------------------------------------
 
     /** POST /projects/{project_id}/tasks — create a DRAFT task with chapters, deck and config. */

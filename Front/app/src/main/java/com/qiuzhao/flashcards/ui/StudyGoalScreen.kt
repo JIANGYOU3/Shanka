@@ -84,9 +84,8 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     // 范围 selection is two sets: a whole-checked project implies all of its
     // decks; the drawer's individually picked decks live beside it. The checked
     // circle derives from either, so picking one deck re-checks its project.
-    // The plan itself is single-project (PUT /study/plan takes one project_id
-    // and requires every deck to belong to it), so every toggle below moves the
-    // whole scope instead of accumulating across projects.
+    // The plan itself is account-scoped (V25-D-39): selections accumulate freely
+    // across projects and standalone decks — the server accepts any own deck.
     var wholeProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedDeckIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var expandedProjectIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -116,23 +115,25 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     val pendingDecksByProject = projects.associate { project ->
         project.id to decks.filter { it.projectId == project.id && it.cardCount == 0 }
     }
-    val learnableDeckIdsByProject = learnableDecksByProject.mapValues { (_, deckList) ->
-        deckList.map { it.id }.toSet()
-    }
-    val (primaryProjectId, scopedDeckIds) = studyGoalScope(
-        projectIds = projects.map { it.id },
-        wholeProjectIds = wholeProjectIds,
-        selectedDeckIds = selectedDeckIds,
-        learnableDeckIdsByProject = learnableDeckIdsByProject,
-    )
-    val effectiveDeckIds = scopedDeckIds.toList()
+    // V25-D-39：账号级计划——勾选跨项目累积；独立卡组（projectId=null）以固定
+    // 哨兵分组渲染在项目列表之后，同样支持整选/散选。
+    val standaloneLearnable = decks.filter { it.projectId == null && it.cardCount > 0 }
+    val standalonePending = decks.filter { it.projectId == null && it.cardCount == 0 }
+    val effectiveDeckIds = decks
+        .filter {
+            it.cardCount > 0 && (
+                it.id in selectedDeckIds ||
+                    it.projectId in wholeProjectIds ||
+                    (it.projectId == null && STANDALONE_SCOPE_ID in wholeProjectIds)
+                )
+        }
+        .map { it.id }
     val validGoals = newGoal in 0..200 && reviewGoal in 0..200 && newGoal % 10 == 0 &&
         reviewGoal % 10 == 0 && newGoal + reviewGoal > 0
     val canSave = studyGoalCanSave(
         seeded = seeded,
         saving = plan.saving,
         validGoals = validGoals,
-        hasProject = primaryProjectId.isNotEmpty(),
         hasLearnableSelection = effectiveDeckIds.isNotEmpty(),
     )
 
@@ -169,7 +170,7 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                             }
                         }
                         PlanSectionCard("范围", "category_search") {
-                            if (projects.isEmpty()) {
+                            if (projects.isEmpty() && standaloneLearnable.isEmpty() && standalonePending.isEmpty()) {
                                 PlanSectionHint("先创建项目并导入资料")
                             } else {
                                 projects.forEach { project ->
@@ -182,16 +183,16 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                             projectDecks.any { it.id in selectedDeckIds },
                                         expanded = project.id in expandedProjectIds,
                                         onToggleProject = {
-                                            // Checking a project moves the whole plan scope here;
-                                            // unchecking clears only this project's picks.
-                                            val (whole, picked) = projectToggleSelection(
-                                                projectId = project.id,
-                                                projectDeckIds = projectDecks.map { it.id }.toSet(),
-                                                wholeProjectIds = wholeProjectIds,
-                                                selectedDeckIds = selectedDeckIds,
-                                            )
-                                            wholeProjectIds = whole
-                                            selectedDeckIds = picked
+                                            val isChecked = project.id in wholeProjectIds ||
+                                                projectDecks.any { it.id in selectedDeckIds }
+                                            if (isChecked) {
+                                                wholeProjectIds -= project.id
+                                                selectedDeckIds -= projectDecks.map { it.id }.toSet()
+                                            } else {
+                                                // Collapsed or not, checking a project implies
+                                                // every deck under it (Figma 范围 default).
+                                                wholeProjectIds += project.id
+                                            }
                                         },
                                         onToggleExpand = {
                                             if (project.id in expandedProjectIds) {
@@ -212,19 +213,60 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                                             }
                                         },
                                         onToggleDeck = { deck ->
-                                            // Picking a deck moves the plan scope to its project;
-                                            // other projects' flags and picks give way.
-                                            val (whole, picked) = deckToggleSelection(
-                                                deckId = deck.id,
-                                                projectDeckIds = projectDecks.map { it.id }.toSet(),
-                                                wholeProjectIds = wholeProjectIds,
-                                                selectedDeckIds = selectedDeckIds,
-                                            )
-                                            wholeProjectIds = whole
-                                            selectedDeckIds = picked
+                                            selectedDeckIds = if (deck.id in selectedDeckIds) {
+                                                selectedDeckIds - deck.id
+                                            } else {
+                                                selectedDeckIds + deck.id
+                                            }
                                         },
                                         deckChecked = {
                                             it.id in selectedDeckIds || project.id in wholeProjectIds
+                                        },
+                                    )
+                                }
+                                if (standaloneLearnable.isNotEmpty() || standalonePending.isNotEmpty()) {
+                                    // 独立卡组（不属于任何项目）：账号级计划的直选入口（V25-D-39）。
+                                    ScopeProjectCard(
+                                        projectName = "独立卡组",
+                                        decks = standaloneLearnable,
+                                        pendingDecks = standalonePending,
+                                        checked = STANDALONE_SCOPE_ID in wholeProjectIds ||
+                                            standaloneLearnable.any { it.id in selectedDeckIds },
+                                        expanded = STANDALONE_SCOPE_ID in expandedProjectIds,
+                                        onToggleProject = {
+                                            val isChecked = STANDALONE_SCOPE_ID in wholeProjectIds ||
+                                                standaloneLearnable.any { it.id in selectedDeckIds }
+                                            if (isChecked) {
+                                                wholeProjectIds -= STANDALONE_SCOPE_ID
+                                                selectedDeckIds -= standaloneLearnable.map { it.id }.toSet()
+                                            } else {
+                                                wholeProjectIds += STANDALONE_SCOPE_ID
+                                            }
+                                        },
+                                        onToggleExpand = {
+                                            if (STANDALONE_SCOPE_ID in expandedProjectIds) {
+                                                expandedProjectIds -= STANDALONE_SCOPE_ID
+                                            } else {
+                                                expandedProjectIds += STANDALONE_SCOPE_ID
+                                                val (whole, picked) = drawerOpenSelection(
+                                                    projectId = STANDALONE_SCOPE_ID,
+                                                    projectDeckIds = standaloneLearnable.map { it.id }.toSet(),
+                                                    wholeProjectIds = wholeProjectIds,
+                                                    selectedDeckIds = selectedDeckIds,
+                                                )
+                                                wholeProjectIds = whole
+                                                selectedDeckIds = picked
+                                            }
+                                        },
+                                        onToggleDeck = { deck ->
+                                            selectedDeckIds = if (deck.id in selectedDeckIds) {
+                                                selectedDeckIds - deck.id
+                                            } else {
+                                                selectedDeckIds + deck.id
+                                            }
+                                        },
+                                        deckChecked = {
+                                            it.id in selectedDeckIds || STANDALONE_SCOPE_ID in wholeProjectIds
                                         },
                                     )
                                 }
@@ -245,7 +287,6 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
                     // One atomic save of the whole form; a configured user's picks were
                     // seeded from the loaded plan, so an untouched save preserves them.
                     viewModel.saveStudyPlan(
-                        currentProjectId = primaryProjectId,
                         selectedDeckIds = effectiveDeckIds,
                         dailyNewGoal = newGoal,
                         dailyReviewGoal = reviewGoal,
@@ -276,17 +317,20 @@ internal fun StudyGoalScreen(viewModel: AppViewModel, nav: AppNavigator) {
     }
 }
 
+/** 范围区「独立卡组」分组的固定哨兵 id（独立卡组无项目归属，V25-D-39）。 */
+internal const val STANDALONE_SCOPE_ID = "standalone-decks"
+
 /**
  * The single save gate, shared by first-time and configured users alike: the
- * form needs a checked project and at least one learnable deck, plus valid goals.
+ * form needs at least one learnable deck pick (any own deck, V25-D-39) plus
+ * valid goals.
  */
 internal fun studyGoalCanSave(
     seeded: Boolean,
     saving: Boolean,
     validGoals: Boolean,
-    hasProject: Boolean,
     hasLearnableSelection: Boolean,
-): Boolean = seeded && !saving && validGoals && hasProject && hasLearnableSelection
+): Boolean = seeded && !saving && validGoals && hasLearnableSelection
 
 /**
  * 展开卡组抽屉时的选中迁移（[StudyGoalScreen] 范围区）：整项目勾选迁出
@@ -304,64 +348,6 @@ internal fun drawerOpenSelection(
         return wholeProjectIds to selectedDeckIds
     }
     return (wholeProjectIds - projectId) to (selectedDeckIds + projectDeckIds)
-}
-
-/**
- * 勾选/取消勾选项目卡（[StudyGoalScreen] 范围区）。计划是单项目的——
- * PUT /study/plan 只接受一个 project_id，且要求所选卡组全部属于它——所以
- * 勾选项目即把计划范围整个切到它：其他项目的整选与逐卡组勾选一律让位；
- * 取消勾选只清除本项目自己的选中。返回 (wholeProjectIds', selectedDeckIds')。
- */
-internal fun projectToggleSelection(
-    projectId: String,
-    projectDeckIds: Set<String>,
-    wholeProjectIds: Set<String>,
-    selectedDeckIds: Set<String>,
-): Pair<Set<String>, Set<String>> {
-    val isChecked = projectId in wholeProjectIds || projectDeckIds.any { it in selectedDeckIds }
-    return if (isChecked) {
-        (wholeProjectIds - projectId) to (selectedDeckIds - projectDeckIds)
-    } else {
-        setOf(projectId) to (selectedDeckIds intersect projectDeckIds)
-    }
-}
-
-/**
- * 勾选/反选抽屉里的单个卡组。反选原样移除、整选旗不动；勾选把计划范围切到
- * 该卡组所属项目（见 [projectToggleSelection]）：其他项目的整选旗与勾选全部
- * 清除，本项目既有勾选保留、整选迁为逐卡组勾选。返回 (wholeProjectIds', selectedDeckIds')。
- */
-internal fun deckToggleSelection(
-    deckId: String,
-    projectDeckIds: Set<String>,
-    wholeProjectIds: Set<String>,
-    selectedDeckIds: Set<String>,
-): Pair<Set<String>, Set<String>> {
-    if (deckId in selectedDeckIds) {
-        return wholeProjectIds to (selectedDeckIds - deckId)
-    }
-    return emptySet<String>() to ((selectedDeckIds intersect projectDeckIds) + deckId)
-}
-
-/**
- * 当前保存范围（[StudyGoalScreen] 提交口径）：整选项目优先，否则首个含勾选
- * 卡组的项目；没有则返回空串与空集。有效卡组集合只含该项目——后端要求所选
- * 卡组全部属于提交的 project_id，跨项目残留在此兜底剔除。返回 (projectId, deckIds)。
- */
-internal fun studyGoalScope(
-    projectIds: List<String>,
-    wholeProjectIds: Set<String>,
-    selectedDeckIds: Set<String>,
-    learnableDeckIdsByProject: Map<String, Set<String>>,
-): Pair<String, Set<String>> {
-    val primary = projectIds.firstOrNull { it in wholeProjectIds }
-        ?: projectIds.firstOrNull { project ->
-            learnableDeckIdsByProject[project].orEmpty().any { it in selectedDeckIds }
-        }
-        ?: return "" to emptySet()
-    val learnable = learnableDeckIdsByProject[primary].orEmpty()
-    val picked = selectedDeckIds intersect learnable
-    return primary to if (primary in wholeProjectIds) learnable else picked
 }
 
 /** Figma 977:4937 card language: #EEF4FA r36, 20dp padding, 16dp item gap. */

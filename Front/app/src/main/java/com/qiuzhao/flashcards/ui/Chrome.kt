@@ -169,7 +169,6 @@ fun FlashcardsApp(viewModel: AppViewModel) {
     val todayPlan by viewModel.todayPlan.collectAsState()
     val projectProgress by viewModel.projectProgress.collectAsState()
     val deckStudySeconds by viewModel.deckStudySeconds.collectAsState()
-    val crossDeckStudySeconds by viewModel.crossDeckStudySeconds.collectAsState()
     val studyPlanState by viewModel.studyPlan.collectAsState()
     val deckTodayActivity by viewModel.deckTodayActivity.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
@@ -236,7 +235,6 @@ fun FlashcardsApp(viewModel: AppViewModel) {
                     deckStudySeconds = deckStudySeconds,
                     deckTodayActivity = deckTodayActivity,
                     // 跨卡组会话（今日计划+积压巩固）只归属当前项目（V25-D-37）。
-                    crossDeckStudySeconds = crossDeckStudySeconds.takeIf { studyPlanState.currentProjectId == project.id },
                 )
             }
         }

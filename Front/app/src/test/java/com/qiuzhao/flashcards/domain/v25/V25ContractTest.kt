@@ -141,7 +141,6 @@ class V25ContractTest {
     fun `preference and task patches require at least one field`() {
         assertThrows(IllegalArgumentException::class.java) { V25PreferencesPatch() }
         assertThrows(IllegalArgumentException::class.java) { V25TaskConfigPatch() }
-        assertThrows(IllegalArgumentException::class.java) { V25StudySettingsPatch() }
     }
 
     @Test
@@ -171,11 +170,11 @@ class V25ContractTest {
     }
 
     @Test
-    fun `today plan represents the no-current-project empty state`() = runBlocking {
+    fun `today plan represents the unconfigured empty state`() = runBlocking {
         val result = StubV25Repository().todayPlan()
         assertTrue(result is V25Result.Success)
         val plan = (result as V25Result.Success).value
-        assertNull(plan.currentProject)
+        assertFalse(plan.planConfigured)
         assertTrue(plan.cards.isEmpty())
         assertEquals("Asia/Shanghai", plan.learningTimezone)
         assertEquals(LocalDate.parse("2026-08-15"), plan.studyDate)
@@ -298,8 +297,6 @@ class V25ContractTest {
             repository.updateChapter("project-1", "chapter-1", V25ChapterEdit("第一章", 1, 20)),
             repository.deleteChapter("project-1", "chapter-1", deleteCards = false),
             repository.confirmChapters("project-1"),
-            repository.getStudySettings("project-1"),
-            repository.updateStudySettings("project-1", V25StudySettingsPatch(includeUnassigned = false)),
             repository.createTask(
                 "project-1",
                 "deck-1",
@@ -657,22 +654,6 @@ private class StubV25Repository : V25Repository {
 
     override suspend fun confirmChapters(projectId: String): V25Result<V25LearningProject> = V25Result.Success(project)
 
-    override suspend fun getStudySettings(projectId: String): V25Result<V25ProjectStudySettings> = V25Result.Success(
-        V25ProjectStudySettings("project-1", listOf("chapter-1"), includeUnassigned = true, updatedAt = now),
-    )
-
-    override suspend fun updateStudySettings(
-        projectId: String,
-        patch: V25StudySettingsPatch,
-    ): V25Result<V25ProjectStudySettings> = V25Result.Success(
-        V25ProjectStudySettings(
-            projectId,
-            patch.selectedNewCardChapterIds ?: emptyList(),
-            patch.includeUnassigned ?: false,
-            now,
-        ),
-    )
-
     override suspend fun createTask(
         projectId: String,
         deckId: String,
@@ -791,7 +772,6 @@ private class StubV25Repository : V25Repository {
         V25TodayPlan(
             learningTimezone = "Asia/Shanghai",
             studyDate = LocalDate.parse("2026-08-15"),
-            currentProject = null,
             dailyGoal = 50,
             completedCount = 0,
             dueCount = 0,

@@ -11,7 +11,6 @@ import com.qiuzhao.flashcards.domain.v25.V25CardRewritePreview
 import com.qiuzhao.flashcards.domain.v25.V25CardType
 import com.qiuzhao.flashcards.domain.v25.V25Chapter
 import com.qiuzhao.flashcards.domain.v25.V25CoverageMode
-import com.qiuzhao.flashcards.domain.v25.V25CurrentProject
 import com.qiuzhao.flashcards.domain.v25.V25DailyActivity
 import com.qiuzhao.flashcards.domain.v25.V25Deck
 import com.qiuzhao.flashcards.domain.v25.V25DeletionBatchStatus
@@ -33,7 +32,6 @@ import com.qiuzhao.flashcards.domain.v25.V25PlanCard
 import com.qiuzhao.flashcards.domain.v25.V25PreferencesPatch
 import com.qiuzhao.flashcards.domain.v25.V25ProgressSummary
 import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
-import com.qiuzhao.flashcards.domain.v25.V25ProjectStudySettings
 import com.qiuzhao.flashcards.domain.v25.V25PublicationState
 import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25RatingResult
@@ -203,22 +201,11 @@ internal data class ProjectDto(
 )
 
 @Serializable
-internal data class StudySettingsDto(
-    @SerialName("selected_new_card_chapter_ids") val selectedNewCardChapterIds: List<String>,
-    @SerialName("include_unassigned") val includeUnassigned: Boolean,
-    @SerialName("updated_at") val updatedAt: String,
-    @SerialName("selected_deck_ids") val selectedDeckIds: List<String>? = null,
-    @SerialName("daily_new_goal") val dailyNewGoal: Int? = null,
-    @SerialName("daily_review_goal") val dailyReviewGoal: Int? = null,
-)
-
-@Serializable
 internal data class StudyPlanDto(
     @SerialName("configured") val configured: Boolean,
     @SerialName("daily_new_goal") val dailyNewGoal: Int,
     @SerialName("daily_review_goal") val dailyReviewGoal: Int,
     @SerialName("selected_deck_ids") val selectedDeckIds: List<String>,
-    @SerialName("current_project_id") val currentProjectId: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
 )
 
@@ -351,12 +338,6 @@ internal data class RewritePreviewDto(
 // --- today plan / progress / stats -------------------------------------------------------------------
 
 @Serializable
-internal data class CurrentProjectDto(
-    @SerialName("project_id") val projectId: String,
-    @SerialName("name") val name: String,
-)
-
-@Serializable
 internal data class TodayPlanDto(
     @SerialName("timezone") val timezone: String,
     @SerialName("study_date") val studyDate: String,
@@ -366,7 +347,6 @@ internal data class TodayPlanDto(
     @SerialName("main_plan_remaining") val planRemaining: Int,
     @SerialName("backlog_count") val backlogCount: Int,
     @SerialName("cards") val cards: List<CardDto>,
-    @SerialName("current_project") val currentProject: CurrentProjectDto? = null,
     @SerialName("daily_new_goal") val dailyNewGoal: Int? = null,
     @SerialName("daily_review_goal") val dailyReviewGoal: Int? = null,
     @SerialName("new_completed_count") val newCompletedCount: Int? = null,
@@ -509,14 +489,7 @@ internal data class ChapterEditRequest(
 )
 
 @Serializable
-internal data class StudySettingsPatchRequest(
-    @SerialName("selected_new_card_chapter_ids") val selectedNewCardChapterIds: List<String>? = null,
-    @SerialName("include_unassigned") val includeUnassigned: Boolean? = null,
-)
-
-@Serializable
 internal data class StudyPlanRequest(
-    @SerialName("project_id") val projectId: String,
     @SerialName("selected_deck_ids") val selectedDeckIds: List<String>,
     @SerialName("daily_new_goal") val dailyNewGoal: Int,
     @SerialName("daily_review_goal") val dailyReviewGoal: Int,
@@ -678,20 +651,8 @@ internal fun PreferencesDto.toDomain(): V25UserPreferences = V25UserPreferences(
     updatedAt = parseIsoInstant(updatedAt, "updated_at"),
 )
 
-internal fun StudySettingsDto.toDomain(projectId: String): V25ProjectStudySettings =
-    V25ProjectStudySettings(
-        projectId = projectId,
-        selectedNewCardChapterIds = selectedNewCardChapterIds,
-        includeUnassigned = includeUnassigned,
-        updatedAt = parseIsoInstant(updatedAt, "updated_at"),
-        selectedDeckIds = selectedDeckIds.orEmpty(),
-        dailyNewGoal = dailyNewGoal ?: 10,
-        dailyReviewGoal = dailyReviewGoal ?: 40,
-    )
-
 internal fun StudyPlanDto.toDomain(): V25StudyPlan = V25StudyPlan(
     configured = configured,
-    currentProjectId = currentProjectId,
     selectedDeckIds = selectedDeckIds,
     dailyNewGoal = dailyNewGoal,
     dailyReviewGoal = dailyReviewGoal,
@@ -839,7 +800,6 @@ internal fun RewritePreviewDto.toDomain(): V25CardRewritePreview = V25CardRewrit
 internal fun TodayPlanDto.toDomain(): V25TodayPlan = V25TodayPlan(
     learningTimezone = timezone,
     studyDate = LocalDate.parse(studyDate),
-    currentProject = currentProject?.let { V25CurrentProject(it.projectId, it.name) },
     dailyGoal = dailyGoal,
     completedCount = completedCount,
     dueCount = dueCount,
@@ -986,7 +946,6 @@ internal fun V25PreferencesPatch.toWire(): PreferencesPatchRequest = Preferences
 )
 
 internal fun V25StudyPlanUpdate.toWire(): StudyPlanRequest = StudyPlanRequest(
-    projectId = currentProjectId,
     selectedDeckIds = selectedDeckIds,
     dailyNewGoal = dailyNewGoal,
     dailyReviewGoal = dailyReviewGoal,

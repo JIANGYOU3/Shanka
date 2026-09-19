@@ -21,7 +21,6 @@ import com.qiuzhao.flashcards.domain.v25.V25ImportResult
 import com.qiuzhao.flashcards.domain.v25.V25LearningProject
 import com.qiuzhao.flashcards.domain.v25.V25PlanCard
 import com.qiuzhao.flashcards.domain.v25.V25PreferencesPatch
-import com.qiuzhao.flashcards.domain.v25.V25ProjectStudySettings
 import com.qiuzhao.flashcards.domain.v25.V25ProgressSummary
 import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25RatingResult
@@ -37,7 +36,6 @@ import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudySession
 import com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
-import com.qiuzhao.flashcards.domain.v25.V25StudySettingsPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.domain.v25.V25TodayPlan
@@ -626,14 +624,6 @@ class OfflineFirstV25Repository(
             userId()?.let { user -> cache.replaceProject(user, it, clock.millis()) }
         }
 
-    override suspend fun getStudySettings(projectId: String): V25Result<V25ProjectStudySettings> =
-        remote.getStudySettings(projectId)
-
-    override suspend fun updateStudySettings(
-        projectId: String,
-        patch: V25StudySettingsPatch,
-    ): V25Result<V25ProjectStudySettings> = remote.updateStudySettings(projectId, patch)
-
     // Every task-returning call lands the light status projection (V25-D-34) so the Room flows
     // — not the caller — are the single place a status advance becomes observable.
 
@@ -793,7 +783,6 @@ class OfflineFirstV25Repository(
     private fun emptyTodayPlan(today: LocalDate) = V25TodayPlan(
         learningTimezone = clock.zone.id,
         studyDate = today,
-        currentProject = null,
         dailyGoal = 0,
         completedCount = 0,
         dueCount = 0,

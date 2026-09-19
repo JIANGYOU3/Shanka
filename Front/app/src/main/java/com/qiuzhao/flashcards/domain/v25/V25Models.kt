@@ -275,47 +275,21 @@ data class V25LearningProject(
     val chapters: List<V25Chapter> = emptyList(),
 )
 
-/** New-card chapter scope for a project (Architecture 3.3). */
-data class V25ProjectStudySettings(
-    val projectId: String,
-    val selectedNewCardChapterIds: List<String>,
-    val includeUnassigned: Boolean,
-    val updatedAt: Instant,
-    /** Deck-scoped daily plan fields; optional on legacy responses during rollout. */
-    val selectedDeckIds: List<String> = emptyList(),
-    val dailyNewGoal: Int = 10,
-    val dailyReviewGoal: Int = 40,
-)
-
-/** Atomic, current-project study plan returned by GET/PUT /study/plan. */
+/** Account-scoped study plan returned by GET/PUT /study/plan (V25-D-39: decks may span projects). */
 data class V25StudyPlan(
     val configured: Boolean,
-    val currentProjectId: String?,
     val selectedDeckIds: List<String>,
     val dailyNewGoal: Int,
     val dailyReviewGoal: Int,
     val updatedAt: Instant? = null,
 )
 
-/** Request payload for the single-save study-plan form. */
+/** Request payload for the single-save study-plan form (no project field, V25-D-39). */
 data class V25StudyPlanUpdate(
-    val currentProjectId: String,
     val selectedDeckIds: List<String>,
     val dailyNewGoal: Int,
     val dailyReviewGoal: Int,
 )
-
-/** Partial study-settings update; at least one field is required. */
-data class V25StudySettingsPatch(
-    val selectedNewCardChapterIds: List<String>? = null,
-    val includeUnassigned: Boolean? = null,
-) {
-    init {
-        require(selectedNewCardChapterIds != null || includeUnassigned != null) {
-            "study settings patch requires at least one field"
-        }
-    }
-}
 
 // --- generation tasks (Architecture 3.4–3.5) ---------------------------------------------------
 
@@ -544,12 +518,6 @@ data class V25CardRewritePreview(
 
 // --- today plan and stats (Architecture 3.9) ---------------------------------------------------
 
-/** Minimal current-project summary inside the today plan. */
-data class V25CurrentProject(
-    val projectId: String,
-    val name: String,
-)
-
 /** An ordered today-plan item; `isNew` distinguishes due review from new-card fill. */
 data class V25PlanCard(
     val card: V25Card,
@@ -560,12 +528,12 @@ data class V25PlanCard(
 
 /**
  * Server-computed today plan (Architecture 3.9): due-first queue up to the daily goal, filled
- * with in-scope new cards. `currentProject == null` with zero cards is the no-project empty state.
+ * with in-scope new cards. `planConfigured == false` with zero cards is the unconfigured empty
+ * state (V25-D-39: the plan is account-scoped, no current-project field).
  */
 data class V25TodayPlan(
     val learningTimezone: String,
     val studyDate: LocalDate,
-    val currentProject: V25CurrentProject?,
     val dailyGoal: Int,
     val completedCount: Int,
     val dueCount: Int,

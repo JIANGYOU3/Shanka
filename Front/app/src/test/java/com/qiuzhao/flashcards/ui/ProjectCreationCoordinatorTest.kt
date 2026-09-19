@@ -21,7 +21,6 @@ import com.qiuzhao.flashcards.domain.v25.V25MaterialStatus
 import com.qiuzhao.flashcards.domain.v25.V25MaterialType
 import com.qiuzhao.flashcards.domain.v25.V25PreferencesPatch
 import com.qiuzhao.flashcards.domain.v25.V25ProjectStatus
-import com.qiuzhao.flashcards.domain.v25.V25ProjectStudySettings
 import com.qiuzhao.flashcards.domain.v25.V25ProgressSummary
 import com.qiuzhao.flashcards.domain.v25.V25Rating
 import com.qiuzhao.flashcards.domain.v25.V25RatingResult
@@ -31,7 +30,6 @@ import com.qiuzhao.flashcards.domain.v25.V25ReviewCard
 import com.qiuzhao.flashcards.domain.v25.V25SampleCard
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
-import com.qiuzhao.flashcards.domain.v25.V25StudySettingsPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.domain.v25.V25TodayPlan
@@ -346,8 +344,6 @@ class ProjectCreationCoordinatorTest {
         override suspend fun updateChapter(projectId: String, chapterId: String, edit: V25ChapterEdit): V25Result<V25Chapter> = throw NotImplementedError()
         override suspend fun deleteChapter(projectId: String, chapterId: String, deleteCards: Boolean): V25Result<Unit> = throw NotImplementedError()
         override suspend fun confirmChapters(projectId: String): V25Result<V25LearningProject> = throw NotImplementedError()
-        override suspend fun getStudySettings(projectId: String): V25Result<V25ProjectStudySettings> = throw NotImplementedError()
-        override suspend fun updateStudySettings(projectId: String, patch: V25StudySettingsPatch): V25Result<V25ProjectStudySettings> = throw NotImplementedError()
         override suspend fun createTask(projectId: String, deckId: String, chapterIds: List<String>, config: V25GenerationConfig): V25Result<V25GenerationTask> = throw NotImplementedError()
         override suspend fun listTasks(projectId: String?, status: V25TaskStatus?): V25Result<List<V25GenerationTask>> = throw NotImplementedError()
         override suspend fun getTask(taskId: String): V25Result<V25GenerationTask> = throw NotImplementedError()

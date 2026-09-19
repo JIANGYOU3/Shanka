@@ -116,8 +116,6 @@ object ShankaOps {
     const val UPDATE_CHAPTER = "update_chapter"
     const val DELETE_CHAPTER = "delete_chapter"
     const val CONFIRM_CHAPTERS = "confirm_chapters"
-    const val GET_STUDY_SETTINGS = "get_study_settings"
-    const val UPDATE_STUDY_SETTINGS = "update_study_settings"
     const val CREATE_TASK = "create_task"
     const val LIST_TASKS = "list_tasks"
     const val GET_TASK = "get_task"

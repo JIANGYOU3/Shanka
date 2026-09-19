@@ -724,7 +724,6 @@ private fun ReviewStateEntity.toDomain() = V25ReviewState(state = state, due = d
 private fun V25StudyPlan.toEntity(userId: String) = StudyPlanEntity(
     userId = userId,
     configured = configured,
-    currentProjectId = currentProjectId,
     selectedDeckIds = selectedDeckIds.joinToString(","),
     dailyNewGoal = dailyNewGoal,
     dailyReviewGoal = dailyReviewGoal,
@@ -733,7 +732,6 @@ private fun V25StudyPlan.toEntity(userId: String) = StudyPlanEntity(
 
 private fun StudyPlanEntity.toDomain() = V25StudyPlan(
     configured = configured,
-    currentProjectId = currentProjectId,
     selectedDeckIds = selectedDeckIds.split(',').filter { it.isNotBlank() },
     dailyNewGoal = dailyNewGoal,
     dailyReviewGoal = dailyReviewGoal,
@@ -744,8 +742,6 @@ private fun V25TodayPlan.toEntity(userId: String) = TodayPlanEntity(
     userId = userId,
     studyDate = studyDate.toString(),
     timezone = learningTimezone,
-    currentProjectId = currentProject?.projectId,
-    currentProjectName = currentProject?.name,
     dailyGoal = dailyGoal,
     completedCount = completedCount,
     dueCount = dueCount,
@@ -765,9 +761,6 @@ private fun V25TodayPlan.toEntity(userId: String) = TodayPlanEntity(
 private fun TodayPlanEntity.toDomain(cards: List<V25PlanCard>) = V25TodayPlan(
     learningTimezone = timezone,
     studyDate = LocalDate.parse(studyDate),
-    currentProject = currentProjectId?.let { id ->
-        com.qiuzhao.flashcards.domain.v25.V25CurrentProject(id, currentProjectName.orEmpty())
-    },
     dailyGoal = dailyGoal,
     completedCount = completedCount,
     dueCount = dueCount,

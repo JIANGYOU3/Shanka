@@ -53,7 +53,7 @@ abstract class ShankaV25Database : RoomDatabase() {
 
     companion object {
         const val NAME = "shanka-v25.db"
-        const val VERSION = 8
+        const val VERSION = 9
 
         /** Projection schema version written into cache metadata rows. */
         const val CACHE_SCHEMA_VERSION = 3
@@ -202,6 +202,61 @@ abstract class ShankaV25Database : RoomDatabase() {
                         "ALTER TABLE `dashboard_snapshot` ADD COLUMN `adhoc_study_seconds` " +
                             "INTEGER NOT NULL DEFAULT 0",
                     )
+                }
+            },
+            // v8 → v9 (account-scoped cross-project plan, contract V25-D-39): `study_plan` and
+            // `today_plan` drop their current-project columns — the plan belongs to the account,
+            // not a project. Both are rebuildable projections of the server payload, so the
+            // migration recreates exactly those two tables carrying the remaining facts over;
+            // every other cached fact (cards, outbox rows) is preserved.
+            object : Migration(8, 9) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `study_plan_v9` (" +
+                            "`user_id` TEXT NOT NULL, `configured` INTEGER NOT NULL, " +
+                            "`selected_deck_ids` TEXT NOT NULL, `daily_new_goal` INTEGER NOT NULL, " +
+                            "`daily_review_goal` INTEGER NOT NULL, `updated_at` INTEGER, " +
+                            "PRIMARY KEY(`user_id`))",
+                    )
+                    db.execSQL(
+                        "INSERT INTO `study_plan_v9` (`user_id`, `configured`, `selected_deck_ids`, " +
+                            "`daily_new_goal`, `daily_review_goal`, `updated_at`) " +
+                            "SELECT `user_id`, `configured`, `selected_deck_ids`, `daily_new_goal`, " +
+                            "`daily_review_goal`, `updated_at` FROM `study_plan`",
+                    )
+                    db.execSQL("DROP TABLE `study_plan`")
+                    db.execSQL("ALTER TABLE `study_plan_v9` RENAME TO `study_plan`")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `today_plan_v9` (" +
+                            "`user_id` TEXT NOT NULL, `study_date` TEXT NOT NULL, " +
+                            "`timezone` TEXT NOT NULL, `daily_goal` INTEGER NOT NULL, " +
+                            "`today_completed_count` INTEGER NOT NULL, `due_count` INTEGER NOT NULL, " +
+                            "`main_plan_remaining` INTEGER NOT NULL, `backlog_count` INTEGER NOT NULL, " +
+                            "`daily_new_goal` INTEGER NOT NULL, `daily_review_goal` INTEGER NOT NULL, " +
+                            "`new_completed_count` INTEGER NOT NULL, " +
+                            "`review_completed_count` INTEGER NOT NULL, " +
+                            "`new_remaining_count` INTEGER NOT NULL, " +
+                            "`review_remaining_count` INTEGER NOT NULL, " +
+                            "`core_target_count` INTEGER NOT NULL, `plan_configured` INTEGER NOT NULL, " +
+                            "`selected_deck_ids` TEXT NOT NULL, " +
+                            "PRIMARY KEY(`user_id`, `study_date`))",
+                    )
+                    db.execSQL(
+                        "INSERT INTO `today_plan_v9` (`user_id`, `study_date`, `timezone`, " +
+                            "`daily_goal`, `today_completed_count`, `due_count`, " +
+                            "`main_plan_remaining`, `backlog_count`, `daily_new_goal`, " +
+                            "`daily_review_goal`, `new_completed_count`, `review_completed_count`, " +
+                            "`new_remaining_count`, `review_remaining_count`, `core_target_count`, " +
+                            "`plan_configured`, `selected_deck_ids`) " +
+                            "SELECT `user_id`, `study_date`, `timezone`, `daily_goal`, " +
+                            "`today_completed_count`, `due_count`, `main_plan_remaining`, " +
+                            "`backlog_count`, `daily_new_goal`, `daily_review_goal`, " +
+                            "`new_completed_count`, `review_completed_count`, `new_remaining_count`, " +
+                            "`review_remaining_count`, `core_target_count`, `plan_configured`, " +
+                            "`selected_deck_ids` FROM `today_plan`",
+                    )
+                    db.execSQL("DROP TABLE `today_plan`")
+                    db.execSQL("ALTER TABLE `today_plan_v9` RENAME TO `today_plan`")
                 }
             },
         )

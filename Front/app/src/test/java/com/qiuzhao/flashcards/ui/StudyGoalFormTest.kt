@@ -6,8 +6,8 @@ import org.junit.Test
 
 /**
  * Pure gates of the Figma 977:4937 plan page: every user — first-time or
- * configured — must have a checked project and a learnable deck picked before
- * the save button unlocks.
+ * configured — must have at least one learnable deck picked (any own deck,
+ * V25-D-39) before the save button unlocks.
  */
 class StudyGoalFormTest {
 
@@ -16,23 +16,17 @@ class StudyGoalFormTest {
         assertTrue(
             studyGoalCanSave(
                 seeded = true, saving = false,
-                validGoals = true, hasProject = true, hasLearnableSelection = true,
+                validGoals = true, hasLearnableSelection = true,
             )
         )
     }
 
     @Test
-    fun `missing project or missing learnable deck selection blocks saving`() {
+    fun `missing learnable deck selection blocks saving`() {
         assertFalse(
             studyGoalCanSave(
                 seeded = true, saving = false,
-                validGoals = true, hasProject = false, hasLearnableSelection = true,
-            )
-        )
-        assertFalse(
-            studyGoalCanSave(
-                seeded = true, saving = false,
-                validGoals = true, hasProject = true, hasLearnableSelection = false,
+                validGoals = true, hasLearnableSelection = false,
             )
         )
     }
@@ -42,19 +36,19 @@ class StudyGoalFormTest {
         assertFalse(
             studyGoalCanSave(
                 seeded = false, saving = false,
-                validGoals = true, hasProject = true, hasLearnableSelection = true,
+                validGoals = true, hasLearnableSelection = true,
             )
         )
         assertFalse(
             studyGoalCanSave(
                 seeded = true, saving = true,
-                validGoals = true, hasProject = true, hasLearnableSelection = true,
+                validGoals = true, hasLearnableSelection = true,
             )
         )
         assertFalse(
             studyGoalCanSave(
                 seeded = true, saving = false,
-                validGoals = false, hasProject = true, hasLearnableSelection = true,
+                validGoals = false, hasLearnableSelection = true,
             )
         )
     }

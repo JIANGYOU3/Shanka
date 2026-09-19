@@ -23,7 +23,6 @@ import com.qiuzhao.flashcards.domain.v25.V25ImportResult
 import com.qiuzhao.flashcards.domain.v25.V25LearningProject
 import com.qiuzhao.flashcards.domain.v25.V25Material
 import com.qiuzhao.flashcards.domain.v25.V25PreferencesPatch
-import com.qiuzhao.flashcards.domain.v25.V25ProjectStudySettings
 import com.qiuzhao.flashcards.domain.v25.V25ProgressSummary
 import com.qiuzhao.flashcards.domain.v25.V25PlanCard
 import com.qiuzhao.flashcards.domain.v25.V25Rating
@@ -39,7 +38,6 @@ import com.qiuzhao.flashcards.domain.v25.V25StudyPlan
 import com.qiuzhao.flashcards.domain.v25.V25StudyPlanUpdate
 import com.qiuzhao.flashcards.domain.v25.V25StudySession
 import com.qiuzhao.flashcards.domain.v25.V25StudySessionBegin
-import com.qiuzhao.flashcards.domain.v25.V25StudySettingsPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskConfigPatch
 import com.qiuzhao.flashcards.domain.v25.V25TaskStatus
 import com.qiuzhao.flashcards.domain.v25.V25TodayPlan
@@ -249,20 +247,6 @@ class RemoteV25Repository internal constructor(
 
     override suspend fun confirmChapters(projectId: String): V25Result<V25LearningProject> =
         wire { api.confirmChapters(projectId, newKey()).toDomain() }
-
-    override suspend fun getStudySettings(projectId: String): V25Result<V25ProjectStudySettings> =
-        wire { api.getStudySettings(projectId).toDomain(projectId) }
-
-    override suspend fun updateStudySettings(
-        projectId: String,
-        patch: V25StudySettingsPatch,
-    ): V25Result<V25ProjectStudySettings> = wire {
-        api.updateStudySettings(
-            projectId,
-            StudySettingsPatchRequest(patch.selectedNewCardChapterIds, patch.includeUnassigned),
-            newKey(),
-        ).toDomain(projectId)
-    }
 
     // --- generation tasks (Architecture 4.3) ---------------------------------------------------
 
